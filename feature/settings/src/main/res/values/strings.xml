@@ -23,6 +23,10 @@
     <string name="duckduckgo">DuckDuckGo</string>
     <string name="baidu">百度</string>
     <string name="miru">Miru</string>
+    <string name="author">由 Ringophilia 与 xiaomao 共同开发</string>
+    <string name="project_source">Miru 源码 · Ringophilia/Miru</string>
+    <string name="project_license">Miru · MPL-2.0</string>
+    <string name="third_party_notices">完整第三方组件与许可说明</string>
     <string name="version">版本 %1$s · 开发预览</string>
     <string name="preview_detail">当前版本提供基础浏览、多标签与会话恢复。广告拦截、下载与原生播放器尚未接入。</string>
     <string name="privacy_detail">无需账号，不上传遥测或崩溃报告。普通标签在本机保存，无痕标签不会写入会话文件。</string>

@@ -2,6 +2,12 @@
 
 Android 原生浏览器，包名 `app.miru.browser`。产品需求以 [MIRU-SPEC.md](MIRU-SPEC.md) 为准。
 
+由 [Ringophilia](https://github.com/Ringophilia) 与 xiaomao 共同开发。源码：[Ringophilia/Miru](https://github.com/Ringophilia/Miru)。开发者署名见 [AUTHORS.md](AUTHORS.md)。
+
+项目自有代码采用 [Mozilla Public License 2.0（MPL-2.0）](LICENSE)。第三方组件保留各自许可证和署名，详见 [第三方说明](third_party/README.md)与[开源检查记录](docs/OPEN-SOURCE-REVIEW.md)。当前依赖链包含受 Google 专有条款约束的 Play services FIDO 组件，不能据此宣称整个构建产物的依赖均为自由开源软件。
+
+图标由维护者以《Ringo EXPO 08》封面为灵感，通过 AI 生成；素材的授权范围与来源见 [design/PROVENANCE.md](design/PROVENANCE.md)。Miru 与椎名林檎、相关唱片公司、Mozilla 或 Google 没有隶属或背书关系。
+
 目前在实现 **M0 开发预览**：GeckoView / Mozilla Android Components 浏览核心，Kotlin Compose 外壳、原生新标签页、普通与无痕多标签、地址输入与搜索、关闭撤销、会话恢复、主菜单、历史记录、书签及基本外观设置。
 
 uBlock Origin、下载和原生播放器属于后续 M1–M3，当前版本不会声称已启用广告拦截。
@@ -21,7 +27,7 @@ uBlock Origin、下载和原生播放器属于后续 M1–M3，当前版本不�
 .\gradlew.bat :app:connectedDebugAndroidTest
 ```
 
-调试 APK：`app/build/outputs/apk/debug/app-debug.apk`。Android 8.0 及以上；当前包含 `arm64-v8a` 与模拟器 `x86_64`。发布使用 AAB 按 ABI 分包；当前调试包未签发布密钥。
+调试 APK：`app/build/outputs/apk/debug/app-debug.apk`。Android 8.0 及以上；调试版包含 `arm64-v8a` 与模拟器 `x86_64`，当前 release 配置仅包含 `arm64-v8a`。发布签名从未提交的 `keystore.properties` 读取；未配置时使用调试密钥，仅供开发安装。
 
 设备测试需要连接模拟器或手机，测试网页由测试进程内的 loopback HTTP 服务提供，不依赖公网。独立手动 fixture 可用 `node tools/fixture-server.mjs` 启动。
 

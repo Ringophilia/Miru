@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ringophilia and xiaomao
+# SPDX-License-Identifier: MPL-2.0
+
 """Traces design/miru-icon-source.png (the apple-with-an-eye artwork) into the Miru launcher icon.
 
 Outputs, relative to the repo root:

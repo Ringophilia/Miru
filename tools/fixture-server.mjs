@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Ringophilia and xiaomao
+// SPDX-License-Identifier: MPL-2.0
+
 // Local acceptance fixture only. No npm packages are required.
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';

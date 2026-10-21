@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Ringophilia and xiaomao
+// SPDX-License-Identifier: MPL-2.0
+
 package app.miru.settings
 
 import androidx.compose.foundation.clickable
@@ -86,10 +89,14 @@ fun AboutScreen(versionName: String, onBack: () -> Unit, onOpenUrl: (String) -> 
         Column(Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(stringResource(R.string.miru), style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
             Text(stringResource(R.string.version, versionName))
+            Text(stringResource(R.string.author), style = MaterialTheme.typography.bodyMedium)
             Text(stringResource(R.string.preview_detail), style = MaterialTheme.typography.bodyMedium)
             Text(stringResource(R.string.privacy_detail), style = MaterialTheme.typography.bodyMedium)
             HorizontalDivider()
             Text(stringResource(R.string.open_source), style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = { onOpenUrl("https://github.com/Ringophilia/Miru") }) { Text(stringResource(R.string.project_source)) }
+            TextButton(onClick = { onOpenUrl("https://github.com/Ringophilia/Miru/blob/main/LICENSE") }) { Text(stringResource(R.string.project_license)) }
+            TextButton(onClick = { onOpenUrl("https://github.com/Ringophilia/Miru/blob/main/third_party/README.md") }) { Text(stringResource(R.string.third_party_notices)) }
             TextButton(onClick = { onOpenUrl("https://github.com/mozilla-mobile/reference-browser") }) { Text(stringResource(R.string.mozilla_license)) }
             TextButton(onClick = { onOpenUrl("https://www.mozilla.org/MPL/2.0/") }) { Text(stringResource(R.string.mpl)) }
             TextButton(onClick = { onOpenUrl("https://source.android.com/docs/setup/about/licenses") }) { Text(stringResource(R.string.android_license)) }

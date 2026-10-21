@@ -10,3 +10,4 @@ artifacts/
 *.keystore
 tools/local-*/
 *.log
+keystore.properties

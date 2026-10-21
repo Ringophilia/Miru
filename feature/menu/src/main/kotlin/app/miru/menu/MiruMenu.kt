@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Ringophilia and xiaomao
+// SPDX-License-Identifier: MPL-2.0
+
 package app.miru.menu
 
 import androidx.compose.foundation.layout.*

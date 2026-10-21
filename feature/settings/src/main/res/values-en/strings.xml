@@ -23,6 +23,10 @@
     <string name="duckduckgo">DuckDuckGo</string>
     <string name="baidu">Baidu</string>
     <string name="miru">Miru</string>
+    <string name="author">Developed together by Ringophilia and xiaomao</string>
+    <string name="project_source">Miru source · Ringophilia/Miru</string>
+    <string name="project_license">Miru · MPL-2.0</string>
+    <string name="third_party_notices">Full third-party components and license information</string>
     <string name="version">Version %1$s · Development preview</string>
     <string name="preview_detail">This version includes browsing, tabs and session restore. Ad blocking, downloads and the native player are not yet available.</string>
     <string name="privacy_detail">No account, telemetry uploads or crash uploads. Regular tabs are saved locally. Private tabs are excluded from session files.</string>

@@ -85,7 +85,7 @@ Flutter                         没有成熟的 GeckoView 嵌入方案；浏览�
 - 首次启动：复制到 `filesDir/extensions/` 后调用 `WebExtensionController.install("file://...")`，安装完成后设置 `allowedInPrivateBrowsing = true`。
 - **不要用 `ensureBuiltIn()` 安装 uBO**：社区报告该方式对 uBO 的权限声明有兼容问题（见第 16 节）。`ensureBuiltIn()` 只用于我们自己的 `miru-bridge` 扩展（第 3.3 节）。
 - 升级：由 Android Components 的 `AddonUpdater` 走 AMO 自动更新；同时每次发布 Miru 新版本时更新内置 xpi，安装时若内置版本更高则覆盖安装。
-- 许可：uBO 以未修改的独立组件形式随应用分发，在「关于 → 开源许可」中列出并链接其源码仓库。Miru 自身代码不受 GPL 传染（聚合分发）。**发布前让人类确认一次许可合规**。
+- 许可：未来若随应用分发 uBO，须核实实际采用版本的 GPL 条款、对应源码与构建信息、过滤列表等素材的许可，并保留原始声明。独立聚合还是组成单一程序取决于实际集成方式，不能仅凭“扩展”或“未修改”就断言 Miru 不受 GPL 义务影响。当前 M0 未打包 uBO。**分发含 uBO 的版本前须另行完成合规审查**。
 
 ---
 

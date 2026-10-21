@@ -4,6 +4,9 @@
  *
  * BrowserStore/EngineMiddleware/SessionFeature wiring follows Mozilla reference-browser.
  * See docs/UPSTREAM.md for source provenance and MPL-2.0 attribution.
+ *
+ * Modifications Copyright (c) 2026 Ringophilia and xiaomao
+ * SPDX-License-Identifier: MPL-2.0
  */
 package app.miru.browser.engine
 

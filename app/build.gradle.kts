@@ -1,3 +1,8 @@
+// Copyright (c) 2026 Ringophilia and xiaomao
+// SPDX-License-Identifier: MPL-2.0
+
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -13,18 +18,40 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-    buildTypes {
-        release {
-            isMinifyEnabled = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+    // 发布签名读取未提交的 keystore.properties；缺省时用调试密钥，仅供本机安装。
+    val releaseKeys = rootProject.file("keystore.properties").takeIf { it.exists() }
+        ?.let { file -> Properties().apply { file.inputStream().use { load(it) } } }
+    signingConfigs {
+        if (releaseKeys != null) create("release") {
+            storeFile = rootProject.file(releaseKeys.getProperty("storeFile"))
+            storePassword = releaseKeys.getProperty("storePassword")
+            keyAlias = releaseKeys.getProperty("keyAlias")
+            keyPassword = releaseKeys.getProperty("keyPassword")
         }
     }
-    packaging { resources.excludes += listOf("META-INF/AL2.0", "META-INF/LGPL2.1") }
+    buildTypes {
+        debug {
+            // x86_64 供模拟器与设备测试。
+            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        }
+        release {
+            ndk { abiFilters += "arm64-v8a" }
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+        }
+    }
+    // Preserve license texts when multiple dependency JARs provide the same resource.
+    packaging { resources.merges += listOf("META-INF/AL2.0", "META-INF/LGPL2.1") }
     bundle { abi { enableSplit = true } }
+}
+// 发布 APK 压缩 so（libxul 未压缩约 150 MB），安装时解压到 nativeLibraryDir。
+androidComponents {
+    onVariants(selector().withBuildType("release")) { it.packaging.jniLibs.useLegacyPackaging.set(true) }
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 dependencies {

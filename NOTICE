@@ -1,0 +1,21 @@
+Miru
+Copyright (c) 2026 Ringophilia and xiaomao
+Project: https://github.com/Ringophilia/Miru
+
+Except for material identified with separate terms, Miru's own source code,
+build scripts and documentation are licensed under the Mozilla Public License,
+version 2.0. See LICENSE. Copyright notices for Miru contributions do not replace
+upstream authorship or notices. Third-party code, libraries and build tools
+retain their own licenses; see third_party/README.md and docs/UPSTREAM.md.
+
+Design artwork is subject to the separate scope in design/PROVENANCE.md.
+No trademark rights or endorsement by any third party are granted.
+
+Mozilla Reference Browser composition is used in BrowserController.kt under
+MPL-2.0. Its original license header is preserved. The reference baseline is
+61267efe132591f6f1dfd58185ebd8dbff6aa816. Mozilla library source revisions and
+the dependency license inventory are documented in third_party/README.md.
+
+Gradle Wrapper scripts and gradle/wrapper/gradle-wrapper.jar are distributed
+under Apache-2.0, not Miru's MPL-2.0. Original script notices are preserved.
+See third_party/gradle/Apache-2.0.txt and third_party/gradle/NOTICE.txt.

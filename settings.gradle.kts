@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Ringophilia and xiaomao
+// SPDX-License-Identifier: MPL-2.0
+
 pluginManagement {
     repositories {
         google()
