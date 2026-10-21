@@ -1,0 +1,33 @@
+<resources>
+    <string name="settings_title">Settings</string>
+    <string name="back">Back</string>
+    <string name="close">Close</string>
+    <string name="basic">Basics</string>
+    <string name="appearance">Appearance</string>
+    <string name="search_engine">Search engine</string>
+    <string name="default_browser">Default browser</string>
+    <string name="set_default">Set as default</string>
+    <string name="theme">Theme</string>
+    <string name="theme_system">System default</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="dynamic_color">Dynamic color</string>
+    <string name="dynamic_color_detail">Use wallpaper colors (Android 12 and later)</string>
+    <string name="toolbar_position">Address bar position</string>
+    <string name="top">Top</string>
+    <string name="bottom">Bottom</string>
+    <string name="about">About Miru</string>
+    <string name="about_summary">Version and open source licenses</string>
+    <string name="google">Google</string>
+    <string name="bing">Bing</string>
+    <string name="duckduckgo">DuckDuckGo</string>
+    <string name="baidu">Baidu</string>
+    <string name="miru">Miru</string>
+    <string name="version">Version %1$s · Development preview</string>
+    <string name="preview_detail">This version includes browsing, tabs and session restore. Ad blocking, downloads and the native player are not yet available.</string>
+    <string name="privacy_detail">No account, telemetry uploads or crash uploads. Regular tabs are saved locally. Private tabs are excluded from session files.</string>
+    <string name="open_source">Open source licenses</string>
+    <string name="mozilla_license">Mozilla GeckoView / Android Components · MPL-2.0</string>
+    <string name="mpl">Mozilla Public License</string>
+    <string name="android_license">AndroidX / Kotlin · Apache-2.0</string>
+</resources>

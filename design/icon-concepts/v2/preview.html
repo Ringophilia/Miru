@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8"><title>Miru icon concepts</title>
+<style>
+body{margin:0;padding:28px;background:#ECE8E1;font:14px system-ui,"Microsoft YaHei";color:#222;width:1144px}
+.row{display:flex;align-items:center;gap:28px;margin-bottom:26px;background:#fff;border-radius:18px;padding:20px}
+.big{width:260px;height:260px;border-radius:50%;overflow:hidden;flex:none}
+.sq{width:150px;height:150px;border-radius:34px;overflow:hidden;flex:none}
+.full{width:150px;height:150px;flex:none;outline:1px dashed #bbb;position:relative}
+.full:after{content:"";position:absolute;left:15%;top:15%;width:70%;height:70%;border-radius:50%;outline:1px dashed rgba(0,160,255,.8)}
+.sm{display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:14px;background:linear-gradient(135deg,#2b3a55,#6b4c7a)}
+.sm img{width:48px;height:48px;border-radius:50%}
+.sm.light{background:linear-gradient(135deg,#f6f1e6,#cfd8e3)}
+img{display:block;width:100%;height:100%}
+h2{margin:0 0 6px;font-size:18px} p{margin:0;color:#555;line-height:1.5;max-width:230px}
+</style>
+<div id="c"></div>
+<script>
+const C=[["1-urushi","1 · 漆と金","黑漆底 + 金箔描线的眼睛，深红虹膜里一颗金苹果高光。华丽、和风。"],
+["2-ringo-frame","2 · 林檎の中","整个图标就是一颗红苹果，眼睛长在苹果上。离远看是苹果，近看是眼。"],
+["3-shuin","3 · 朱印","保留林檎博'08 的复印墨感和纸纹，右下角盖一枚苹果形朱印。最像“在原封面上改”。"],
+["4-kabukicho","4 · 歌舞伎町","夜色墙面上的霓虹灯管眼睛，瞳孔是一颗霓虹苹果。致敬「歌舞伎町の女王」。"],
+["5-stencil","5 · 剪影","单色剪影，苹果形瞳孔镂空。可直接当 Android 13 主题图标（图中是蓝色主题着色效果）。"]];
+c.innerHTML=C.map(([f,t,d])=>`<div class="row"><div><h2>${t}</h2><p>${d}</p></div>
+<div class="big"><img src="miru-icon-${f}.svg"></div><div class="sq"><img src="miru-icon-${f}.svg"></div>
+<div class="full"><img src="miru-icon-${f}.svg"></div>
+<div class="sm"><img src="miru-icon-${f}.svg"><img src="miru-icon-${f}.svg" style="width:36px;height:36px"></div>
+<div class="sm light"><img src="miru-icon-${f}.svg"><img src="miru-icon-${f}.svg" style="width:36px;height:36px"></div></div>`).join("");
+</script>

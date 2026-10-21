@@ -1,0 +1,33 @@
+<resources>
+    <string name="settings_title">设置</string>
+    <string name="back">返回</string>
+    <string name="close">关闭</string>
+    <string name="basic">基本</string>
+    <string name="appearance">外观</string>
+    <string name="search_engine">搜索引擎</string>
+    <string name="default_browser">默认浏览器</string>
+    <string name="set_default">设为默认</string>
+    <string name="theme">主题</string>
+    <string name="theme_system">跟随系统</string>
+    <string name="theme_light">浅色</string>
+    <string name="theme_dark">深色</string>
+    <string name="dynamic_color">动态取色</string>
+    <string name="dynamic_color_detail">使用系统壁纸配色（Android 12 及以上）</string>
+    <string name="toolbar_position">地址栏位置</string>
+    <string name="top">顶部</string>
+    <string name="bottom">底部</string>
+    <string name="about">关于 Miru</string>
+    <string name="about_summary">版本与开源许可</string>
+    <string name="google">Google</string>
+    <string name="bing">Bing</string>
+    <string name="duckduckgo">DuckDuckGo</string>
+    <string name="baidu">百度</string>
+    <string name="miru">Miru</string>
+    <string name="version">版本 %1$s · 开发预览</string>
+    <string name="preview_detail">当前版本提供基础浏览、多标签与会话恢复。广告拦截、下载与原生播放器尚未接入。</string>
+    <string name="privacy_detail">无需账号，不上传遥测或崩溃报告。普通标签在本机保存，无痕标签不会写入会话文件。</string>
+    <string name="open_source">开源许可</string>
+    <string name="mozilla_license">Mozilla GeckoView / Android Components · MPL-2.0</string>
+    <string name="mpl">查看 Mozilla 公共许可证</string>
+    <string name="android_license">AndroidX / Kotlin · Apache-2.0</string>
+</resources>

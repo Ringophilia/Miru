@@ -1,0 +1,26 @@
+<resources>
+    <string name="ntp_miru_logo">Miru</string>
+    <string name="ntp_search_hint">Search or enter address</string>
+    <string name="ntp_incognito_title">Incognito browsing</string>
+    <string name="ntp_incognito_description">Incognito mode does not save browsing history, cookies, or form data. Downloaded files stay on your device.</string>
+    <string name="shortcut_google">Google</string>
+    <string name="shortcut_youtube">YouTube</string>
+    <string name="shortcut_bilibili">Bilibili</string>
+    <string name="shortcut_wikipedia">Wikipedia</string>
+    <string name="shortcut_github">GitHub</string>
+    <string name="shortcut_zhihu">Zhihu</string>
+    <string name="shortcut_weibo">Weibo</string>
+    <string name="shortcut_baidu">Baidu</string>
+    <string name="ntp_shortcut_add">Add</string>
+    <string name="ntp_shortcut_add_title">Add shortcut</string>
+    <string name="ntp_shortcut_edit">Edit shortcut</string>
+    <string name="ntp_shortcut_remove">Remove</string>
+    <string name="ntp_shortcut_removed">Shortcut removed</string>
+    <string name="ntp_undo">Undo</string>
+    <string name="ntp_shortcut_name">Name</string>
+    <string name="ntp_shortcut_url">Address</string>
+    <string name="ntp_shortcut_invalid_url">Enter a valid http or https address</string>
+    <string name="ntp_cancel">Cancel</string>
+    <string name="ntp_save">Save</string>
+    <string name="ntp_shortcut_save_failed">Could not save shortcut. Try again.</string>
+</resources>

@@ -1,0 +1,11 @@
+Mozilla Reference Browser / Android Components / GeckoView
+License: Mozilla Public License 2.0 (MPL-2.0)
+Reference Browser: https://github.com/mozilla-mobile/reference-browser
+Reference baseline: 61267efe132591f6f1dfd58185ebd8dbff6aa816
+Android Components / GeckoView source: https://github.com/mozilla-firefox/firefox
+License text: MPL-2.0.txt in this directory.
+
+Miru uses a minimal browser composition based on the Reference Browser engine,
+state, tab use case, and session persistence pattern. Preserve MPL notices in
+source files adapted from Mozilla. Miru's original Compose application files
+are separate from Mozilla's library/source notices.

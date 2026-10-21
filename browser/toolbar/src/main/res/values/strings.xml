@@ -1,0 +1,14 @@
+<resources>
+    <string name="toolbar_search_hint">搜索或输入网址</string>
+    <string name="toolbar_cancel_edit">取消编辑</string>
+    <string name="toolbar_clear_input">清空输入</string>
+    <string name="toolbar_site_info">网站信息</string>
+    <string name="toolbar_adblock">广告拦截</string>
+    <string name="toolbar_adblock_unavailable">广告拦截尚未启用</string>
+    <string name="toolbar_menu">打开菜单</string>
+    <string name="toolbar_tabs">切换标签页</string>
+    <plurals name="toolbar_tab_count">
+        <item quantity="one">%d 个标签页</item>
+        <item quantity="other">%d 个标签页</item>
+    </plurals>
+</resources>

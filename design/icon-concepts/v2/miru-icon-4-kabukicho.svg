@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <defs><clipPath id="eye"><path d="M18 61 C32 35 70 32 90 53 C77 71 40 76 18 61Z"/></clipPath><filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2.2" result="b"/><feGaussianBlur in="SourceGraphic" stdDeviation=".6" result="s"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="s"/><feMergeNode in="SourceGraphic"/></feMerge></filter><radialGradient id="night" cx=".5" cy=".5" r=".75"><stop offset="0" stop-color="#2A0E2E"/><stop offset="1" stop-color="#0B0614"/></radialGradient></defs>
+  <rect width="108" height="108" fill="url(#night)"/>
+  <g transform="translate(54 54) scale(.9) translate(-57 -54)">
+    <g filter="url(#glow)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <g stroke="#FF4F8B" stroke-width="2.1"><path d="M18 61 C32 35 70 32 90 53 L96 47"/><path d="M90 53 C77 71 40 76 18 61"/><path d="M23.13 51.82 Q21.72 51.23 20.34 48.34"/><path d="M31.1 45.19 Q30.52 43.71 29.25 40.22"/><path d="M40.31 40.7 Q40.92 38.36 40 34.3"/><path d="M50.3 38.33 Q52.43 35.33 52.07 30.83"/><path d="M60.62 38.1 Q64.49 34.7 64.85 29.94"/><path d="M70.8 40 Q76.56 36.51 77.73 31.69"/><path d="M80.41 44.06 Q88.13 40.77 90.16 36.08"/><path d="M88.97 50.3 Q98.67 47.5 101.59 43.14"/></g>
+      <circle cx="54" cy="56" r="12.5" stroke="#FFD1E1" stroke-width="1.6" clip-path="url(#eye)"/>
+      <g stroke="#FF2A2A" stroke-width="1.5"><path d="M54 52.3 C55.68 49.99 60.51 50.41 60.51 55.24 C60.51 59.86 57.99 62.59 55.89 62.3 C55.05 62.13 52.95 62.13 52.11 62.3 C50.01 62.59 47.49 59.86 47.49 55.24 C47.49 50.41 52.32 49.99 54 52.3Z"/><path d="M53.75 52.51 C53.83 51.04 54.25 49.78 55.01 48.69 L55.68 49.02 C55.01 50.03 54.67 51.21 54.59 52.64Z"/><path d="M55.09 50.37 C55.89 47.89 57.99 47.05 60.09 47.85 C59.04 50.12 56.94 50.96 55.09 50.37Z"/></g>
+    </g>
+  </g>
+</svg>

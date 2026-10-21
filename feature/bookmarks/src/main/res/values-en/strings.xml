@@ -1,0 +1,21 @@
+<resources>
+    <string name="bookmarks_title">Bookmarks</string>
+    <string name="bookmarks_back">Back</string>
+    <string name="bookmarks_search">Search bookmarks</string>
+    <string name="bookmarks_clear_search">Clear search</string>
+    <string name="bookmarks_empty">Tap the star in the menu to bookmark a page.</string>
+    <string name="bookmarks_no_results">No matching bookmarks</string>
+    <string name="bookmarks_more">More actions: %1$s</string>
+    <string name="bookmarks_open_new_tab">Open in new tab</string>
+    <string name="bookmarks_open_private">Open in incognito tab</string>
+    <string name="bookmarks_edit">Edit bookmark</string>
+    <string name="bookmarks_copy">Copy link</string>
+    <string name="bookmarks_delete">Delete</string>
+    <string name="bookmarks_deleted">Bookmark deleted</string>
+    <string name="bookmarks_undo">Undo</string>
+    <string name="bookmarks_name">Name</string>
+    <string name="bookmarks_url">URL</string>
+    <string name="bookmarks_invalid_url">Enter a valid http or https URL</string>
+    <string name="bookmarks_cancel">Cancel</string>
+    <string name="bookmarks_save">Save</string>
+</resources>

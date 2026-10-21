@@ -1,0 +1,27 @@
+<resources>
+    <string name="app_name">Miru</string>
+    <string name="unsupported_address">Cannot open this address. Enter an http or https URL.</string>
+    <string name="unavailable_route">This page is not available yet.</string>
+    <string name="closed_tab">Tab closed</string>
+    <string name="closed_all_tabs">All tabs closed</string>
+    <string name="undo">Undo</string>
+    <string name="switch_tab">Switch to this tab</string>
+    <string name="engine_error">The browser engine could not start. Try again.</string>
+    <string name="page_crashed">This page stopped unexpectedly. Reload to continue.</string>
+    <string name="retry">Retry</string>
+    <string name="connection_secure">Connection is encrypted</string>
+    <string name="connection_info">Check the address before entering sensitive information on an unfamiliar page.</string>
+    <string name="adblock_unavailable">Ad blocking is not included in this preview yet.</string>
+    <string name="find_in_page">Find in page</string>
+    <string name="find_count">%1$d/%2$d</string>
+    <string name="previous_match">Previous match</string>
+    <string name="next_match">Next match</string>
+    <string name="close_find">Close find in page</string>
+    <string name="closed_tab_named">Closed “%1$s”</string>
+    <string name="bookmark_added">Bookmark added</string>
+    <string name="bookmark_removed">Bookmark removed</string>
+    <string name="edit">Edit</string>
+    <string name="suggest_search">Search</string>
+    <string name="suggest_open">Open address</string>
+    <string name="fill_address">Fill in address bar</string>
+</resources>

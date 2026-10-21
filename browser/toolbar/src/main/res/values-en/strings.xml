@@ -1,0 +1,14 @@
+<resources>
+    <string name="toolbar_search_hint">Search or enter address</string>
+    <string name="toolbar_cancel_edit">Cancel editing</string>
+    <string name="toolbar_clear_input">Clear input</string>
+    <string name="toolbar_site_info">Site information</string>
+    <string name="toolbar_adblock">Ad blocking</string>
+    <string name="toolbar_adblock_unavailable">Ad blocking is not enabled yet</string>
+    <string name="toolbar_menu">Open menu</string>
+    <string name="toolbar_tabs">Switch tabs</string>
+    <plurals name="toolbar_tab_count">
+        <item quantity="one">%d tab</item>
+        <item quantity="other">%d tabs</item>
+    </plurals>
+</resources>

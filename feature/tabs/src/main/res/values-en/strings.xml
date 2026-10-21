@@ -1,0 +1,13 @@
+<resources>
+    <string name="tabs_new">New tab</string>
+    <string name="tabs_regular">Tabs</string>
+    <string name="tabs_incognito">Incognito</string>
+    <string name="tabs_menu">Tab menu</string>
+    <string name="tabs_close_all">Close all tabs</string>
+    <string name="tabs_dismiss">Return to browsing</string>
+    <string name="tabs_empty">No tabs yet</string>
+    <string name="tabs_empty_incognito">No incognito tabs yet</string>
+    <string name="tabs_close_named">Close %1$s</string>
+    <string name="tabs_private_preview">Incognito preview is hidden</string>
+    <string name="tabs_miru">Miru</string>
+</resources>

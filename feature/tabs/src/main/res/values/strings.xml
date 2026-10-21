@@ -1,0 +1,13 @@
+<resources>
+    <string name="tabs_new">新标签页</string>
+    <string name="tabs_regular">普通</string>
+    <string name="tabs_incognito">无痕</string>
+    <string name="tabs_menu">标签页菜单</string>
+    <string name="tabs_close_all">关闭所有标签页</string>
+    <string name="tabs_dismiss">返回浏览</string>
+    <string name="tabs_empty">还没有标签页</string>
+    <string name="tabs_empty_incognito">还没有无痕标签页</string>
+    <string name="tabs_close_named">关闭 %1$s</string>
+    <string name="tabs_private_preview">无痕标签预览已隐藏</string>
+    <string name="tabs_miru">Miru</string>
+</resources>

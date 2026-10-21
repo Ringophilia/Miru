@@ -1,0 +1,19 @@
+<resources>
+    <style name="Theme.Miru" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/window_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_miru</item>
+        <!-- Same paper disc as the launcher icon, so the apple reads on the dark splash too. -->
+        <item name="windowSplashScreenIconBackgroundColor">@color/icon_paper</item>
+        <item name="postSplashScreenTheme">@style/Theme.Miru.Content</item>
+    </style>
+    <style name="Theme.Miru.Content" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:fontFamily">sans</item>
+    </style>
+    <color name="icon_paper">#FAF5EA</color>
+    <!-- Matches the Compose surface, so the splash and first frame do not flash a different color. -->
+    <color name="window_background">#FAF5EA</color>
+</resources>

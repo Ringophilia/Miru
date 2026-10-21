@@ -1,0 +1,21 @@
+<resources>
+    <string name="bookmarks_title">书签</string>
+    <string name="bookmarks_back">返回</string>
+    <string name="bookmarks_search">搜索书签</string>
+    <string name="bookmarks_clear_search">清空搜索</string>
+    <string name="bookmarks_empty">点菜单里的星标，把网页加入书签。</string>
+    <string name="bookmarks_no_results">没有找到匹配的书签</string>
+    <string name="bookmarks_more">更多操作：%1$s</string>
+    <string name="bookmarks_open_new_tab">在新标签页中打开</string>
+    <string name="bookmarks_open_private">在无痕标签页中打开</string>
+    <string name="bookmarks_edit">编辑书签</string>
+    <string name="bookmarks_copy">复制链接</string>
+    <string name="bookmarks_delete">删除</string>
+    <string name="bookmarks_deleted">已删除书签</string>
+    <string name="bookmarks_undo">撤销</string>
+    <string name="bookmarks_name">名称</string>
+    <string name="bookmarks_url">网址</string>
+    <string name="bookmarks_invalid_url">请输入有效的 http 或 https 网址</string>
+    <string name="bookmarks_cancel">取消</string>
+    <string name="bookmarks_save">保存</string>
+</resources>

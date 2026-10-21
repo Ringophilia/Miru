@@ -1,0 +1,25 @@
+<resources>
+    <string name="history_title">历史记录</string>
+    <string name="history_back">返回</string>
+    <string name="history_search">搜索历史记录</string>
+    <string name="history_clear_search">清空搜索</string>
+    <string name="history_empty">浏览过的网页会显示在这里。无痕标签页不会留下记录。</string>
+    <string name="history_no_results">没有找到匹配的记录</string>
+    <string name="history_today">今天</string>
+    <string name="history_yesterday">昨天</string>
+    <string name="history_clear">清除历史记录…</string>
+    <string name="history_clear_title">清除历史记录</string>
+    <string name="history_range_hour">过去 1 小时</string>
+    <string name="history_range_today">今天</string>
+    <string name="history_range_all">全部时间</string>
+    <string name="history_clear_confirm">清除</string>
+    <string name="history_cancel">取消</string>
+    <string name="history_deleted">已删除 1 条记录</string>
+    <string name="history_cleared">已清除历史记录</string>
+    <string name="history_undo">撤销</string>
+    <string name="history_more">更多操作：%1$s</string>
+    <string name="history_open_new_tab">在新标签页中打开</string>
+    <string name="history_open_private">在无痕标签页中打开</string>
+    <string name="history_copy">复制链接</string>
+    <string name="history_delete">删除</string>
+</resources>

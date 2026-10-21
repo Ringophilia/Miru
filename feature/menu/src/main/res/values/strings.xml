@@ -1,0 +1,20 @@
+<resources>
+    <string name="menu_forward">前进</string>
+    <string name="menu_bookmark">添加书签</string>
+    <string name="menu_download_page">下载此页</string>
+    <string name="menu_page_info">页面信息</string>
+    <string name="menu_reload">刷新</string>
+    <string name="menu_stop">停止加载</string>
+    <string name="menu_new_tab">新标签页</string>
+    <string name="menu_new_incognito">新无痕标签页</string>
+    <string name="menu_history">历史记录</string>
+    <string name="menu_downloads">下载内容</string>
+    <string name="menu_bookmarks">书签</string>
+    <string name="menu_share">分享…</string>
+    <string name="menu_find">在网页中查找</string>
+    <string name="menu_add_to_home">添加到主屏幕</string>
+    <string name="menu_desktop_site">桌面版网站</string>
+    <string name="menu_adblock">广告拦截</string>
+    <string name="menu_settings">设置</string>
+    <string name="menu_bookmark_remove">移除书签</string>
+</resources>
