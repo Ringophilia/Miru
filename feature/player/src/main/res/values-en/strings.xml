@@ -1,0 +1,33 @@
+<resources>
+    <string name="player_hold_feedback">%1$.1fx ▶▶</string>
+    <string name="player_seek_feedback">%1$+d s</string>
+    <string name="player_seek">Playback position</string>
+    <string name="player_title">Miru player</string>
+    <string name="player_back">Back</string>
+    <string name="player_play">Play</string>
+    <string name="player_pause">Pause</string>
+    <string name="player_rewind">Back 10 seconds</string>
+    <string name="player_forward">Forward 10 seconds</string>
+    <string name="player_brightness">Brightness %1$d%%</string>
+    <string name="player_volume">Volume %1$d%%</string>
+    <string name="player_fit">Fit</string>
+    <string name="player_crop">Crop</string>
+    <string name="player_stretch">Stretch</string>
+    <string name="player_pip">Picture in picture</string>
+    <string name="player_rotate">Rotate screen</string>
+    <string name="player_lock">Lock controls</string>
+    <string name="player_unlock">Unlock controls</string>
+    <string name="player_live">● Live</string>
+    <string name="player_live_edge">Go live</string>
+    <string name="player_speed">Playback speed</string>
+    <string name="player_decoder">Decoder</string>
+    <string name="player_decoder_auto">Automatic</string>
+    <string name="player_decoder_hardware">Hardware</string>
+    <string name="player_decoder_software">Software</string>
+    <string name="player_timeout">Loading timed out</string>
+    <string name="player_error">This video could not be played</string>
+    <string name="player_retry">Retry</string>
+    <string name="player_return_web">Return to page</string>
+    <string name="player_web_required">This video needs the web page. Returning to the page.</string>
+    <string name="player_resumed">Playback resumed · Play from start</string>
+</resources>

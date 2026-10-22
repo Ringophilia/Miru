@@ -16,6 +16,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -126,11 +127,22 @@ fun MiruTheme(
     )
     // enableEdgeToEdge only follows the system night mode; the app theme and incognito can differ from it.
     val view = LocalView.current
-    if (!view.isInEditMode) SideEffect {
-        val window = generateSequence(view.context) { (it as? ContextWrapper)?.baseContext }.filterIsInstance<Activity>().firstOrNull()?.window
-        if (window != null) WindowCompat.getInsetsController(window, view).apply {
-            isAppearanceLightStatusBars = !dark
-            isAppearanceLightNavigationBars = !dark
+    if (!view.isInEditMode) {
+        fun applySystemBars() {
+            val window = generateSequence(view.context) { (it as? ContextWrapper)?.baseContext }.filterIsInstance<Activity>().firstOrNull()?.window
+            if (window != null) WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !dark
+                isAppearanceLightNavigationBars = !dark
+            }
+        }
+        SideEffect { applySystemBars() }
+        // Returning from the always-dark player or dismissing a dialog can restore window flags
+        // without recomposing this theme. Reapply contrast once the browser regains focus.
+        DisposableEffect(view, dark) {
+            val observer = view.viewTreeObserver
+            val listener = android.view.ViewTreeObserver.OnWindowFocusChangeListener { focused -> if(focused) applySystemBars() }
+            observer.addOnWindowFocusChangeListener(listener)
+            onDispose { if(observer.isAlive) observer.removeOnWindowFocusChangeListener(listener) }
         }
     }
     CompositionLocalProvider(LocalMiruColors provides extraColors) {

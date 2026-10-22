@@ -31,6 +31,9 @@ fun SettingsScreen(
     onSearchEngine: (SearchEngine) -> Unit,
     onDefaultBrowser: () -> Unit,
     onAbout: () -> Unit,
+    onAdblock: () -> Unit = {},
+    onDownloads: () -> Unit = {},
+    onPlayer: () -> Unit = {},
 ) {
     var dialog by remember { mutableStateOf<String?>(null) }
     Scaffold(topBar = {
@@ -48,6 +51,10 @@ fun SettingsScreen(
                 Switch(checked = settings.dynamicColor, onCheckedChange = onDynamicColor)
             })
             SettingRow(stringResource(R.string.toolbar_position), positionName(settings.toolbarPosition)) { dialog = "position" }
+            GroupLabel(R.string.privacy_and_downloads)
+            SettingRow(stringResource(R.string.adblock), stringResource(R.string.adblock_detail), onAdblock)
+            SettingRow(stringResource(R.string.downloads), stringResource(R.string.downloads_detail), onDownloads)
+            SettingRow(stringResource(R.string.player), stringResource(R.string.player_detail), onPlayer)
             HorizontalDivider(Modifier.padding(vertical = 16.dp))
             SettingRow(stringResource(R.string.about), stringResource(R.string.about_summary), onAbout)
         }
@@ -84,7 +91,7 @@ fun SettingsScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AboutScreen(versionName: String, onBack: () -> Unit, onOpenUrl: (String) -> Unit) {
+fun AboutScreen(versionName: String, onBack: () -> Unit, onOpenUrl: (String) -> Unit, adblockVersion: String? = null) {
     Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.about)) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) } }) }) { padding ->
         Column(Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(stringResource(R.string.miru), style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
@@ -92,6 +99,7 @@ fun AboutScreen(versionName: String, onBack: () -> Unit, onOpenUrl: (String) -> 
             Text(stringResource(R.string.author), style = MaterialTheme.typography.bodyMedium)
             Text(stringResource(R.string.preview_detail), style = MaterialTheme.typography.bodyMedium)
             Text(stringResource(R.string.privacy_detail), style = MaterialTheme.typography.bodyMedium)
+            if (adblockVersion != null) Text(stringResource(R.string.ublock_version, adblockVersion), style = MaterialTheme.typography.bodyMedium)
             HorizontalDivider()
             Text(stringResource(R.string.open_source), style = MaterialTheme.typography.titleMedium)
             TextButton(onClick = { onOpenUrl("https://github.com/Ringophilia/Miru") }) { Text(stringResource(R.string.project_source)) }
@@ -100,6 +108,7 @@ fun AboutScreen(versionName: String, onBack: () -> Unit, onOpenUrl: (String) -> 
             TextButton(onClick = { onOpenUrl("https://github.com/mozilla-mobile/reference-browser") }) { Text(stringResource(R.string.mozilla_license)) }
             TextButton(onClick = { onOpenUrl("https://www.mozilla.org/MPL/2.0/") }) { Text(stringResource(R.string.mpl)) }
             TextButton(onClick = { onOpenUrl("https://source.android.com/docs/setup/about/licenses") }) { Text(stringResource(R.string.android_license)) }
+            TextButton(onClick = { onOpenUrl("https://github.com/gorhill/uBlock") }) { Text(stringResource(R.string.ublock_license)) }
         }
     }
 }

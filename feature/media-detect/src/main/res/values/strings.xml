@@ -1,0 +1,11 @@
+<resources>
+    <string name="media_title">本页视频</string>
+    <string name="media_empty">暂未检测到可播放的媒体</string>
+    <string name="media_number">视频 %1$d</string>
+    <string name="media_play">用 Miru 播放</string>
+    <string name="media_web_only">此媒体需要在网页中播放</string>
+    <string name="media_short">其他 %1$d 个短视频</string>
+    <string name="media_hide_short">收起短视频</string>
+    <string name="media_probe_loading">正在识别清晰度…</string>
+    <string name="media_probe_unknown">清晰度未知</string>
+</resources>

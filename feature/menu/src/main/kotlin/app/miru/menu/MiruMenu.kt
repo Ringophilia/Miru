@@ -34,6 +34,8 @@ fun MiruMenu(
     desktopMode: Boolean = false,
     bookmarked: Boolean = false,
     modifier: Modifier = Modifier,
+    activeDownloads: Int = 0,
+    blockedCount: Int = 0,
 ) {
     fun invoke(action: MenuAction) { onDismiss(); onAction(action) }
     // Unavailable page actions are left out rather than greyed; on the NTP the whole row disappears.
@@ -63,7 +65,12 @@ fun MiruMenu(
         if (enabledActions.any { it in setOf(MenuAction.HISTORY, MenuAction.DOWNLOADS, MenuAction.BOOKMARKS) }) {
             HorizontalDivider()
             MenuRow(R.string.menu_history, Icons.Outlined.History, MenuAction.HISTORY, enabledActions, ::invoke)
-            MenuRow(R.string.menu_downloads, Icons.Outlined.Download, MenuAction.DOWNLOADS, enabledActions, ::invoke)
+            if (MenuAction.DOWNLOADS in enabledActions) DropdownMenuItem(
+                text = { Text(stringResource(R.string.menu_downloads)) },
+                leadingIcon = { Icon(Icons.Outlined.Download, null) },
+                trailingIcon = if (activeDownloads > 0) ({ Text(stringResource(R.string.menu_download_active, activeDownloads), style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum")) }) else null,
+                onClick = { invoke(MenuAction.DOWNLOADS) },
+            )
             MenuRow(R.string.menu_bookmarks, Icons.Outlined.StarBorder, MenuAction.BOOKMARKS, enabledActions, ::invoke)
         }
         HorizontalDivider()
@@ -79,7 +86,12 @@ fun MiruMenu(
             )
         }
         HorizontalDivider()
-        MenuRow(R.string.menu_adblock, Icons.Outlined.Shield, MenuAction.ADBLOCK, enabledActions, ::invoke)
+        if (MenuAction.ADBLOCK in enabledActions) DropdownMenuItem(
+            text = { Text(stringResource(R.string.menu_adblock)) },
+            leadingIcon = { Icon(Icons.Outlined.Shield, null) },
+            trailingIcon = if (blockedCount > 0) ({ Text(blockedCount.toString(), style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum")) }) else null,
+            onClick = { invoke(MenuAction.ADBLOCK) },
+        )
         MenuRow(R.string.menu_settings, Icons.Outlined.Settings, MenuAction.SETTINGS, enabledActions, ::invoke)
     }
 }

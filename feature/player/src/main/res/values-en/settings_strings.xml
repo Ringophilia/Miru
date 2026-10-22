@@ -1,0 +1,31 @@
+<resources>
+    <string name="player_confirm_clear">Clear now</string>
+    <string name="player_settings">Player</string>
+    <string name="player_cache_group">Cache and resume</string>
+    <string name="player_cache_limit">Playback cache limit</string>
+    <string name="player_prebuffer">Prebuffer duration</string>
+    <string name="player_megabytes">%1$d MB</string>
+    <string name="player_seconds">%1$d seconds</string>
+    <string name="player_buffer_detail">Buffer settings apply when a video is next opened. On metered networks with system Data Saver enabled, prebuffering is limited to 30 seconds.</string>
+    <string name="player_cache_used">Playback cache used</string>
+    <string name="player_clear_progress">Playback progress</string>
+    <string name="player_private_cache_detail">Private playback does not use disk cache or read and save playback progress.</string>
+    <string name="player_gestures">Playback gestures</string>
+    <string name="player_double_tap">Double-tap seek duration</string>
+    <string name="player_hold">Hold playback speed</string>
+    <string name="player_drag_range">Full-width swipe seek range</string>
+    <string name="player_center_double_tap">Double-tap center to play or pause</string>
+    <string name="player_brightness_gesture">Swipe left side for brightness</string>
+    <string name="player_volume_gesture">Swipe right side for volume</string>
+    <string name="player_haptics">Gesture haptics</string>
+    <string name="player_behavior">Playback behavior</string>
+    <string name="player_auto_pip">Enter picture-in-picture automatically</string>
+    <string name="player_clear">Clear</string>
+    <string name="player_cancel">Cancel</string>
+    <string name="player_clear_cache_title">Clear playback cache?</string>
+    <string name="player_clear_cache_detail">Only temporary streamed media is removed. Downloads are kept. Active playback may cache media again.</string>
+    <string name="player_clear_progress_title">Clear all playback progress?</string>
+    <string name="player_clear_progress_detail">Videos will start from the beginning. Active playback will continue saving progress.</string>
+    <string name="player_data_cleared">Cleared</string>
+    <string name="player_settings_failed">The operation could not finish. Try again later.</string>
+</resources>

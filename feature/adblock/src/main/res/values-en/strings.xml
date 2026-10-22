@@ -1,0 +1,23 @@
+<resources>
+    <string name="reload_needed">Blocking was not confirmed ready when this page loaded. Reload the page to apply blocking fully.</string>
+    <string name="protection_unconfirmed">Reload this page to confirm blocking</string>
+    <string name="reload">Reload page</string>
+    <string name="title">Ad blocking</string>
+    <string name="back">Back</string>
+    <string name="global_switch">Ad blocking</string>
+    <string name="enabled">uBlock Origin %1$s · On</string>
+    <string name="disabled">uBlock Origin %1$s · Off</string>
+    <string name="installing">Preparing uBlock Origin…</string>
+    <string name="failed">Ad blocking could not start. Tap Retry.</string>
+    <string name="retry">Retry</string>
+    <string name="blocked_on_page">%1$d requests blocked on this page</string>
+    <string name="site_controls">Ad blocking for this site</string>
+    <string name="site_controls_detail">Open the uBlock Origin panel and use its power button to toggle blocking for this site. Reload to apply.</string>
+    <string name="close_and_reload">Close panel and reload page</string>
+    <string name="popup_hint">The power button controls blocking for this site. Closing this panel reloads the page.</string>
+    <string name="advanced">Filters and advanced settings</string>
+    <string name="advanced_detail">Open the uBlock Origin dashboard</string>
+    <string name="exceptions">Site exceptions</string>
+    <string name="exceptions_detail">View and edit trusted sites in uBlock Origin</string>
+    <string name="privacy">Uses officially signed uBlock Origin. The extension manages and updates filter lists. Miru does not upload browsing history or blocking statistics.</string>
+</resources>

@@ -5,6 +5,12 @@ package app.miru.toolbar
 
 import android.net.Uri
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -53,6 +59,9 @@ data class ToolbarState(
     val adblockAvailable: Boolean = false,
     val blockedCount: Int = 0,
     val secure: Boolean = false,
+    val downloading: Boolean = false,
+    val adblockNeedsReload: Boolean = false,
+    val mediaCount: Int = 0,
 )
 
 @Composable
@@ -68,6 +77,7 @@ fun MiruToolbar(
     onAdblock: () -> Unit,
     modifier: Modifier = Modifier,
     progressAtTop: Boolean = false,
+    onMedia: () -> Unit = {},
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val searchDescription = stringResource(R.string.toolbar_search_hint)
@@ -147,22 +157,32 @@ fun MiruToolbar(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            // A permanently disabled shield is noise; it appears once ad blocking is integrated (M1).
                             if (state.url != "about:newtab" && state.adblockAvailable) {
                                 IconButton(onClick = onAdblock) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
-                                            Icons.Outlined.Shield,
-                                            stringResource(if (state.adblockAvailable) R.string.toolbar_adblock else R.string.toolbar_adblock_unavailable),
+                                            if(state.adblockNeedsReload) Icons.Outlined.WarningAmber else Icons.Outlined.Shield,
+                                            stringResource(if(state.adblockNeedsReload) R.string.toolbar_adblock_reload else R.string.toolbar_adblock),
                                             Modifier.size(18.dp),
-                                            tint = if (state.adblockAvailable && state.blockedCount > 0) MiruTheme.colors.adblock else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            tint = if(state.adblockNeedsReload) MaterialTheme.colorScheme.error else if (state.adblockAvailable && state.blockedCount > 0) MiruTheme.colors.adblock else MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                         if (state.adblockAvailable && state.blockedCount > 0) {
-                                            Text(state.blockedCount.toString(), style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"))
+                                            AnimatedContent(state.blockedCount, transitionSpec = {
+                                                (slideInVertically(tween(MiruMotion.short2)) { it } + fadeIn(tween(MiruMotion.short2))) togetherWith
+                                                    (slideOutVertically(tween(MiruMotion.short2)) { -it } + fadeOut(tween(MiruMotion.short2)))
+                                            }, label = "blockedCount") { count ->
+                                                Text(if (count > 999) "999+" else count.toString(), style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"))
+                                            }
                                         }
                                     }
                                 }
                             }
+                        }
+                    }
+                    androidx.compose.animation.AnimatedVisibility(state.mediaCount > 0) {
+                        TextButton(onClick = onMedia, contentPadding = PaddingValues(horizontal = 6.dp)) {
+                            Icon(Icons.Outlined.PlayArrow, stringResource(R.string.toolbar_media), Modifier.size(20.dp))
+                            AnimatedContent(state.mediaCount, label = "mediaCount") { Text(it.toString(), style = MaterialTheme.typography.labelMedium) }
                         }
                     }
                     val tabsDescription = stringResource(R.string.toolbar_tabs)
@@ -178,7 +198,12 @@ fun MiruToolbar(
                             }
                         }
                     }
-                    IconButton(onClick = onMenu) { Icon(Icons.Outlined.MoreVert, stringResource(R.string.toolbar_menu)) }
+                    IconButton(onClick = onMenu) {
+                        Box {
+                            Icon(Icons.Outlined.MoreVert, stringResource(R.string.toolbar_menu))
+                            if (state.downloading) Box(Modifier.align(Alignment.TopEnd).size(6.dp).background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape))
+                        }
+                    }
                 }
             }
             LoadingBar(state.loading && !state.editing, state.progress, Modifier.align(if (progressAtTop) Alignment.TopStart else Alignment.BottomStart))

@@ -1,0 +1,4 @@
+<resources>
+    <string name="player_web_hold">Hold web videos for faster playback</string>
+    <string name="player_auto_takeover">Open playing web videos in Miru automatically</string>
+</resources>

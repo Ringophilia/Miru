@@ -1,0 +1,4 @@
+<resources>
+    <string name="player_web_hold">网页视频长按倍速</string>
+    <string name="player_auto_takeover">自动用 Miru 播放器打开网页视频</string>
+</resources>

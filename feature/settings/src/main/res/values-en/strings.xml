@@ -1,4 +1,13 @@
 <resources>
+    <string name="player">Player</string>
+    <string name="player_detail">Gestures, cache, resume and picture-in-picture</string>
+    <string name="privacy_and_downloads">Privacy and downloads</string>
+    <string name="adblock">Ad blocking</string>
+    <string name="adblock_detail">uBlock Origin, trusted sites and filters</string>
+    <string name="downloads">Download settings</string>
+    <string name="downloads_detail">Storage, simultaneous downloads and threads</string>
+    <string name="ublock_version">uBlock Origin %1$s</string>
+    <string name="ublock_license">uBlock Origin · GPL-3.0 · View source</string>
     <string name="settings_title">Settings</string>
     <string name="back">Back</string>
     <string name="close">Close</string>
@@ -28,7 +37,7 @@
     <string name="project_license">Miru · MPL-2.0</string>
     <string name="third_party_notices">Full third-party components and license information</string>
     <string name="version">Version %1$s · Development preview</string>
-    <string name="preview_detail">This version includes browsing, tabs and session restore. Ad blocking, downloads and the native player are not yet available.</string>
+    <string name="preview_detail">This preview includes browsing, uBlock Origin, file downloads, web video detection and native playback. Advanced playback features are still in development.</string>
     <string name="privacy_detail">No account, telemetry uploads or crash uploads. Regular tabs are saved locally. Private tabs are excluded from session files.</string>
     <string name="open_source">Open source licenses</string>
     <string name="mozilla_license">Mozilla GeckoView / Android Components · MPL-2.0</string>

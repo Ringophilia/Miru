@@ -1,0 +1,204 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "cf7b697045d9019df77450e720af433c",
+    "entities": [
+      {
+        "tableName": "downloads",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `url` TEXT NOT NULL, `fileName` TEXT NOT NULL, `mimeType` TEXT NOT NULL, `destUri` TEXT, `totalBytes` INTEGER NOT NULL, `downloadedBytes` INTEGER NOT NULL, `status` TEXT NOT NULL, `error` TEXT, `sourcePage` TEXT, `createdAt` INTEGER NOT NULL, `completedAt` INTEGER, `directoryUri` TEXT, `etag` TEXT, `lastModified` TEXT, `acceptsRanges` INTEGER NOT NULL, `requiresAuth` INTEGER NOT NULL, `referrer` TEXT, `userNamed` INTEGER NOT NULL, `isPrivate` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "url",
+            "columnName": "url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileName",
+            "columnName": "fileName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mimeType",
+            "columnName": "mimeType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "destUri",
+            "columnName": "destUri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "totalBytes",
+            "columnName": "totalBytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "downloadedBytes",
+            "columnName": "downloadedBytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "error",
+            "columnName": "error",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourcePage",
+            "columnName": "sourcePage",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completedAt",
+            "columnName": "completedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "directoryUri",
+            "columnName": "directoryUri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "etag",
+            "columnName": "etag",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastModified",
+            "columnName": "lastModified",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "acceptsRanges",
+            "columnName": "acceptsRanges",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requiresAuth",
+            "columnName": "requiresAuth",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "referrer",
+            "columnName": "referrer",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "userNamed",
+            "columnName": "userNamed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isPrivate",
+            "columnName": "isPrivate",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "download_segments",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`downloadId` TEXT NOT NULL, `index` INTEGER NOT NULL, `start` INTEGER NOT NULL, `end` INTEGER NOT NULL, `downloaded` INTEGER NOT NULL, PRIMARY KEY(`downloadId`, `index`), FOREIGN KEY(`downloadId`) REFERENCES `downloads`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "downloadId",
+            "columnName": "downloadId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "index",
+            "columnName": "index",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "start",
+            "columnName": "start",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "end",
+            "columnName": "end",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "downloaded",
+            "columnName": "downloaded",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "downloadId",
+            "index"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_download_segments_downloadId",
+            "unique": false,
+            "columnNames": [
+              "downloadId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_download_segments_downloadId` ON `${TABLE_NAME}` (`downloadId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "downloads",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "downloadId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'cf7b697045d9019df77450e720af433c')"
+    ]
+  }
+}

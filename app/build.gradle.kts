@@ -15,8 +15,8 @@ android {
         applicationId = "app.miru.browser"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 6
+        versionName = "0.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
@@ -66,6 +66,10 @@ dependencies {
     implementation(project(":feature:history"))
     implementation(project(":feature:bookmarks"))
     implementation(project(":feature:settings"))
+    implementation(project(":feature:adblock"))
+    implementation(project(":feature:downloads"))
+    implementation(project(":feature:media-detect"))
+    implementation(project(":feature:player"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.activity.compose)
@@ -79,6 +83,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation("androidx.room:room-runtime:2.8.5")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

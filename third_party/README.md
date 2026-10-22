@@ -1,6 +1,6 @@
 # 第三方组件与授权范围
 
-本说明对应 2026-10-22 的 M0 源码快照。Miru 自有代码使用 MPL-2.0，不会改变依赖、工具或图形素材的原有权利与条款。
+本说明的原始依赖清单对应 2026-10-22 的 M0 源码快照；下表另记 M1 新接入组件。Miru 自有代码使用 MPL-2.0，不会改变依赖、工具或图形素材的原有权利与条款。
 
 | 组件 | 当前版本 / 来源 | 许可与说明 |
 | --- | --- | --- |
@@ -13,6 +13,10 @@
 | Google Play services FIDO | `21.3.1` | 以及 base `18.7.2`、basement `18.9.0`、tasks `18.3.2`，POM 声明 [Android SDK 专有许可](https://developer.android.com/studio/terms)；不是 MPL/Apache 授权 |
 | JUnit / Hamcrest | `4.13.2` / `1.3` | JUnit 声明 [EPL-1.0](https://github.com/junit-team/junit4/blob/r4.13.2/LICENSE-junit.txt)，Hamcrest 另有 BSD 条款；当前 release 解析图中也出现了测试支持组件，不能仅按“测试依赖”忽略 |
 | Gradle Wrapper | `9.3.1` | Apache-2.0；[许可原文](gradle/Apache-2.0.txt)及[说明](gradle/NOTICE.txt)，不重新授权为 MPL |
+| uBlock Origin | `1.75.0`，官方 AMO 签名 XPI，未修改 | GPL-3.0；[来源与 SHA-256](ublock/NOTICE.md)、[许可全文](ublock/LICENSE.txt)、[固定版本源码](https://github.com/gorhill/uBlock/tree/1.75.0) |
+| OkHttp / Okio | OkHttp `4.12.0`，Okio 为其传递依赖 | Apache-2.0；[OkHttp 许可](https://github.com/square/okhttp/blob/parent-4.12.0/LICENSE.txt) |
+| AndroidX Room / DocumentFile | Room `2.8.5`、DocumentFile `1.1.0` | Apache-2.0；Room 编译器与 KSP 仅用于构建 |
+| AndroidX Media3 | `1.11.1`，ExoPlayer / HLS / DASH / OkHttp datasource / session / UI | Apache-2.0；[对应版本源码](https://github.com/androidx/media/tree/1.11.1)、[许可](https://github.com/androidx/media/blob/1.11.1/LICENSE)；未引入 IMA、Cast 或 FFmpeg 扩展 |
 
 Android Components 与 GeckoView 的当前 POM 均将源码指向 Mozilla release 修订：
 
@@ -33,6 +37,8 @@ Android Components 与 GeckoView 的当前 POM 均将源码指向 Mozilla releas
 
 ## 后续功能
 
-当前没有分发 uBlock Origin、Anime4K、AMD FSR 或 Ringo-Cove 源文件。规范中的未来计划不是这些组件的许可授权。接入时须分别核对版本和来源；尤其不能预先假设 uBO 与宿主永远属于 GPL 下的简单聚合。
+M1 已在 assets 中加入未修改的 uBO 官方签名 XPI；尚未接入 Anime4K 或 AMD FSR。M3 清晰度探测按产品规范第 8.9 / 13 节，参考本地 Ringo-Cove 的 `lib/core/resolution.dart` / `hls_probe.dart` 思路重新实现 Kotlin 解析器，没有复制 Dart 源文件或引入 Flutter / Dio / pointycastle 依赖；密码运算使用平台 `javax.crypto`。所参考的两个 Dart 文件无独立许可文件头，本地 Cove 根目录亦无 LICENSE；这里记录规范指定的参考来源，没有将其标记为第三方 Apache / MIT 代码。超分着色器接入时仍需保留各自许可与署名。
+
+M0 的 253 项依赖 JSON 尚未重做 M1 / M2 / M3 完整清单，不应用于描述新版的全部解析组件。公开发布 APK/AAB 前应按实际产物更新清单与告知，并复查 uBO 集成的 GPL 义务；不能仅凭独立扩展形式预先认定宿主必然属于简单聚合。
 
 主要依据：[Mozilla MPL FAQ](https://www.mozilla.org/en-US/MPL/2.0/FAQ/)、[Apache-2.0 正文](https://www.apache.org/licenses/LICENSE-2.0)、[GNU 对聚合与组合程序的解释](https://www.gnu.org/licenses/gpl-faq.html#MereAggregation)。

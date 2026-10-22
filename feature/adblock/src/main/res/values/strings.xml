@@ -1,0 +1,23 @@
+<resources>
+    <string name="reload_needed">本页加载时，拦截保护尚未确认完整就绪。请刷新网页以重新应用拦截。</string>
+    <string name="protection_unconfirmed">本页需要刷新以确认拦截保护</string>
+    <string name="reload">刷新网页</string>
+    <string name="title">广告拦截</string>
+    <string name="back">返回</string>
+    <string name="global_switch">广告拦截</string>
+    <string name="enabled">uBlock Origin %1$s · 已开启</string>
+    <string name="disabled">uBlock Origin %1$s · 已关闭</string>
+    <string name="installing">正在准备 uBlock Origin…</string>
+    <string name="failed">广告拦截启动失败，请点重试。</string>
+    <string name="retry">重试</string>
+    <string name="blocked_on_page">本页已拦截 %1$d 项</string>
+    <string name="site_controls">本站广告拦截设置</string>
+    <string name="site_controls_detail">打开 uBlock Origin 面板，点击电源按钮可切换本站拦截，刷新后生效。</string>
+    <string name="close_and_reload">关闭面板并刷新网页</string>
+    <string name="popup_hint">电源按钮控制本站拦截。关闭面板后刷新网页。</string>
+    <string name="advanced">过滤规则与高级设置</string>
+    <string name="advanced_detail">打开 uBlock Origin 控制面板</string>
+    <string name="exceptions">例外网站</string>
+    <string name="exceptions_detail">在 uBlock Origin 中查看与编辑信任的网站</string>
+    <string name="privacy">使用官方签名的 uBlock Origin。规则列表由扩展管理并更新；Miru 不上传浏览记录或拦截统计。</string>
+</resources>

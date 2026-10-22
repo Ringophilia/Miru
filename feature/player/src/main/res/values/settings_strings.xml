@@ -1,0 +1,31 @@
+<resources>
+    <string name="player_confirm_clear">确认清除</string>
+    <string name="player_settings">播放器</string>
+    <string name="player_cache_group">缓存与续播</string>
+    <string name="player_cache_limit">播放缓存上限</string>
+    <string name="player_prebuffer">预缓冲时长</string>
+    <string name="player_megabytes">%1$d MB</string>
+    <string name="player_seconds">%1$d 秒</string>
+    <string name="player_buffer_detail">缓冲设置在下次打开视频时生效。计费网络开启系统流量节省时，最多预缓冲 30 秒。</string>
+    <string name="player_cache_used">已用播放缓存</string>
+    <string name="player_clear_progress">播放进度</string>
+    <string name="player_private_cache_detail">无痕播放不使用磁盘缓存，也不读取或保存播放进度。</string>
+    <string name="player_gestures">播放手势</string>
+    <string name="player_double_tap">双击跳转时长</string>
+    <string name="player_hold">长按临时倍速</string>
+    <string name="player_drag_range">横滑整屏跳转范围</string>
+    <string name="player_center_double_tap">双击中间播放或暂停</string>
+    <string name="player_brightness_gesture">左侧上下滑调亮度</string>
+    <string name="player_volume_gesture">右侧上下滑调音量</string>
+    <string name="player_haptics">手势触感反馈</string>
+    <string name="player_behavior">播放行为</string>
+    <string name="player_auto_pip">离开播放器时自动画中画</string>
+    <string name="player_clear">清除</string>
+    <string name="player_cancel">取消</string>
+    <string name="player_clear_cache_title">清除播放缓存？</string>
+    <string name="player_clear_cache_detail">仅清除边播边存的临时媒体，不删除下载文件。正在播放的视频可能会重新缓存。</string>
+    <string name="player_clear_progress_title">清除全部播放进度？</string>
+    <string name="player_clear_progress_detail">下次播放将从头开始。正在播放的视频仍会重新记录进度。</string>
+    <string name="player_data_cleared">已清除</string>
+    <string name="player_settings_failed">操作未完成，请稍后重试。</string>
+</resources>

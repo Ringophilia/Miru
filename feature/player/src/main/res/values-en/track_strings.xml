@@ -1,0 +1,19 @@
+<resources>
+    <string name="player_tracks">Subtitles and audio</string>
+    <string name="player_audio_tracks">Audio tracks</string>
+    <string name="player_no_audio_tracks">No selectable audio tracks</string>
+    <string name="player_track_number">Track %1$d</string>
+    <string name="player_subtitles">Subtitles</string>
+    <string name="player_subtitle_off">Subtitles off</string>
+    <string name="player_local_subtitle">Local subtitles</string>
+    <string name="player_subtitle_import">Load local subtitles</string>
+    <string name="player_subtitle_loading">Reading subtitles…</string>
+    <string name="player_subtitle_loaded">Loaded: %1$s</string>
+    <string name="player_subtitle_formats">SRT, VTT and plain-text ASS · maximum 2 MB</string>
+    <string name="player_subtitle_import_error">Could not read subtitles. Choose a valid SRT, VTT or ASS file.</string>
+    <string name="player_subtitle_size">Subtitle size</string>
+    <string name="player_subtitle_size_value">Subtitle size %1$d sp</string>
+    <string name="player_subtitle_margin">Subtitle bottom margin</string>
+    <string name="player_subtitle_background">Subtitle background opacity</string>
+    <string name="player_source_resolution">Source %1$s · %2$d×%3$d</string>
+</resources>

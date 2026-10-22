@@ -1,0 +1,33 @@
+<resources>
+    <string name="player_hold_feedback">%1$.1fx ▶▶</string>
+    <string name="player_seek_feedback">%1$+d 秒</string>
+    <string name="player_seek">播放进度</string>
+    <string name="player_title">Miru 播放器</string>
+    <string name="player_back">返回</string>
+    <string name="player_play">播放</string>
+    <string name="player_pause">暂停</string>
+    <string name="player_rewind">后退 10 秒</string>
+    <string name="player_forward">前进 10 秒</string>
+    <string name="player_brightness">亮度 %1$d%%</string>
+    <string name="player_volume">音量 %1$d%%</string>
+    <string name="player_fit">适应</string>
+    <string name="player_crop">填充</string>
+    <string name="player_stretch">拉伸</string>
+    <string name="player_pip">画中画</string>
+    <string name="player_rotate">切换屏幕方向</string>
+    <string name="player_lock">锁定控制</string>
+    <string name="player_unlock">解锁控制</string>
+    <string name="player_live">● 直播</string>
+    <string name="player_live_edge">回到直播</string>
+    <string name="player_speed">播放速度</string>
+    <string name="player_decoder">解码方式</string>
+    <string name="player_decoder_auto">自动</string>
+    <string name="player_decoder_hardware">硬件</string>
+    <string name="player_decoder_software">软件</string>
+    <string name="player_timeout">加载超时</string>
+    <string name="player_error">视频暂时无法播放</string>
+    <string name="player_retry">重试</string>
+    <string name="player_return_web">返回网页</string>
+    <string name="player_web_required">该视频无法在 Miru 播放器中播放，已返回网页</string>
+    <string name="player_resumed">已继续上次播放 · 从头播放</string>
+</resources>

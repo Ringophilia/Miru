@@ -1,0 +1,19 @@
+<resources>
+    <string name="player_tracks">字幕与音轨</string>
+    <string name="player_audio_tracks">音轨</string>
+    <string name="player_no_audio_tracks">当前没有可选择的音轨</string>
+    <string name="player_track_number">轨道 %1$d</string>
+    <string name="player_subtitles">字幕</string>
+    <string name="player_subtitle_off">关闭字幕</string>
+    <string name="player_local_subtitle">本地字幕</string>
+    <string name="player_subtitle_import">加载本地字幕</string>
+    <string name="player_subtitle_loading">正在读取字幕…</string>
+    <string name="player_subtitle_loaded">已加载：%1$s</string>
+    <string name="player_subtitle_formats">支持 SRT、VTT、ASS（纯文本），最大 2 MB</string>
+    <string name="player_subtitle_import_error">无法读取字幕，请选择有效的 SRT、VTT 或 ASS 文件。</string>
+    <string name="player_subtitle_size">字幕字号</string>
+    <string name="player_subtitle_size_value">字幕字号 %1$d sp</string>
+    <string name="player_subtitle_margin">字幕底边距</string>
+    <string name="player_subtitle_background">字幕背景不透明度</string>
+    <string name="player_source_resolution">片源 %1$s · %2$d×%3$d</string>
+</resources>

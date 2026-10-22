@@ -1,4 +1,10 @@
 <resources>
+    <string name="media_open_question">用播放器打开这个视频？</string>
+    <string name="media_open_web">当作网页打开</string>
+    <string name="media_handoff_failed">暂时无法接管该视频，请继续在网页中播放。</string>
+    <string name="download_started">已加入下载</string>
+    <string name="view_downloads">查看</string>
+    <string name="download_failed">无法开始下载，请重试。</string>
     <string name="app_name">Miru</string>
     <string name="unsupported_address">无法打开这个地址。请输入 http 或 https 网址。</string>
     <string name="unavailable_route">此页面暂不可用。</string>

@@ -18,15 +18,20 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import mozilla.components.browser.engine.gecko.GeckoEngine
 import mozilla.components.browser.session.storage.SessionStorage
 import mozilla.components.browser.state.action.ContentAction
+import mozilla.components.browser.state.action.EngineAction
 import mozilla.components.browser.state.action.RestoreCompleteAction
 import mozilla.components.browser.state.action.SystemAction
 import mozilla.components.browser.state.action.TabListAction
@@ -37,6 +42,7 @@ import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.browser.state.state.createTab
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.concept.engine.DefaultSettings
+import mozilla.components.concept.engine.DownloadDelegate
 import mozilla.components.concept.engine.EngineSession
 import mozilla.components.concept.engine.EngineView
 import mozilla.components.concept.engine.history.HistoryTrackingDelegate
@@ -44,6 +50,7 @@ import mozilla.components.feature.session.SessionFeature
 import mozilla.components.feature.session.SessionUseCases
 import mozilla.components.feature.session.middleware.undo.UndoMiddleware
 import mozilla.components.feature.tabs.TabsUseCases
+import mozilla.components.browser.engine.gecko.util.EngineDownloadDelegate
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
 
@@ -65,6 +72,23 @@ class BrowserController(
     )
     private val tabs = TabsUseCases(store)
     private val sessions = SessionUseCases(store)
+    private val cookieBridge = CookieBridge(applicationScope, store)
+    val media = cookieBridge.media.state
+    val mediaHints = cookieBridge.hints
+    private val downloadChannel = Channel<BrowserDownloadRequest>(Channel.UNLIMITED)
+    val downloadRequests = downloadChannel.receiveAsFlow()
+    private val observedDownloads = mutableSetOf<String>()
+    private val ublock = UblockController(applicationContext, applicationScope, store,
+        onNewTab = { session, url, selected, isPrivate ->
+            val id = tabs.addTab(url = url, selectTab = selected, private = isPrivate, engineSession = session)
+            if (selected) tabs.selectTab(id)
+        },
+        onCloseTab = ::closeTab,
+        onSelectTab = ::selectTab,
+        onOpenUrl = { newTab(it, isPrivate = store.state.selectedTab?.content?.private == true) },
+    )
+    val adblock = ublock.state
+    val adblockPopup = ublock.popup
     private val thumbnails = linkedMapOf<String, Bitmap>()
     private val mutableState = MutableStateFlow(snapshot(store.state))
     val state: StateFlow<BrowserSnapshot> = mutableState.asStateFlow()
@@ -83,6 +107,24 @@ class BrowserController(
         applicationScope.launch(Dispatchers.Main.immediate) {
             store.stateFlow.collect {
                 thumbnails.keys.retainAll(it.tabs.filterNot { tab -> tab.content.private }.map { tab -> tab.id }.toSet())
+                it.tabs.forEach { tab ->
+                    tab.content.download?.takeIf { download -> observedDownloads.add(download.id) }?.let { download ->
+                        store.dispatch(ContentAction.ConsumeDownloadAction(tab.id, download.id))
+                        applicationScope.launch {
+                            val headers = buildMap {
+                                (download.userAgent ?: engine?.settings?.userAgentString)?.let { put("User-Agent", it) }
+                                (download.referrerUrl ?: tab.content.url).takeIf { url -> url.startsWith("http://") || url.startsWith("https://") }?.let { put("Referer", it) }
+                                cookieBridge.cookies(download.url, download.private)?.takeIf(String::isNotEmpty)?.let { put("Cookie", it) }
+                            }
+                            val isHttp = download.url.startsWith("http://") || download.url.startsWith("https://")
+                            // HTTP downloads are re-requested by the Range engine using transient Gecko cookies.
+                            // Blob/data responses cannot be fetched outside Gecko, so preserve their original bytes.
+                            val stream = if(isHttp) { download.response?.close(); null }
+                                else download.response?.let { response -> GeckoResponseStream(response, applicationScope) }
+                            downloadChannel.send(BrowserDownloadRequest(download.url, download.fileName, download.contentType, download.contentLength, headers, tab.content.url, download.private, stream))
+                        }
+                    }
+                }
                 mutableState.value = snapshot(it)
             }
         }
@@ -95,7 +137,9 @@ class BrowserController(
         initialization = applicationScope.launch(Dispatchers.Main) {
             yield()
             try {
+                val runtimeConfiguration = withContext(Dispatchers.IO) { RuntimeConfiguration.prepare(applicationContext) }
                 val runtimeSettings = GeckoRuntimeSettings.Builder()
+                    .configFilePath(runtimeConfiguration.absolutePath)
                     .remoteDebuggingEnabled(false)
                     .consoleOutput(false)
                     .crashHandler(null)
@@ -109,12 +153,16 @@ class BrowserController(
                         mediaPlaybackRequiresUserGesture = true,
                         trackingProtectionPolicy = EngineSession.TrackingProtectionPolicy.recommended(),
                         historyTrackingDelegate = historyDelegate,
+                        downloadDelegate = EngineDownloadDelegate(applicationContext) { android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS).path + "/Miru" },
                     ),
                     runtime = existingRuntime,
                 ).also { engine = it }
                 // No telemetry SDK, crash uploader, Firefox account, experiments, or sync is initialized.
                 createdEngine.notifyTelemetryPrefChanged(false)
                 engine = createdEngine
+                // Install only Miru's own extension with ensureBuiltIn. The signed uBO XPI uses install(file://).
+                ublock.start(createdEngine)
+                cookieBridge.start(createdEngine)
                 val storage = SessionStorage(applicationContext, createdEngine, applicationScope = applicationScope)
                 sessionStorage = storage
                 val restored = withContext(Dispatchers.IO) {
@@ -138,6 +186,8 @@ class BrowserController(
                     }
                 }
                 store.dispatch(RestoreCompleteAction)
+                // NTP stays interactive while restoring. Page commands remain queued until ready, at most 1.5 s.
+                ublock.awaitStartup()
                 deferredEngine.connect(EngineMiddleware.create(createdEngine, applicationScope), store)
                 isReady = true
                 mutableState.value = snapshot(store.state)
@@ -158,12 +208,14 @@ class BrowserController(
     }
 
     fun newTab(url: String = NEW_TAB_URL, isPrivate: Boolean = false): String {
+        exitWebFullScreen()
         interactedBeforeRestore = true
         automaticNewTabId = null
         return tabs.addTab(url = url, private = isPrivate, startLoading = url != NEW_TAB_URL)
     }
 
     fun navigate(url: String) {
+        exitWebFullScreen()
         interactedBeforeRestore = true
         automaticNewTabId = null
         if (store.state.selectedTab == null) {
@@ -180,12 +232,14 @@ class BrowserController(
     }
 
     fun selectTab(id: String) {
+        if(id != store.state.selectedTabId) exitWebFullScreen()
         interactedBeforeRestore = true
         automaticNewTabId = null
         tabs.selectTab(id)
     }
 
     fun closeTab(id: String) {
+        if(id == store.state.selectedTabId) exitWebFullScreen()
         interactedBeforeRestore = true
         tabs.removeTab(id)
         ensureTab()
@@ -223,6 +277,12 @@ class BrowserController(
     }
 
     fun goForward() = sessions.goForward()
+    fun exitWebFullScreen(): Boolean {
+        val tab = store.state.selectedTab?.takeIf { it.content.fullScreen } ?: return false
+        sessions.exitFullscreen(tab.id)
+        return true
+    }
+    fun configureWebMedia(holdEnabled: Boolean, holdSpeed: Float) = cookieBridge.configureWebMedia(holdEnabled, holdSpeed)
     fun reload() {
         val selected = store.state.selectedTab
         if (selected?.engineState?.crashed == true) sessions.crashRecovery.invoke(listOf(selected.id))
@@ -230,6 +290,76 @@ class BrowserController(
     }
     fun stopLoading() = sessions.stopLoading()
     fun setDesktopMode(enabled: Boolean) = sessions.requestDesktopSite(enabled)
+    fun setAdblockEnabled(enabled: Boolean) { ublock.setEnabled(enabled, ::reload) }
+    fun retryAdblock() = ublock.retry()
+    fun openAdblockPopup(): Boolean = ublock.openPopup()
+    fun closeAdblockPopup() = ublock.closePopup()
+    fun openAdblockDashboard(): Boolean = ublock.openDashboard()
+    fun openAdblockExceptions(): Boolean = ublock.openExceptions()
+    fun openAdblockLogger(): Boolean = ublock.openLogger()
+
+    suspend fun prepareMedia(tabId: String, mediaId: String): PreparedMedia? {
+        val item = cookieBridge.media.find(tabId, mediaId)?.takeIf { it.playable } ?: return null
+        val result = cookieBridge.prepare(item) ?: return null
+        if(result.optBoolean("drm")) return null
+        if(store.state.tabs.firstOrNull { it.id == tabId }?.content?.url != item.pageUrl) return null
+        // Do not persist headers in Intent extras, Room, SavedState or logs.
+        val headers = freshMediaHeaders(item)
+        val position = result.optDouble("position", 0.0).takeIf { it.isFinite() && it >= 0 } ?: 0.0
+        return PreparedMedia(item, headers, (position * 1000).toLong())
+    }
+
+    suspend fun refreshMediaHeaders(tabId: String, mediaId: String): Map<String, String>? {
+        val item = cookieBridge.media.find(tabId, mediaId) ?: return null
+        return freshMediaHeaders(item)
+    }
+
+    private suspend fun freshMediaHeaders(item: app.miru.media.DetectedMedia): Map<String, String> {
+        val headers = item.headers.toMutableMap()
+        cookieBridge.cookies(item.url, item.isPrivate)?.let { cookie ->
+            headers.keys.filter { it.equals("cookie", true) }.toList().forEach(headers::remove)
+            if(cookie.isNotBlank()) headers["Cookie"] = cookie
+        }
+        if(headers.keys.none { it.equals("user-agent", true) }) engine?.settings?.userAgentString?.let { headers["User-Agent"] = it }
+        if(headers.keys.none { it.equals("referer", true) }) headers["Referer"] = item.pageUrl
+        return headers
+    }
+
+    fun restoreWebMedia(tabId: String) = cookieBridge.restore(tabId)
+
+    suspend fun headersForMediaUrl(url: String, isPrivate: Boolean): Map<String, String> = withContext(Dispatchers.Main.immediate) {
+        buildMap {
+            engine?.settings?.userAgentString?.let { put("User-Agent", it) }
+            cookieBridge.cookies(url, isPrivate)?.takeIf(String::isNotBlank)?.let { put("Cookie", it) }
+        }
+    }
+
+    /** Used for process-restart continuation of ordinary downloads. Never reads the private jar implicitly. */
+    suspend fun downloadHeaders(url: String, sourcePage: String? = null): Map<String, String>? = withContext(Dispatchers.Main.immediate) {
+        if (!state.value.ready) {
+            val initialized = withTimeoutOrNull(15_000) { state.first { it.ready || it.error != null } }
+            if (initialized?.ready != true) return@withContext null
+        }
+        val cookie = cookieBridge.cookies(url, false) ?: return@withContext null
+        buildMap {
+            engine?.settings?.userAgentString?.let { put("User-Agent", it) }
+            sourcePage?.takeIf { it.startsWith("https://") || it.startsWith("http://") }?.let { put("Referer", it) }
+            if(cookie.isNotEmpty()) put("Cookie", cookie)
+        }
+    }
+
+    fun downloadCurrentPage() {
+        val tab = store.state.selectedTab ?: return
+        val url = tab.content.url.takeIf { it.startsWith("https://") || it.startsWith("http://") } ?: return
+        applicationScope.launch {
+            val headers = buildMap {
+                engine?.settings?.userAgentString?.let { put("User-Agent", it) }
+                put("Referer", url)
+                cookieBridge.cookies(url, tab.content.private)?.takeIf(String::isNotEmpty)?.let { put("Cookie", it) }
+            }
+            downloadChannel.send(BrowserDownloadRequest(url, null, null, null, headers, url, tab.content.private))
+        }
+    }
 
     fun findAll(query: String) {
         store.state.selectedTab?.let { tab ->
@@ -304,6 +434,7 @@ class BrowserController(
                 thumbnail = if (tab.content.private) null else thumbnails[tab.id],
                 findCurrent = tab.content.findResults.lastOrNull()?.let { if (it.numberOfMatches > 0) it.activeMatchOrdinal + 1 else 0 } ?: 0,
                 findTotal = tab.content.findResults.lastOrNull()?.numberOfMatches ?: 0,
+                fullScreen = tab.content.fullScreen,
             )
         },
         selectedTabId = state.selectedTabId,

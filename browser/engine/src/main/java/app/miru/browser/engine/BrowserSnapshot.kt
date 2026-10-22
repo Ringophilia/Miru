@@ -32,6 +32,7 @@ data class BrowserTab(
     val thumbnail: Bitmap? = null,
     val findCurrent: Int = 0,
     val findTotal: Int = 0,
+    val fullScreen: Boolean = false,
 ) {
     val isNewTab: Boolean get() = url == NEW_TAB_URL
 }

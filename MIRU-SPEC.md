@@ -1186,6 +1186,18 @@ M5  iOS         见第 14 节
 
 ### 实现验证记录（2026-10-22）
 
+- **2026-10-23 / 0.3.1 M2 补齐**：网页视频长按倍速、可选自动接管、网页全屏 / 返回、原生播放器竖屏 16:9 详情与亮度 / 音量滑块；新增真实 DASH 解码、401 / 403 刷新 / 回退和释放期间不重建专项。详细范围与最终验证见 `docs/M2-031-VALIDATION.md`，uBO 首装稳定性及公网 / 真机矩阵继续保留未完成状态。
+
+- **2026-10-23 / M2 设置**：新增播放器 DataStore 设置、动态 LRU 预算、缓存占用与清理、播放进度清除、预缓冲、手势与自动 PiP 开关。22 项 JVM 测试通过，媒体 / Cookie 9 项设备专项通过，包括 3x / 5 秒非默认参数、缓存缩小、清缓存保留下载及进度清除。真实系统省流模式与全部手势 / 无障碍仍需专项，详细结果见 `docs/M2-VALIDATION.md`。
+
+- **0.3.0 / M2 首批实现**：已打通 webRequest / 多 frame DOM 媒体识别、本页视频面板、携带瞬时请求头的 PlayerActivity 接管；Media3 1.11.1、手势、普通磁盘缓存、Room 续播和 PiP。API 35 四项媒体设备用例已通过本地 MP4 / HLS、8 秒时间接管、真实长按与双击、缓存重播、无痕 iframe / 缓存 / 进度隔离及 PiP。完整最终结果见 `docs/M2-VALIDATION.md`；缓存 / 缓冲设置、DASH 实播和公网 / 真机矩阵等尚未完成，不能计作整个 M2 验收通过。
+
+- **0.2.1 / M1 新增验证**：500,000,000 字节下载在真实 force-stop 后以前台启动自动续传，同一 Room 记录与 MediaStore 输出的 SHA-256 正确；Cookie 轮换后 403 重试重新获取普通 Gecko Cookie。已有 uBO 的冷启动自动恢复页在默认 EasyList 本地 fixture 中未泄漏广告请求，真实 badge > 0；公网 / 真机矩阵与手机重启仍待验收。去除元数据就绪推断，保护未确认页面保留刷新警告；最终全新 profile 常规回归为 16 / 17 通过，uBO 首装 240 秒超时仍未解决。详见 `docs/M1-VALIDATION.md`，不计为完整 M1 完成。
+
+- **R2 / M1**：0.2.0 接入 AMO 官方签名 uBO 1.75.0，固定 SHA-256 与 GPL 原文，通过 `install(file://)` 安装。API 35 的独立用例曾通过本地安装、无痕授权、真实过滤 / badge 与全局开关；最终全套回归仍出现签名扩展首启安装超时，不能将稳定性或冷启动零漏拦标记完成。细节见 `docs/M1-VALIDATION.md`。
+- **R3 / M1**：使用原版 `popup-fenix.html` 的 Gecko action popup session，站点白名单保留为 uBO 自有状态；控制面板和例外列表使用安装后的扩展 URL，不修改 uBO 存储。首次安装初始化期间 uBO 的 `!` 标记映射为明确的刷新警告，不能当作拦截数 0。
+- **下载 / M1**：Room / OkHttp 的真实分段、暂停续传、ETag 内容变化重下、断流重试和最终字节校验已通过设备测试；普通 / 无痕 Cookie 隔离及认证下载、下载页多选 / 删除撤销也已通过。500 MB 杀进程、重启手机与完整网络切换仍为待验收项。
+
 - **R1 / M0**：已核对仍在维护的 `mozilla-mobile/reference-browser`，参考提交 `61267efe132591f6f1dfd58185ebd8dbff6aa816`。Miru 采用其 GeckoRuntime / GeckoEngine / BrowserStore / EngineMiddleware / SessionStorage 装配方式，Compose 外壳独立实现；没有引入上游账号、同步及应用层遥测初始化。当前固定稳定版 Android Components `158.0.2`，由其传递依赖配套 GeckoView，不混用 nightly。源码和许可记录见 `docs/UPSTREAM.md`。
 - **工具链**：AGP `9.1.1`、Gradle `9.3.1`、Kotlin `2.4.20`、JDK 21、compile/target SDK 37。官方 SDK 包名为 `platforms;android-37.0`。
 - **Gecko 多进程**：Application 必须只在主进程创建 AppContainer。Gecko helper/content 进程也会调用 Application.onCreate；重复初始化运行时会导致进程退出。引擎初始化安排在原生首帧之后，Gecko 创建在主线程，会话 I/O 在后台线程。

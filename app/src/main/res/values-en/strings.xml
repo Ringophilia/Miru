@@ -1,4 +1,10 @@
 <resources>
+    <string name="media_open_question">Open this video in the player?</string>
+    <string name="media_open_web">Open as a web page</string>
+    <string name="media_handoff_failed">This video cannot be opened yet. Continue playing on the web page.</string>
+    <string name="download_started">Added to downloads</string>
+    <string name="view_downloads">View</string>
+    <string name="download_failed">Could not start downloading. Please try again.</string>
     <string name="app_name">Miru</string>
     <string name="unsupported_address">Cannot open this address. Enter an http or https URL.</string>
     <string name="unavailable_route">This page is not available yet.</string>

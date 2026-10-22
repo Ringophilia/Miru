@@ -19,6 +19,7 @@ android {
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
 dependencies {
+    api(project(":feature:media-detect"))
     api("org.mozilla.components:concept-engine:${libs.versions.mozilla.get()}")
     api(project(":core:data"))
     implementation("org.mozilla.components:concept-storage:${libs.versions.mozilla.get()}")

@@ -1,0 +1,12 @@
+<resources>
+    <string name="player_enter_fullscreen">Enter fullscreen</string>
+    <string name="player_exit_fullscreen">Exit fullscreen</string>
+    <string name="player_playback_options">Playback options</string>
+    <string name="player_source_site">Source: %1$s</string>
+    <string name="player_speed_value">Speed %1$sx</string>
+    <string name="player_brightness_control">Screen brightness</string>
+    <string name="player_volume_control">Media volume</string>
+    <string name="player_level_value">%1$s %2$d%%</string>
+    <string name="player_volume_unavailable">Volume could not be changed. Use the system volume keys.</string>
+    <string name="player_options_done">Done</string>
+</resources>

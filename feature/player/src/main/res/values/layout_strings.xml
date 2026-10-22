@@ -1,0 +1,12 @@
+<resources>
+    <string name="player_enter_fullscreen">进入全屏</string>
+    <string name="player_exit_fullscreen">退出全屏</string>
+    <string name="player_playback_options">播放选项</string>
+    <string name="player_source_site">来源：%1$s</string>
+    <string name="player_speed_value">倍速 %1$sx</string>
+    <string name="player_brightness_control">画面亮度</string>
+    <string name="player_volume_control">媒体音量</string>
+    <string name="player_level_value">%1$s %2$d%%</string>
+    <string name="player_volume_unavailable">无法调整音量，请使用系统音量键。</string>
+    <string name="player_options_done">完成</string>
+</resources>

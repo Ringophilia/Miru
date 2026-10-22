@@ -1,4 +1,5 @@
 <resources>
+    <string name="menu_download_active">%1$d active</string>
     <string name="menu_forward">Forward</string>
     <string name="menu_bookmark">Bookmark page</string>
     <string name="menu_download_page">Download page</string>
