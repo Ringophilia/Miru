@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application>
+        <receiver android:name="app.miru.offline.OfflineNotificationActionReceiver" android:exported="false" />
         <service android:name="app.miru.offline.MiruOfflineService" android:exported="false" android:foregroundServiceType="dataSync">
             <intent-filter>
                 <action android:name="androidx.media3.exoplayer.downloadService.action.RESTART" />

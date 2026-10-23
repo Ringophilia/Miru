@@ -28,7 +28,7 @@ import kotlin.coroutines.resumeWithException
 internal object OfflineHttp {
     private val allowed = setOf("cookie", "authorization", "referer", "origin", "user-agent", "accept", "accept-language")
     fun clean(headers: Map<String, String>) = headers.filter { (key, value) -> key.lowercase() in allowed && '\r' !in value && '\n' !in value }
-    fun factory(url: String, headers: Map<String, String>): HttpDataSource.Factory {
+    fun factory(url: String, headers: Map<String, String>, calls: OfflineHttpCalls? = null): HttpDataSource.Factory {
         val original = requireNotNull(url.toHttpUrlOrNull())
         val client = OkHttpClient.Builder()
             .connectTimeout(12, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build().newBuilder()
@@ -39,7 +39,7 @@ internal object OfflineHttp {
                 val same = original.scheme == current.scheme && original.host == current.host && original.port == current.port
                 chain.proceed(if(same) request else request.newBuilder().removeHeader("Cookie").removeHeader("Authorization").build())
             }.build()
-        return OkHttpDataSource.Factory(client).setDefaultRequestProperties(clean(headers))
+        return OkHttpDataSource.Factory(calls?.factory(client) ?: client).setDefaultRequestProperties(clean(headers))
     }
 }
 

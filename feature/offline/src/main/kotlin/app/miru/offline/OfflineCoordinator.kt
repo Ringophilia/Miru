@@ -29,6 +29,7 @@ class OfflineCoordinator private constructor(private val context: Context) {
     val pendingDeletionIds = mutableHidden.asStateFlow()
     private val deletions = linkedMapOf<String, Pair<Set<String>, Job>>()
     private val credentials = ConcurrentHashMap<String, Map<String, String>>()
+    private val activeTransfers = ConcurrentHashMap<String, MutableSet<OfflineHttpCalls>>()
     private val errors = ConcurrentHashMap<String, String>()
     // A cancelled ID is never reused or resumed. Old workers can therefore safely remove
     // late cache commits once their data sinks have closed, without touching a new transfer.
@@ -80,43 +81,89 @@ class OfflineCoordinator private constructor(private val context: Context) {
         }
     } }
 
-    fun pause(id: String) { if(id in permanentlyCancelled) return; scope.launch { ensureManager().setStopReason(id, STOP_PAUSED); refresh() } }
-    fun pauseAll() { scope.launch { ensureManager().currentDownloads.forEach { if(it.state in setOf(Download.STATE_DOWNLOADING, Download.STATE_QUEUED)) manager?.setStopReason(it.request.id, STOP_PAUSED) }; refresh() } }
-    fun resumeAll() { items.value.filter { it.status in setOf("paused", "failed", "waiting_network") }.forEach { resume(it.id) } }
-    fun resume(id: String) { scope.launch {
-        if(id in permanentlyCancelled) { credentials.remove(id); return@launch }
+    fun pause(id: String) { scope.launch { pauseNow(id) } }
+    fun pauseAll() { scope.launch { pauseAllNow() } }
+    fun resumeAll() { scope.launch { resumeAllNow() } }
+    fun cancelAll() { scope.launch { cancelAllNow() } }
+    fun resume(id: String) { scope.launch { resumeNow(id) } }
+
+    private suspend fun pauseNow(id: String) {
+        if(id in permanentlyCancelled) return
         val target = ensureManager()
-        val download = withContext(Dispatchers.IO) { target.downloadIndex.getDownload(id) } ?: return@launch
-        if(download.state == Download.STATE_COMPLETED || id in permanentlyCancelled) return@launch
-        if(download.stopReason == STOP_CANCELLED) { markCancelled(id); credentials.remove(id); return@launch }
+        val download = withContext(Dispatchers.IO) { target.downloadIndex.getDownload(id) }
+        if(download?.state !in setOf(Download.STATE_DOWNLOADING, Download.STATE_QUEUED)) return
+        target.setStopReason(id, STOP_PAUSED)
+        stopNetwork(id)
+        refresh()
+    }
+    private suspend fun pauseAllNow() {
+        indexedDownloads().filter { it.state in setOf(Download.STATE_DOWNLOADING, Download.STATE_QUEUED) }.forEach { pauseNow(it.request.id) }
+    }
+    private suspend fun resumeAllNow() {
+        indexedDownloads().filter { it.state == Download.STATE_FAILED || it.state == Download.STATE_QUEUED || (it.state == Download.STATE_STOPPED && it.stopReason != STOP_CANCELLED) }
+            .forEach { resumeNow(it.request.id) }
+    }
+    private suspend fun cancelAllNow() {
+        // A summary notification controls active transfers, never historical complete copies.
+        indexedDownloads().filter { it.state in setOf(Download.STATE_DOWNLOADING, Download.STATE_QUEUED) }.forEach { cancelNow(it.request.id) }
+    }
+    private suspend fun indexedDownloads(): List<Download> {
+        val target = ensureManager()
+        return withContext(Dispatchers.IO) { target.downloadIndex.getDownloads().use { cursor -> buildList { while(cursor.moveToNext()) add(cursor.download) } } }
+    }
+    private suspend fun resumeNow(id: String) {
+        if(id in permanentlyCancelled) { credentials.remove(id); return }
+        val target = ensureManager()
+        val download = withContext(Dispatchers.IO) { target.downloadIndex.getDownload(id) } ?: return
+        if(download.state in setOf(Download.STATE_COMPLETED, Download.STATE_REMOVING, Download.STATE_RESTARTING) || id in permanentlyCancelled) return
+        if(download.stopReason == STOP_CANCELLED) { markCancelled(id); credentials.remove(id); return }
         val request = download.request
         clearError(id)
         try { DownloadService.sendAddDownload(context, MiruOfflineService::class.java, request, true); target.resumeDownloads() }
         catch(_: Exception) { error(id, "FOREGROUND_REQUIRED"); target.setStopReason(id, STOP_FOREGROUND) }
         refresh()
-    } }
+    }
     /** Supply newly captured page context explicitly when a private authenticated download needs it. */
     fun resume(id: String, headers: Map<String, String>) { if(id in permanentlyCancelled) return; credentials[id] = OfflineHttp.clean(headers); resume(id) }
-    fun cancel(id: String) {
-        scope.launch {
-            if(id in permanentlyCancelled) return@launch
-            val target = ensureManager()
-            // The UI projection may still say "running" after the native worker has finished.
-            // Reject cancellation of an already-complete copy using its authoritative index.
-            val download = withContext(Dispatchers.IO) { target.downloadIndex.getDownload(id) }
-            if(download?.state == Download.STATE_COMPLETED) return@launch
-            // Once accepted, cancellation wins over a completion racing this read. Media3
-            // only changes stopReason (without a callback) for a now-terminal index row.
-            markCancelled(id); credentials.remove(id)
-            target.setStopReason(id, STOP_CANCELLED)
-            OfflineNotifications.cancel(context, id)
-            scope.launch(Dispatchers.IO) { OfflineStorage.get(context).remove(id) }
+    fun cancel(id: String) { scope.launch { cancelNow(id) } }
+    private suspend fun cancelNow(id: String) {
+        if(id in permanentlyCancelled) return
+        val target = ensureManager()
+        // The UI projection may still say "running" after the native worker has finished.
+        // Reject cancellation of an already-complete copy using its authoritative index.
+        val download = withContext(Dispatchers.IO) { target.downloadIndex.getDownload(id) }
+        if(download?.state in setOf(Download.STATE_COMPLETED, Download.STATE_REMOVING, Download.STATE_RESTARTING)) return
+        // Once accepted, cancellation wins over a completion racing this read. Media3
+        // only changes stopReason (without a callback) for a now-terminal index row.
+        markCancelled(id); credentials.remove(id)
+        target.setStopReason(id, STOP_CANCELLED)
+        stopNetwork(id)
+        OfflineNotifications.cancel(context, id)
+        scope.launch(Dispatchers.IO) { OfflineStorage.get(context).remove(id) }
+        refresh()
+    }
+
+    /** The receiver keeps its PendingResult until this job has submitted the native command. */
+    internal fun notificationAction(command: OfflineNotificationCommand, id: String?): Job = scope.launch {
+        try {
+            when(command) {
+                OfflineNotificationCommand.PAUSE -> id?.let { pauseNow(it) }
+                OfflineNotificationCommand.RESUME -> id?.let { resumeNow(it) }
+                OfflineNotificationCommand.CANCEL -> id?.let { cancelNow(it) }
+                OfflineNotificationCommand.PAUSE_ALL -> pauseAllNow()
+                OfflineNotificationCommand.RESUME_ALL -> resumeAllNow()
+                OfflineNotificationCommand.CANCEL_ALL -> cancelAllNow()
+            }
+        } catch(cancelled: CancellationException) { throw cancelled }
+        catch(_: Exception) {
+            id?.let { error(it, "STORAGE") }
             refresh()
         }
     }
     fun remove(id: String) { scope.launch {
         val target = ensureManager()
         target.removeDownload(id)
+        stopNetwork(id)
         runCatching { DownloadService.start(context, MiruOfflineService::class.java) }
         refresh()
     } }
@@ -271,16 +318,27 @@ class OfflineCoordinator private constructor(private val context: Context) {
     }
     private fun error(id: String, code: String) { errors[id] = code; preferences.edit().putString("error.$id", code).apply() }
     private fun clearError(id: String) { errors.remove(id); preferences.edit().remove("error.$id").apply() }
+    private fun stopNetwork(id: String) { activeTransfers[id]?.toList()?.forEach(OfflineHttpCalls::cancel) }
 
     private inner class ContextDownloader(private val request: DownloadRequest, private val storage: OfflineStorage) : Downloader {
         @Volatile private var delegate: Downloader? = null
+        @Volatile private var httpCalls: OfflineHttpCalls? = null
         @Volatile private var cancelled = false
         override fun download(progressListener: Downloader.ProgressListener?) {
             var permit: AutoCloseable? = null
+            val calls = OfflineHttpCalls()
+            httpCalls = calls
+            activeTransfers.compute(request.id) { _, current ->
+                (current ?: ConcurrentHashMap.newKeySet()).also { it.add(calls) }
+            }
+            if(cancelled || request.id in permanentlyCancelled) calls.cancel()
             try {
                 permit = DownloadConcurrency.transfers.acquire { cancelled || request.id in permanentlyCancelled }
-                transfer(progressListener)
+                transfer(progressListener, calls)
             } finally {
+                calls.cancel()
+                activeTransfers.computeIfPresent(request.id) { _, current -> current.apply { remove(calls) }.takeIf { it.isNotEmpty() } }
+                httpCalls = null
                 permit?.close()
                 // SegmentDownloader has finished and closed its cache sink at this point.
                 // This second cleanup catches a final partial fragment committed after the
@@ -288,7 +346,7 @@ class OfflineCoordinator private constructor(private val context: Context) {
                 if(request.id in permanentlyCancelled) storage.remove(request.id)
             }
         }
-        private fun transfer(progressListener: Downloader.ProgressListener?) {
+        private fun transfer(progressListener: Downloader.ProgressListener?, calls: OfflineHttpCalls) {
             if(cancelled || request.id in permanentlyCancelled) throw InterruptedException()
             val metadata = OfflineMetadata.decode(request.data)
             var headers = credentials[request.id]
@@ -307,7 +365,7 @@ class OfflineCoordinator private constructor(private val context: Context) {
                 if(cancelled || Thread.currentThread().isInterrupted) throw InterruptedException()
                 val factory = CacheDataSource.Factory().setCache(storage.cache)
                     .setCacheKeyFactory { spec -> OfflineStorage.prefix(request.id) + spec.uri.toString() }
-                    .setUpstreamDataSourceFactory(OfflineHttp.factory(request.uri.toString(), headers.orEmpty()))
+                    .setUpstreamDataSourceFactory(OfflineHttp.factory(request.uri.toString(), headers.orEmpty(), calls))
                 val downloader = DefaultDownloaderFactory(factory, Executor { it.run() }).createDownloader(request)
                 delegate = downloader
                 if(cancelled) { downloader.cancel(); throw InterruptedException() }
@@ -326,7 +384,7 @@ class OfflineCoordinator private constructor(private val context: Context) {
             }
             throw OfflineException("AUTH_REQUIRED")
         }
-        override fun cancel() { cancelled = true; delegate?.cancel() }
+        override fun cancel() { cancelled = true; httpCalls?.cancel(); delegate?.cancel() }
         override fun remove() { storage.remove(request.id) }
     }
 
