@@ -89,6 +89,9 @@ import app.miru.downloads.DownloadConfirmSheet
 import app.miru.downloads.DownloadRequest
 import app.miru.downloads.DownloadsScreen
 import app.miru.downloads.DownloadSettingsScreen
+import app.miru.downloads.OfflineConfirmSheet
+import app.miru.offline.OfflineSelection
+import app.miru.offline.OfflineSource
 import app.miru.common.AddressResolver
 import app.miru.common.AddressTarget
 import app.miru.common.SearchEngine
@@ -121,20 +124,29 @@ import mozilla.components.concept.engine.EngineSession
 class MainActivity : ComponentActivity() {
     private val container get() = (application as MiruApplication).container
     private var incoming by mutableStateOf<Pair<Long, String>?>(null)
+    private var incomingOffline by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) readIntent(intent)
-        setContent { MiruApp(container, incoming, onIncomingConsumed = { incoming = null }, onExit = { moveTaskToBack(true) }, onDefaultBrowser = ::requestDefaultBrowser) }
+        incomingOffline = savedInstanceState?.getString("miru.pendingOffline") ?: incomingOffline
+        setContent { MiruApp(container, incoming, incomingOffline,
+            onIncomingOfflineConsumed = { incomingOffline = null; intent.removeExtra("miru.offline.id") },
+            onIncomingConsumed = { incoming = null }, onExit = { moveTaskToBack(true) }, onDefaultBrowser = ::requestDefaultBrowser) }
     }
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); readIntent(intent) }
-    override fun onStart() { super.onStart(); container.downloads.onAppForeground() }
+    override fun onStart() { super.onStart(); container.downloads.onAppForeground(); container.offline.onAppForeground() }
     override fun onStop() { container.browser.saveSession(); super.onStop() }
+    override fun onSaveInstanceState(outState: Bundle) {
+        incomingOffline?.let { outState.putString("miru.pendingOffline", it) }
+        super.onSaveInstanceState(outState)
+    }
 
     private fun readIntent(value: Intent?) {
+        value?.getStringExtra("miru.offline.id")?.takeIf { it.length == 36 && it.matches(Regex("[0-9a-fA-F-]{36}")) }?.let { incomingOffline = it }
         val input = when(value?.action) {
             Intent.ACTION_VIEW -> value.dataString
             Intent.ACTION_SEND -> value.getStringExtra(Intent.EXTRA_TEXT)
@@ -159,7 +171,7 @@ private enum class Route { BROWSER, HISTORY, BOOKMARKS, DOWNLOADS, SETTINGS, DOW
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, onIncomingConsumed: () -> Unit, onExit: () -> Unit, onDefaultBrowser: () -> Unit) {
+private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, incomingOffline: String?, onIncomingOfflineConsumed: () -> Unit, onIncomingConsumed: () -> Unit, onExit: () -> Unit, onDefaultBrowser: () -> Unit) {
     val controller = container.browser
     val library = container.library
     val downloads = container.downloads
@@ -167,6 +179,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, onIn
     val settings by container.settings.settings.collectAsStateWithLifecycle(initialValue = BrowserSettings())
     val downloadSettings by downloads.settings.collectAsStateWithLifecycle()
     val downloadItems by downloads.downloads.collectAsStateWithLifecycle()
+    val offlineItems by container.offline.items.collectAsStateWithLifecycle()
     val adblock by controller.adblock.collectAsStateWithLifecycle()
     val adblockPopup by controller.adblockPopup.collectAsStateWithLifecycle()
     val mediaByTab by controller.media.collectAsStateWithLifecycle()
@@ -191,6 +204,11 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, onIn
     var mediaBusy by remember { mutableStateOf(false) }
     var mediaHint by remember { mutableStateOf(false) }
     var mediaAddress by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    var offlineSelection by remember { mutableStateOf<OfflineSelection?>(null) }
+    var offlineOwner by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var offlineBusy by remember { mutableStateOf(false) }
+    var offlineGeneration by remember { mutableIntStateOf(0) }
+    var offlinePreparation by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val hintedPages = remember { mutableMapOf<String, String>() }
     val automaticPages = container.automaticMediaPages
     val pageMedia = mediaByTab[tab?.id].orEmpty()
@@ -217,7 +235,10 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, onIn
     val viewLabel = stringResource(R.string.view_downloads)
     val downloadFailed = stringResource(R.string.download_failed)
     val mediaFailed = stringResource(R.string.media_handoff_failed)
-    val activeDownloads = downloadItems.count { it.status in setOf("queued", "running", "waiting_network") }
+    val offlineFailed = stringResource(R.string.offline_failed)
+    val offlineUnavailable = stringResource(R.string.offline_unavailable)
+    val activeDownloads = downloadItems.count { it.status in setOf("queued", "running", "waiting_network") } +
+        offlineItems.count { it.status in setOf("queued", "running", "waiting_network") }
     val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     val adblockUi = AdblockUiState(
         phase = if(adblock.status.name == "STARTING") AdblockPhase.INSTALLING else AdblockPhase.valueOf(adblock.status.name),
@@ -270,9 +291,9 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, onIn
             mediaHint = true; kotlinx.coroutines.delay(if(fullscreen) 3_000 else 5_000); mediaHint = false
         }
     } }
-    LaunchedEffect(pageMedia, playerOptions.autoTakeover, route, tab?.loading, mediaBusy, editing, tabsVisible, mediaPanel, menuVisible, pendingDownload != null, mediaAddress != null) {
+    LaunchedEffect(pageMedia, playerOptions.autoTakeover, route, tab?.loading, mediaBusy, editing, tabsVisible, mediaPanel, menuVisible, pendingDownload != null, mediaAddress != null, offlineBusy, offlineSelection != null) {
         val selected = tab ?: return@LaunchedEffect
-        if(playerOptions.autoTakeover && route == Route.BROWSER && !mediaBusy && !editing && !tabsVisible && !mediaPanel && !menuVisible && pendingDownload == null && mediaAddress == null && !selected.loading &&
+        if(playerOptions.autoTakeover && route == Route.BROWSER && !mediaBusy && !editing && !tabsVisible && !mediaPanel && !menuVisible && pendingDownload == null && mediaAddress == null && !offlineBusy && offlineSelection == null && !selected.loading &&
             lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
             pageMedia.firstOrNull { it.canAutoTakeover && automaticPages[selected.id] != "${selected.url}|${it.id}" }?.let { item ->
                 automaticPages[selected.id] = "${selected.url}|${item.id}"; playMedia(item)
@@ -359,6 +380,50 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, onIn
             else { runCatching { request.bodyStream?.close() }; showMessage(downloadFailed) }
         } else enqueueDownload(request)
     }
+    fun cancelOfflinePreparation() {
+        offlineGeneration++
+        offlinePreparation?.cancel(); offlinePreparation = null
+        offlineBusy = false; offlineSelection = null; offlineOwner = null
+    }
+    fun openOffline(id: String) {
+        scope.launch {
+            val request = container.offlinePlaybackRequest(id)
+            if(request == null) showMessage(offlineUnavailable)
+            else if(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) context.startActivity(PlaybackRequests.intent(context, request))
+        }
+    }
+    fun downloadMedia(item: DetectedMedia) {
+        if(!item.playable || offlineBusy || offlineSelection != null) return
+        mediaPanel = false
+        val generation = ++offlineGeneration
+        offlineBusy = true; offlineOwner = item.tabId to item.pageUrl
+        offlinePreparation = scope.launch {
+            try {
+                val headers = controller.refreshMediaHeaders(item.tabId, item.id) ?: item.headers
+                val selected = controller.state.value.selectedTab
+                if(selected?.id != item.tabId || selected.url != item.pageUrl || route != Route.BROWSER) return@launch
+                if(item.kind !in setOf("HLS", "DASH")) {
+                    // Direct files keep the existing segmented download / MediaStore path.
+                    requestDownload(DownloadRequest(item.url, fileName = item.title.takeIf(String::isNotBlank), mimeType = item.mimeType,
+                        headers = headers, sourcePage = item.pageUrl, isPrivate = item.isPrivate))
+                } else {
+                    val selection = container.offline.prepare(OfflineSource(item.url, item.title, item.pageUrl,
+                        mimeType = if(item.kind == "HLS") "application/vnd.apple.mpegurl" else "application/dash+xml",
+                        headers = headers, isPrivate = item.isPrivate, drm = item.drm))
+                    val current = controller.state.value.selectedTab
+                    if(generation == offlineGeneration && current?.id == item.tabId && current.url == item.pageUrl && route == Route.BROWSER && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                        offlineSelection = selection
+                    }
+                }
+            } catch(cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch(_: Exception) { if(generation == offlineGeneration) showMessage(offlineFailed) }
+            finally { if(generation == offlineGeneration) { offlineBusy = false; offlinePreparation = null } }
+        }
+    }
+    LaunchedEffect(tab?.id, tab?.url, route) {
+        val owner = offlineOwner
+        if(owner != null && (owner.first != tab?.id || owner.second != tab?.url || route != Route.BROWSER)) cancelOfflinePreparation()
+    }
     fun openAdblockDashboard(exceptions: Boolean = false) {
         adblockPanel = false
         controller.closeAdblockPopup()
@@ -367,6 +432,12 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, onIn
     val handleDownload by rememberUpdatedState<(DownloadRequest) -> Unit>(::requestDownload)
 
     LaunchedEffect(incoming) { incoming?.let { navigate(it.second, newTab = true); onIncomingConsumed() } }
+    LaunchedEffect(incomingOffline) { incomingOffline?.let { id ->
+        val request = container.offlinePlaybackRequest(id)
+        if(request == null) showMessage(offlineUnavailable)
+        else if(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) context.startActivity(PlaybackRequests.intent(context, request))
+        onIncomingOfflineConsumed()
+    } }
     // Gecko requires the Android main thread. Let the native NTP draw before its setup runs.
     LaunchedEffect(controller) { withFrameNanos { }; withFrameNanos { }; controller.initialize() }
     LaunchedEffect(controller) { controller.downloadRequests.collect { request ->
@@ -374,8 +445,9 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, onIn
     } }
     DisposableEffect(Unit) { onDispose { downloadQueue.forEach { runCatching { it.bodyStream?.close() } } } }
     LaunchedEffect(finding, findQuery, tab?.id) { if(finding) { delay(150); controller.findAll(findQuery) } else controller.clearFind() }
-    DisposableEffect(isPrivate) {
-        if(isPrivate) activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    val privateDownloadDialog = offlineSelection?.source?.isPrivate == true || pendingDownload?.isPrivate == true
+    DisposableEffect(isPrivate, privateDownloadDialog) {
+        if(isPrivate || privateDownloadDialog) activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         else activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         onDispose { }
     }
@@ -385,6 +457,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, onIn
             menuVisible -> menuVisible = false
             adblockPopup != null -> { controller.closeAdblockPopup(); controller.reload() }
             adblockPanel -> adblockPanel = false
+            offlineBusy || offlineSelection != null -> cancelOfflinePreparation()
             pendingDownload != null -> { runCatching { pendingDownload.bodyStream?.close() }; downloadQueue = downloadQueue.drop(1) }
             siteInfo -> siteInfo = false
             editing -> editing = false
@@ -481,7 +554,8 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, onIn
                         Route.BROWSER -> Box(Modifier.fillMaxSize())
                         Route.HISTORY -> HistoryScreen(library, snackbars, onBack = { route = Route.BROWSER }, onOpen = { navigate(it) }, onOpenInNewTab = ::openInNewTab)
                         Route.BOOKMARKS -> BookmarksScreen(library, snackbars, onBack = { route = Route.BROWSER }, onOpen = { navigate(it) }, onOpenInNewTab = ::openInNewTab)
-                        Route.DOWNLOADS -> DownloadsScreen(downloads, onBack = { route = Route.BROWSER }, snackbarHostState = snackbars)
+                        Route.DOWNLOADS -> DownloadsScreen(downloads, onBack = { route = Route.BROWSER }, snackbarHostState = snackbars,
+                            offline = container.offline, onOpenOffline = ::openOffline)
                         Route.DOWNLOAD_SETTINGS -> DownloadSettingsScreen(downloads, onBack = { route = Route.SETTINGS })
                         Route.ADBLOCK -> AdblockScreen(adblockUi, { route = Route.SETTINGS }, controller::setAdblockEnabled, controller::retryAdblock, { openAdblockDashboard(true) }, { openAdblockDashboard() })
                         Route.SETTINGS -> SettingsScreen(settings, { route = Route.BROWSER }, { scope.launch { container.settings.setTheme(it) } }, { scope.launch { container.settings.setDynamicColor(it) } }, { scope.launch { container.settings.setToolbarPosition(it) } }, { scope.launch { container.settings.setSearchEngine(it) } }, onDefaultBrowser, { route = Route.ABOUT }, { route = Route.ADBLOCK }, { route = Route.DOWNLOAD_SETTINGS }, onPlayer = { route = Route.PLAYER_SETTINGS })
@@ -512,7 +586,23 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, onIn
                 dismissButton = { TextButton(onClick = { mediaAddress = null; if(newTab) controller.newTab(url) else controller.navigate(url); route = Route.BROWSER; tabsVisible = false }) { Text(stringResource(R.string.media_open_web)) } },
             ) }
             if(mediaPanel) MediaSheet(pageMedia, onDismiss = { mediaPanel = false }, onPlay = ::playMedia,
-                resolve = { item -> container.mediaProbe.probe(item)?.let { "${it.label} · ${it.width} × ${it.height}" } })
+                resolve = { item -> container.mediaProbe.probe(item)?.let { "${it.label} · ${it.width} × ${it.height}" } }, onDownload = ::downloadMedia)
+            if(offlineBusy) AlertDialog(onDismissRequest = ::cancelOfflinePreparation,
+                title = { Text(stringResource(R.string.offline_preparing)) },
+                text = { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                    Text(stringResource(R.string.offline_preparing_detail))
+                } },
+                confirmButton = { TextButton(onClick = ::cancelOfflinePreparation) { Text(stringResource(android.R.string.cancel)) } })
+            offlineSelection?.let { selection -> OfflineConfirmSheet(selection, onDismiss = ::cancelOfflinePreparation,
+                onConfirm = { quality, title ->
+                    try {
+                        container.offline.enqueue(selection, quality, title)
+                        cancelOfflinePreparation()
+                        if(Build.VERSION.SDK_INT >= 33 && activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        scope.launch { if(snackbars.showWithAction(downloadStarted, viewLabel)) route = Route.DOWNLOADS }
+                    } catch(_: Exception) { cancelOfflinePreparation(); showMessage(offlineFailed) }
+                }) }
             if(siteInfo) ModalBottomSheet(onDismissRequest = { siteInfo = false }) {
                 Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(AddressResolver.display(tab?.url.orEmpty()).ifBlank { stringResource(R.string.app_name) }, style = MaterialTheme.typography.titleLarge)

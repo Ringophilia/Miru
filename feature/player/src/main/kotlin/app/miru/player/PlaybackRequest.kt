@@ -19,6 +19,7 @@ class PlaybackRequest(
     val refreshHeaders: (suspend () -> Map<String, String>?)? = null,
     val onReturn: ((failed: Boolean) -> Unit)? = null,
     val onVideoSize: ((width: Int, height: Int) -> Unit)? = null,
+    val offlineId: String? = null,
 )
 
 /** Intents contain an opaque, one-use token, never cookies, signed URLs or private titles. */

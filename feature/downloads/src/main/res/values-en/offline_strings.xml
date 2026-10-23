@@ -1,0 +1,15 @@
+<resources>
+    <string name="download_offline_quality">Offline video · %1$s</string>
+    <string name="download_removing">Removing offline content</string>
+    <string name="download_delete_offline">Delete offline videos?</string>
+    <string name="download_delete_offline_detail">This removes the offline videos and their download records. You have 6 seconds to undo.</string>
+    <string name="download_keep_ordinary_files">Keep regular downloaded files</string>
+    <string name="download_clear_completed_offline">This clears completed records and offline videos. Regular downloaded files remain on this device.</string>
+    <string name="offline_download_title">Download video offline</string>
+    <string name="offline_video_name">Video name</string>
+    <string name="offline_quality_title">Choose quality</string>
+    <string name="offline_quality_unavailable">No downloadable quality is available</string>
+    <string name="offline_download_detail">Play without a connection from Downloads → Videos. Download size depends on video length and quality.</string>
+    <string name="offline_private_warning">This video comes from a private tab. The offline video and download record remain on this device after closing private tabs.</string>
+    <string name="offline_private_acknowledgement">I understand this offline download stays on this device</string>
+</resources>

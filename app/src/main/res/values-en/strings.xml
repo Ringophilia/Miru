@@ -6,6 +6,10 @@
     <string name="view_downloads">View</string>
     <string name="download_failed">Could not start downloading. Please try again.</string>
     <string name="app_name">Miru</string>
+    <string name="offline_preparing">Preparing offline video</string>
+    <string name="offline_preparing_detail">Reading available qualities and audio tracks…</string>
+    <string name="offline_failed">This video cannot be prepared for offline download. Play live or protected videos on the web page.</string>
+    <string name="offline_unavailable">This offline video is incomplete or has been removed.</string>
     <string name="unsupported_address">Cannot open this address. Enter an http or https URL.</string>
     <string name="unavailable_route">This page is not available yet.</string>
     <string name="closed_tab">Tab closed</string>

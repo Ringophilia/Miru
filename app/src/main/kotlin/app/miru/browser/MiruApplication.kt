@@ -18,6 +18,8 @@ import app.miru.player.PlayerPreferencesRepository
 import app.miru.player.PlaybackCache
 import app.miru.media.DetectedMedia
 import app.miru.media.MediaResolutionProbe
+import app.miru.offline.OfflineCoordinator
+import app.miru.common.DownloadConcurrency
 import android.content.Intent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +28,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 class AppContainer(application: Application) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -35,8 +39,15 @@ class AppContainer(application: Application) {
     val browser = BrowserController(application, scope, LibraryHistoryDelegate(library))
     val playerPreferences = PlayerPreferencesRepository(application)
     val mediaProbe = MediaResolutionProbe(application)
+    val offline = OfflineCoordinator.get(application)
     // Process-only handoff guard survives browser Activity recreation; never save private URLs.
     val automaticMediaPages = mutableMapOf<String, String>()
+    suspend fun offlinePlaybackRequest(id: String): PlaybackRequest? {
+        val item = withTimeoutOrNull(5_000) { offline.items.first { rows -> rows.any { it.id == id } }.first { it.id == id } }
+            ?.takeIf { it.status == "completed" } ?: return null
+        return PlaybackRequest(item.url, item.title, pageUrl = item.sourcePage.orEmpty(), mimeType = item.mimeType,
+            isPrivate = item.isPrivate, offlineId = item.id)
+    }
     fun recordMediaSize(media: DetectedMedia, width: Int, height: Int) {
         scope.launch(Dispatchers.IO) {
             if(!media.isPrivate || browser.state.value.tabs.any { it.id == media.tabId && it.isPrivate }) {
@@ -45,6 +56,7 @@ class AppContainer(application: Application) {
         }
     }
     init {
+        scope.launch { downloads.settings.map { it.maxConcurrent }.distinctUntilChanged().collect { DownloadConcurrency.transfers.setLimit(it) } }
         scope.launch { browser.state.map { state -> state.tabs.filter { it.isPrivate }.map { it.id }.toSet() }.distinctUntilChanged().collect {
             mediaProbe.clearPrivate()
         } }
@@ -59,6 +71,13 @@ class AppContainer(application: Application) {
             withContext(Dispatchers.IO) { runCatching { PlaybackCache.setLimit(limit * 1024L * 1024) } }
         } }
         downloads.headerResolver = { item -> if (item.isPrivate) null else browser.downloadHeaders(item.url, item.sourcePage) }
+        offline.headerResolver = { item ->
+            if(item.isPrivate) null else {
+                val captured = browser.media.value.values.flatten().firstOrNull { !it.isPrivate && it.url == item.url && (item.sourcePage == null || it.pageUrl == item.sourcePage) }
+                if(captured != null) browser.refreshMediaHeaders(captured.tabId, captured.id)
+                else browser.downloadHeaders(item.url, item.sourcePage)
+            }
+        }
         downloads.openMedia = { item ->
             item.destUri?.let { uri ->
                 application.startActivity(PlaybackRequests.intent(application, PlaybackRequest(uri, item.fileName, mimeType = item.mimeType, isPrivate = item.isPrivate)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true

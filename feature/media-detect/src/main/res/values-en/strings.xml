@@ -3,6 +3,7 @@
     <string name="media_empty">No playable media detected yet</string>
     <string name="media_number">Video %1$d</string>
     <string name="media_play">Play with Miru</string>
+    <string name="media_download">Download this video</string>
     <string name="media_web_only">Play this media on the web page</string>
     <string name="media_short">%1$d other short videos</string>
     <string name="media_hide_short">Hide short videos</string>

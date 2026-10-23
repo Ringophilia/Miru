@@ -8,7 +8,7 @@ Android 原生浏览器，包名 `app.miru.browser`。产品需求以 [MIRU-SPEC
 
 图标由维护者以《Ringo EXPO 08》封面为灵感，通过 AI 生成；素材的授权范围与来源见 [design/PROVENANCE.md](design/PROVENANCE.md)。Miru 与椎名林檎、相关唱片公司、Mozilla 或 Google 没有隶属或背书关系。
 
-目前推进至 **M3 首批开发预览（0.4.0）**：在 GeckoView / Compose 浏览器、uBlock Origin、断点下载与 Media3 播放器基础上，加入主动清晰度探测、字幕和音轨选择。
+目前推进至 **M3 离线开发预览（0.4.1）**：在 GeckoView / Compose 浏览器、uBlock Origin、断点下载与 Media3 播放器基础上，接入清晰度探测、字幕 / 音轨和 HLS / DASH 视频离线。
 
 「设置 → 播放器」可调整缓存上限、预缓冲和手势参数，清除流缓存 / 播放进度。清缓存保留下载文件，无痕播放不读写缓存和进度。
 
@@ -16,7 +16,9 @@ Android 原生浏览器，包名 `app.miru.browser`。产品需求以 [MIRU-SPEC
 
 「本页视频」面板会读取有界的清单 / 媒体头部来显示清晰度，关闭面板时取消探测。播放器「字幕与音轨」可以切换内嵌字幕和音轨，或通过系统文件选择器加载 SRT / VTT / ASS（ASS 以纯文本显示），并调整字幕字号、底边距与背景透明度。字幕内容仅保留在当前播放会话的内存中。实现与验证边界见 [M3 首批记录](docs/M3-VALIDATION.md)。
 
-uBO 使用原版站点面板、过滤规则和例外列表。在扩展就绪前加载的页面，以及扩展以 `!` 标记的页面，工具栏会显示刷新警告。首次安装仍有偶发超时，详见验证记录。视频离线、缩略图预览和超分渲染尚未实现。
+媒体面板的下载按钮可选择 HLS / DASH 清晰度，关联音轨和字幕一起保存。离线视频与普通文件共用下载页，在「视频」分类中管理；离线缓存与普通播放缓存分开，清除播放缓存保留离线视频。无痕离线需明确确认保留内容。实现、断源完整播放和两阶段进程重启验证见 [离线记录](docs/M3-OFFLINE-VALIDATION.md)。
+
+uBO 使用原版站点面板、过滤规则和例外列表。在扩展就绪前加载的页面，以及扩展以 `!` 标记的页面，工具栏会显示刷新警告。首次安装仍有偶发超时，详见验证记录。缩略图预览、超分渲染和 P2 离线导出 MP4 尚未实现；完整需求与待验收门见 [全量矩阵](docs/ACCEPTANCE.md)。
 
 ## 构建
 
@@ -55,6 +57,7 @@ feature/adblock     uBO 状态、站点面板、全局开关与设置入口
 feature/downloads   Room 分段断点、OkHttp 下载、通知、MediaStore / SAF、下载管理
 feature/media-detect 媒体模型、按标签隔离的内存索引、清晰度探测、本页视频面板
 feature/player      Media3 播放器、手势、缓存、进度、字幕 / 音轨、媒体会话与 PiP
+feature/offline     HLS / DASH 下载、独立离线缓存、清晰度选择、前台服务与持久索引
 feature/settings    基本设置与关于
 design              跨平台 token JSON 与可编辑 SVG 图标
 ```
@@ -68,5 +71,5 @@ design              跨平台 token JSON 与可编辑 SVG 图标
 - M0 剩余验收与细节见 [docs/PROGRESS.md](docs/PROGRESS.md)。模拟器结果不能代替规范中的真机性能、兼容性和无障碍验收。
 - M1 已通过 500 MB 进程终止后自动续传及本地默认规则的冷启动恢复测试；首装稳定性、扩展自动更新、额外 Cookie 提示规则与完整真机验收仍待补齐，详见进度文档。
 - M2：核心播放链路已接入；具体结果与未完成项见 [M2 验证记录](docs/M2-VALIDATION.md)。
-- M3：首批清晰度探测、字幕 / 音轨已接入；下一批为视频离线、缩略图与 Ringo-Cove 超分移植，见 [验证记录](docs/M3-VALIDATION.md)。
+- M3：清晰度探测、字幕 / 音轨与视频离线已接入；继续缩略图与 Ringo-Cove 超分移植，见 [首批记录](docs/M3-VALIDATION.md)和 [离线记录](docs/M3-OFFLINE-VALIDATION.md)。
 - M4：动效、网站矩阵、真机性能与完整验收。

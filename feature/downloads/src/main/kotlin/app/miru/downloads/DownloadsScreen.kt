@@ -20,113 +20,220 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.miru.offline.OfflineCoordinator
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
+/** One list identity for the two download backends; never persists a copied media request. */
+internal class UnifiedDownload(val item: DownloadItem, val offline: Boolean = false, val quality: String? = null, val percent: Float = -1f) {
+    val key: String get() = if(offline) "offline:${item.id}" else "file:${item.id}"
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun DownloadsScreen(coordinator: DownloadCoordinator, onBack: () -> Unit, snackbarHostState:SnackbarHostState?=null) {
+fun DownloadsScreen(
+    coordinator: DownloadCoordinator,
+    onBack: () -> Unit,
+    snackbarHostState: SnackbarHostState? = null,
+    offline: OfflineCoordinator? = null,
+    onOpenOffline: (String) -> Unit = {},
+) {
     val downloads by coordinator.downloads.collectAsState()
     val preferences by coordinator.settings.collectAsState()
-    val context=LocalContext.current
-    val scope=rememberCoroutineScope()
-    val localSnackbar=remember { SnackbarHostState() }
-    val snackbar=snackbarHostState?:localSnackbar
+    val hidden by coordinator.pendingDeletionIds.collectAsState()
+    val offlineItems = if(offline != null) {
+        val rows by offline.items.collectAsState()
+        rows.map { it.downloadRow() }
+    } else emptyList()
+    val offlineHidden = if(offline != null) {
+        val ids by offline.pendingDeletionIds.collectAsState()
+        ids
+    } else emptySet()
+    val rows = (downloads.map { UnifiedDownload(it) } + offlineItems).sortedByDescending { it.item.createdAt }
+        .filter { row -> row.item.id !in if(row.offline) offlineHidden else hidden }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val localSnackbar = remember { SnackbarHostState() }
+    val snackbar = snackbarHostState ?: localSnackbar
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf(DownloadCategory.ALL) }
     var selected by remember { mutableStateOf(setOf<String>()) }
-    val hidden by coordinator.pendingDeletionIds.collectAsState()
     var pageMenu by remember { mutableStateOf(false) }
     var settingsVisible by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf<List<DownloadItem>?>(null) }
-    var rename by remember { mutableStateOf<DownloadItem?>(null) }
-    val deleted=stringResource(R.string.download_deleted)
-    val undo=stringResource(R.string.download_undo)
-    val filtered=downloads.filter { it.id !in hidden && (category==DownloadCategory.ALL || it.category==category) && (it.fileName.contains(query,true)||it.url.contains(query,true)) }
-    fun delete(items:List<DownloadItem>,files:Boolean) {
-        val ids=items.map { it.id }.toSet();selected-=ids
-        val token=coordinator.stageDelete(items,files)
+    var confirmDelete by remember { mutableStateOf<List<UnifiedDownload>?>(null) }
+    var rename by remember { mutableStateOf<UnifiedDownload?>(null) }
+    var confirmClearCompleted by remember { mutableStateOf(false) }
+    val deleted = stringResource(R.string.download_deleted)
+    val undo = stringResource(R.string.download_undo)
+    val filtered = rows.filter { row ->
+        val item = row.item
+        (category == DownloadCategory.ALL || item.category == category) &&
+            (item.fileName.contains(query, true) || (!row.offline && item.url.contains(query, true)))
+    }
+    LaunchedEffect(rows.map { it.key }) { selected = selected.intersect(rows.map { it.key }.toSet()) }
+    fun delete(target: List<UnifiedDownload>, files: Boolean) {
+        selected -= target.map { it.key }.toSet()
+        val ordinary = target.filterNot { it.offline }.map { it.item }
+        val offlineIds = target.filter { it.offline }.map { it.item.id }.toSet()
+        val ordinaryToken = ordinary.takeIf { it.isNotEmpty() }?.let { coordinator.stageDelete(it, files) }
+        val offlineToken = offlineIds.takeIf { it.isNotEmpty() }?.let { offline?.stageDelete(it) }
         snackbar.currentSnackbarData?.dismiss()
         scope.launch {
-            val result=withTimeoutOrNull(6_000) { snackbar.showSnackbar(deleted,undo,duration=SnackbarDuration.Indefinite) }
-            if(result==SnackbarResult.ActionPerformed)coordinator.undoDelete(token)
-        }
-    }
-    BackHandler(enabled=settingsVisible){settingsVisible=false}
-    if(settingsVisible) { DownloadSettingsScreen(coordinator) { settingsVisible=false }; return }
-    BackHandler(enabled=selected.isNotEmpty()){selected=emptySet()}
-    Scaffold(topBar={ TopAppBar(title={ Text(if(selected.isEmpty())stringResource(R.string.downloads_title) else stringResource(R.string.download_selected,selected.size)) },navigationIcon={ IconButton(onClick={ if(selected.isEmpty())onBack() else selected=emptySet() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack,stringResource(R.string.download_back)) } },actions={
-        if(selected.isNotEmpty()) {
-            IconButton(enabled=downloads.any { it.id in selected&&it.destUri!=null },onClick={coordinator.share(downloads.filter { it.id in selected&&it.destUri!=null })}){Icon(Icons.Outlined.Share,stringResource(R.string.download_share))}
-            IconButton(onClick={ val rows=downloads.filter { it.id in selected }; if(preferences.deleteFileWithRecord && rows.any { it.destUri!=null })confirmDelete=rows else delete(rows,false) }) { Icon(Icons.Outlined.Delete,stringResource(R.string.download_delete)) }
-        } else Box {
-            IconButton(onClick={pageMenu=true}) { Icon(Icons.Outlined.MoreVert,stringResource(R.string.download_more)) }
-            DropdownMenu(expanded=pageMenu,onDismissRequest={pageMenu=false}) {
-                DropdownMenuItem(text={Text(stringResource(R.string.download_pause_all))},onClick={coordinator.pauseAll();pageMenu=false})
-                DropdownMenuItem(text={Text(stringResource(R.string.download_resume_all))},onClick={coordinator.resumeAll();pageMenu=false})
-                DropdownMenuItem(text={Text(stringResource(R.string.download_clear_completed))},onClick={delete(downloads.filter { it.status=="completed" },false);pageMenu=false})
-                DropdownMenuItem(text={Text(stringResource(R.string.download_settings))},onClick={settingsVisible=true;pageMenu=false})
+            val result = withTimeoutOrNull(6_000) { snackbar.showSnackbar(deleted, undo, duration = SnackbarDuration.Indefinite) }
+            if(result == SnackbarResult.ActionPerformed) {
+                ordinaryToken?.let(coordinator::undoDelete)
+                offlineToken?.let { offline?.undoDelete(it) }
             }
         }
-    }) },snackbarHost={if(snackbarHostState==null)SnackbarHost(snackbar)}) { padding ->
+    }
+    fun requestDelete(target: List<UnifiedDownload>) {
+        if(target.any { it.offline } || (preferences.deleteFileWithRecord && target.any { it.item.destUri != null })) confirmDelete = target
+        else delete(target, false)
+    }
+    fun pause(row: UnifiedDownload) { if(row.offline) offline?.pause(row.item.id) else coordinator.pause(row.item.id) }
+    fun resume(row: UnifiedDownload) { if(row.offline) offline?.resume(row.item.id) else coordinator.resume(row.item.id) }
+    fun cancel(row: UnifiedDownload) { if(row.offline) offline?.cancel(row.item.id) else coordinator.cancel(row.item.id) }
+    fun open(row: UnifiedDownload) { if(row.offline) onOpenOffline(row.item.id) else coordinator.open(row.item) }
+    BackHandler(enabled = settingsVisible) { settingsVisible = false }
+    if(settingsVisible) { DownloadSettingsScreen(coordinator) { settingsVisible = false }; return }
+    BackHandler(enabled = selected.isNotEmpty()) { selected = emptySet() }
+    Scaffold(topBar = {
+        TopAppBar(
+            title = { Text(if(selected.isEmpty()) stringResource(R.string.downloads_title) else stringResource(R.string.download_selected, selected.size)) },
+            navigationIcon = { IconButton(onClick = { if(selected.isEmpty()) onBack() else selected = emptySet() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.download_back)) } },
+            actions = {
+                if(selected.isNotEmpty()) {
+                    val selectedRows = rows.filter { it.key in selected }
+                    // Cached adaptive streams do not have an exportable file URI.
+                    if(selectedRows.none { it.offline }) IconButton(enabled = selectedRows.any { it.item.destUri != null }, onClick = { coordinator.share(selectedRows.map { it.item }.filter { it.destUri != null }) }) { Icon(Icons.Outlined.Share, stringResource(R.string.download_share)) }
+                    IconButton(onClick = { requestDelete(selectedRows) }) { Icon(Icons.Outlined.Delete, stringResource(R.string.download_delete)) }
+                } else Box {
+                    IconButton(onClick = { pageMenu = true }) { Icon(Icons.Outlined.MoreVert, stringResource(R.string.download_more)) }
+                    DropdownMenu(expanded = pageMenu, onDismissRequest = { pageMenu = false }) {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.download_pause_all)) }, onClick = { coordinator.pauseAll(); offline?.pauseAll(); pageMenu = false })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.download_resume_all)) }, onClick = { coordinator.resumeAll(); offline?.resumeAll(); pageMenu = false })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.download_clear_completed)) }, onClick = {
+                            val completed = rows.filter { it.item.status == "completed" }
+                            if(completed.any { it.offline }) confirmClearCompleted = true else delete(completed, false)
+                            pageMenu = false
+                        })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.download_settings)) }, onClick = { settingsVisible = true; pageMenu = false })
+                    }
+                }
+            },
+        )
+    }, snackbarHost = { if(snackbarHostState == null) SnackbarHost(snackbar) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            OutlinedTextField(query,{query=it},Modifier.fillMaxWidth().padding(horizontal=16.dp),singleLine=true,placeholder={Text(stringResource(R.string.download_search))},leadingIcon={Icon(Icons.Outlined.Search,null)})
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=16.dp,vertical=8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) { DownloadCategory.entries.forEach { value ->
-                FilterChip(selected=category==value,onClick={category=value},label={Text(categoryLabel(value))})
-            } }
-            if(filtered.isEmpty()) Column(Modifier.weight(1f).fillMaxWidth(),verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally) {
-                Icon(Icons.Outlined.Download,null,Modifier.size(56.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(16.dp));Text(stringResource(if(query.isEmpty()&&category==DownloadCategory.ALL)R.string.download_empty else R.string.download_no_results))
+            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp), singleLine = true,
+                placeholder = { Text(stringResource(R.string.download_search)) }, leadingIcon = { Icon(Icons.Outlined.Search, null) })
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DownloadCategory.entries.forEach { value -> FilterChip(selected = category == value, onClick = { category = value }, label = { Text(categoryLabel(value)) }) }
+            }
+            if(filtered.isEmpty()) Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Outlined.Download, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(16.dp)); Text(stringResource(if(query.isEmpty() && category == DownloadCategory.ALL) R.string.download_empty else R.string.download_no_results))
             } else LazyColumn(Modifier.weight(1f)) {
-                filtered.groupBy { DateFormat.getDateInstance().format(Date(it.createdAt)) }.forEach { (date,rows) ->
-                    item(key="date-$date") { Text(date,Modifier.padding(horizontal=16.dp,vertical=12.dp),style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary) }
-                    items(rows,key={it.id}) { item ->
-                        var menu by remember(item.id) { mutableStateOf(false) }
-                        val swipe=rememberSwipeToDismissBoxState(confirmValueChange={value->
-                            if(value==SwipeToDismissBoxValue.EndToStart){if(preferences.deleteFileWithRecord&&item.destUri!=null)confirmDelete=listOf(item)else delete(listOf(item),false)}
+                filtered.groupBy { DateFormat.getDateInstance().format(Date(it.item.createdAt)) }.forEach { (date, grouped) ->
+                    item(key = "date-$date") { Text(date, Modifier.padding(horizontal = 16.dp, vertical = 12.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }
+                    items(grouped, key = { it.key }) { row ->
+                        val item = row.item
+                        var menu by remember(row.key) { mutableStateOf(false) }
+                        val swipe = rememberSwipeToDismissBoxState(confirmValueChange = { value ->
+                            if(value == SwipeToDismissBoxValue.EndToStart) requestDelete(listOf(row))
                             false
                         })
-                        SwipeToDismissBox(state=swipe,enableDismissFromStartToEnd=false,backgroundContent={Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.errorContainer).padding(24.dp),contentAlignment=Alignment.CenterEnd){Icon(Icons.Outlined.Delete,stringResource(R.string.download_delete),tint=MaterialTheme.colorScheme.onErrorContainer)}}){
-                        ListItem(
-                            modifier=Modifier.combinedClickable(onClick={ if(selected.isNotEmpty())selected=if(item.id in selected)selected-item.id else selected+item.id else if(item.status=="completed")coordinator.open(item) else menu=true },onLongClick={selected=selected+item.id}),
-                            headlineContent={Text(item.fileName,maxLines=2,overflow=TextOverflow.Ellipsis)},
-                            supportingContent={Column {
-                                Text(downloadStatusLabel(context,item),style=MaterialTheme.typography.bodySmall.copy(fontFeatureSettings="tnum"))
-                                if(item.status in setOf("running","paused","waiting_network","queued")) {
-                                    Spacer(Modifier.height(8.dp));LinearProgressIndicator(progress={if(item.totalBytes>0)(item.downloadedBytes.toFloat()/item.totalBytes).coerceIn(0f,1f)else 0f},modifier=Modifier.fillMaxWidth(),drawStopIndicator={})
-                                }
-                            }},
-                            leadingContent={if(selected.isNotEmpty())Checkbox(item.id in selected,{checked->selected=if(checked)selected+item.id else selected-item.id})else Icon(when(item.category){DownloadCategory.VIDEO->Icons.Outlined.Movie;DownloadCategory.AUDIO->Icons.Outlined.MusicNote;DownloadCategory.IMAGE->Icons.Outlined.Image;DownloadCategory.ARCHIVE->Icons.Outlined.FolderZip;else->Icons.Outlined.Description},null)},
-                            trailingContent={Row {
-                                if(item.status in setOf("running","queued","waiting_network"))IconButton(onClick={coordinator.pause(item.id)}){Icon(Icons.Outlined.Pause,stringResource(R.string.download_pause))}
-                                else if(item.status in setOf("paused","failed"))IconButton(onClick={coordinator.resume(item.id)}){Icon(if(item.status=="failed")Icons.Outlined.Refresh else Icons.Outlined.PlayArrow,stringResource(R.string.download_resume))}
-                                Box {
-                                    IconButton(onClick={menu=true}){Icon(Icons.Outlined.MoreVert,stringResource(R.string.download_more))}
-                                    DropdownMenu(menu,{menu=false}) {
-                                        if(item.status=="completed") {
-                                            DropdownMenuItem(text={Text(stringResource(R.string.download_open))},onClick={coordinator.open(item);menu=false})
-                                            DropdownMenuItem(text={Text(stringResource(R.string.download_share))},onClick={coordinator.share(item);menu=false})
+                        SwipeToDismissBox(state = swipe, enableDismissFromStartToEnd = false, backgroundContent = {
+                            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.errorContainer).padding(24.dp), contentAlignment = Alignment.CenterEnd) {
+                                Icon(Icons.Outlined.Delete, stringResource(R.string.download_delete), tint = MaterialTheme.colorScheme.onErrorContainer)
+                            }
+                        }) {
+                            ListItem(
+                                modifier = Modifier.testTag(if(row.offline) "offline_download_${item.id}" else "file_download_${item.id}").combinedClickable(
+                                    onClick = { if(selected.isNotEmpty()) selected = if(row.key in selected) selected - row.key else selected + row.key else if(item.status == "completed") open(row) else menu = true },
+                                    onLongClick = { selected = selected + row.key },
+                                ),
+                                headlineContent = { Text(item.fileName, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                                supportingContent = {
+                                    Column {
+                                        if(row.offline) Text(stringResource(R.string.download_offline_quality, row.quality.orEmpty()), style = MaterialTheme.typography.bodySmall)
+                                        Text(if(item.status == "removing") stringResource(R.string.download_removing) else downloadStatusLabel(context, item), style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"))
+                                        if(item.status in setOf("running", "paused", "waiting_network", "queued")) {
+                                            Spacer(Modifier.height(8.dp))
+                                            val progress = if(item.totalBytes > 0) item.downloadedBytes.toFloat() / item.totalBytes else row.percent / 100f
+                                            if(progress >= 0) LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), drawStopIndicator = {})
+                                            else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                                         }
-                                        DropdownMenuItem(text={Text(stringResource(R.string.download_copy_link))},onClick={val clipboard=context.getSystemService(android.content.ClipboardManager::class.java);clipboard.setPrimaryClip(android.content.ClipData.newPlainText(item.fileName,item.url));menu=false})
-                                        DropdownMenuItem(text={Text(stringResource(R.string.download_rename))},onClick={rename=item;menu=false})
-                                        if(item.status in setOf("running","queued","paused","waiting_network","failed"))DropdownMenuItem(text={Text(stringResource(R.string.download_cancel))},onClick={coordinator.cancel(item.id);menu=false})
-                                        DropdownMenuItem(text={Text(stringResource(R.string.download_delete))},onClick={menu=false;if(preferences.deleteFileWithRecord&&item.destUri!=null)confirmDelete=listOf(item)else delete(listOf(item),false)})
                                     }
-                                }
-                            }},
-                        ) }
+                                },
+                                leadingContent = {
+                                    if(selected.isNotEmpty()) Checkbox(row.key in selected, { checked -> selected = if(checked) selected + row.key else selected - row.key })
+                                    else Icon(when(item.category) {
+                                        DownloadCategory.VIDEO -> if(row.offline) Icons.Outlined.OfflinePin else Icons.Outlined.Movie
+                                        DownloadCategory.AUDIO -> Icons.Outlined.MusicNote
+                                        DownloadCategory.IMAGE -> Icons.Outlined.Image
+                                        DownloadCategory.ARCHIVE -> Icons.Outlined.FolderZip
+                                        else -> Icons.Outlined.Description
+                                    }, null)
+                                },
+                                trailingContent = {
+                                    Row {
+                                        if(item.status in setOf("running", "queued", "waiting_network")) IconButton(onClick = { pause(row) }) { Icon(Icons.Outlined.Pause, stringResource(R.string.download_pause)) }
+                                        else if(item.status in setOf("paused", "failed")) IconButton(onClick = { resume(row) }) { Icon(if(item.status == "failed") Icons.Outlined.Refresh else Icons.Outlined.PlayArrow, stringResource(R.string.download_resume)) }
+                                        Box {
+                                            IconButton(onClick = { menu = true }, enabled = item.status != "removing") { Icon(Icons.Outlined.MoreVert, stringResource(R.string.download_more)) }
+                                            DropdownMenu(menu, { menu = false }) {
+                                                if(item.status == "completed") {
+                                                    DropdownMenuItem(text = { Text(stringResource(R.string.download_open)) }, onClick = { open(row); menu = false })
+                                                    if(!row.offline) DropdownMenuItem(text = { Text(stringResource(R.string.download_share)) }, onClick = { coordinator.share(item); menu = false })
+                                                }
+                                                if(!row.offline) DropdownMenuItem(text = { Text(stringResource(R.string.download_copy_link)) }, onClick = {
+                                                    context.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText(item.fileName, item.url)); menu = false
+                                                })
+                                                DropdownMenuItem(text = { Text(stringResource(R.string.download_rename)) }, onClick = { rename = row; menu = false })
+                                                if(item.status in setOf("running", "queued", "paused", "waiting_network", "failed")) DropdownMenuItem(text = { Text(stringResource(R.string.download_cancel)) }, onClick = { cancel(row); menu = false })
+                                                DropdownMenuItem(text = { Text(stringResource(R.string.download_delete)) }, onClick = { menu = false; requestDelete(listOf(row)) })
+                                            }
+                                        }
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
             }
         }
     }
-    confirmDelete?.let { items -> AlertDialog(onDismissRequest={confirmDelete=null},title={Text(stringResource(R.string.download_delete_files))},text={Text(stringResource(R.string.download_delete_files_detail))},dismissButton={TextButton(onClick={delete(items,false);confirmDelete=null}){Text(stringResource(R.string.download_record_only))}},confirmButton={TextButton(onClick={delete(items,true);confirmDelete=null}){Text(stringResource(R.string.download_delete))}}) }
-    rename?.let { item -> var name by remember(item.id){mutableStateOf(item.fileName)};AlertDialog(onDismissRequest={rename=null},title={Text(stringResource(R.string.download_rename))},text={OutlinedTextField(name,{name=it},singleLine=true)},dismissButton={TextButton(onClick={rename=null}){Text(stringResource(R.string.download_cancel))}},confirmButton={TextButton(enabled=name.isNotBlank(),onClick={coordinator.rename(item.id,name);rename=null}){Text(stringResource(R.string.download_save))}}) }
+    confirmDelete?.let { target ->
+        val includesOffline = target.any { it.offline }
+        val includesFiles = target.any { !it.offline && it.item.destUri != null }
+        AlertDialog(onDismissRequest = { confirmDelete = null }, title = { Text(stringResource(if(includesOffline) R.string.download_delete_offline else R.string.download_delete_files)) },
+            text = { Text(stringResource(if(includesOffline) R.string.download_delete_offline_detail else R.string.download_delete_files_detail)) },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = null }) { Text(stringResource(R.string.download_cancel)) }
+                if(!includesOffline || includesFiles) TextButton(onClick = { delete(target, false); confirmDelete = null }) { Text(stringResource(if(includesOffline) R.string.download_keep_ordinary_files else R.string.download_record_only)) }
+            },
+            confirmButton = { TextButton(onClick = { delete(target, true); confirmDelete = null }) { Text(stringResource(R.string.download_delete)) } },
+        )
+    }
+    if(confirmClearCompleted) AlertDialog(onDismissRequest = { confirmClearCompleted = false }, title = { Text(stringResource(R.string.download_clear_completed)) },
+        text = { Text(stringResource(R.string.download_clear_completed_offline)) },
+        dismissButton = { TextButton(onClick = { confirmClearCompleted = false }) { Text(stringResource(R.string.download_cancel)) } },
+        confirmButton = { TextButton(onClick = { delete(rows.filter { it.item.status == "completed" }, false); confirmClearCompleted = false }) { Text(stringResource(R.string.download_delete)) } },
+    )
+    rename?.let { row ->
+        var name by remember(row.key) { mutableStateOf(row.item.fileName) }
+        AlertDialog(onDismissRequest = { rename = null }, title = { Text(stringResource(R.string.download_rename)) },
+            text = { OutlinedTextField(name, { name = it }, singleLine = true) },
+            dismissButton = { TextButton(onClick = { rename = null }) { Text(stringResource(R.string.download_cancel)) } },
+            confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { if(row.offline) offline?.rename(row.item.id, name) else coordinator.rename(row.item.id, name); rename = null }) { Text(stringResource(R.string.download_save)) } },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

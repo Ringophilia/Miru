@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -22,6 +23,7 @@ fun MediaSheet(
     onDismiss: () -> Unit,
     onPlay: (DetectedMedia) -> Unit,
     resolve: (suspend (DetectedMedia) -> String?)? = null,
+    onDownload: ((DetectedMedia) -> Unit)? = null,
 ) {
     val currentResolver by rememberUpdatedState(resolve)
     var showShort by remember { mutableStateOf(false) }
@@ -56,7 +58,14 @@ fun MediaSheet(
                                 if(!item.playable) Text(stringResource(R.string.media_web_only))
                             }
                         },
-                        trailingContent = { IconButton(onClick = { onPlay(item) }, enabled = item.playable) { Icon(Icons.Outlined.PlayArrow, stringResource(R.string.media_play)) } },
+                        trailingContent = {
+                            Row {
+                                if(onDownload != null) IconButton(onClick = { onDownload(item) }, enabled = item.playable, modifier = Modifier.testTag("media_download_${item.id}")) {
+                                    Icon(Icons.Outlined.Download, stringResource(R.string.media_download))
+                                }
+                                IconButton(onClick = { onPlay(item) }, enabled = item.playable) { Icon(Icons.Outlined.PlayArrow, stringResource(R.string.media_play)) }
+                            }
+                        },
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                     )
                 }

@@ -1,0 +1,15 @@
+<resources>
+    <string name="download_offline_quality">离线视频 · %1$s</string>
+    <string name="download_removing">正在删除离线内容</string>
+    <string name="download_delete_offline">删除离线视频？</string>
+    <string name="download_delete_offline_detail">离线视频会同时删除下载记录与离线内容。删除后有 6 秒可以撤销。</string>
+    <string name="download_keep_ordinary_files">保留普通下载文件</string>
+    <string name="download_clear_completed_offline">这会清除已完成的下载记录及离线视频内容。普通下载的文件会保留在设备上。</string>
+    <string name="offline_download_title">离线下载视频</string>
+    <string name="offline_video_name">视频名称</string>
+    <string name="offline_quality_title">选择清晰度</string>
+    <string name="offline_quality_unavailable">没有可下载的清晰度</string>
+    <string name="offline_download_detail">下载后可在「下载内容 → 视频」中断网播放。大小取决于视频长度与清晰度。</string>
+    <string name="offline_private_warning">此视频来自无痕标签。离线视频和下载记录会保留在设备上，关闭无痕标签不会将其删除。</string>
+    <string name="offline_private_acknowledgement">我了解此离线下载会保留在设备上</string>
+</resources>

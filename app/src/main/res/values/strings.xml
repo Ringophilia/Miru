@@ -6,6 +6,10 @@
     <string name="view_downloads">查看</string>
     <string name="download_failed">无法开始下载，请重试。</string>
     <string name="app_name">Miru</string>
+    <string name="offline_preparing">准备离线视频</string>
+    <string name="offline_preparing_detail">正在读取清晰度和音轨…</string>
+    <string name="offline_failed">无法准备此视频的离线下载。直播或受保护的视频请在网页中播放。</string>
+    <string name="offline_unavailable">离线视频尚未完成或已被删除。</string>
     <string name="unsupported_address">无法打开这个地址。请输入 http 或 https 网址。</string>
     <string name="unavailable_route">此页面暂不可用。</string>
     <string name="closed_tab">已关闭标签页</string>

@@ -9,6 +9,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
+import app.miru.common.DownloadConcurrency
 import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
@@ -194,7 +195,11 @@ class DownloadCoordinator private constructor(private val context: Context) {
         }
     } } }
     private suspend fun runDownload(id: String) {
+        var permit: AutoCloseable? = null
         try {
+            val task = currentCoroutineContext()[Job]
+            permit = DownloadConcurrency.transfers.acquire { task?.isActive == false }
+            currentCoroutineContext().ensureActive()
             var item = dao.get(id) ?: return
             dao.status(id,"running")
             val file = File(tempDir,id)
@@ -249,6 +254,6 @@ class DownloadCoordinator private constructor(private val context: Context) {
                 val code=when { waiting -> null; error is HttpFailure -> "HTTP_${error.status}"; error is java.io.FileNotFoundException -> "STORAGE"; error.message in setOf("DIRECTORY_REQUIRED","DIRECTORY","AUTH_REQUIRED","SOURCE_EXPIRED","RANGE_CHANGED","INVALID_RANGE","INVALID_LENGTH") -> error.message; else -> "NETWORK" }
                 dao.status(id,if(waiting)"waiting_network" else "failed",code)
             }
-        } finally { active.remove(id,currentCoroutineContext()[Job]); if(serviceActive) pump() }
+        } finally { permit?.close(); active.remove(id,currentCoroutineContext()[Job]); if(serviceActive) pump() }
     }
 }

@@ -1,0 +1,14 @@
+<resources>
+    <string name="offline_title">Offline videos</string>
+    <string name="offline_video">Offline video</string>
+    <string name="offline_downloading">Downloading %1$d videos</string>
+    <string name="offline_waiting_network">Waiting for network</string>
+    <string name="offline_complete">Offline video ready</string>
+    <string name="offline_paused">Paused</string>
+    <string name="offline_failed">Download failed; tap to view</string>
+    <string name="offline_auth_required">Return to the source page and sign in again</string>
+    <string name="offline_pause_all">Pause all</string>
+    <string name="offline_cancel_all">Cancel all</string>
+    <string name="offline_resume">Resume</string>
+    <string name="offline_cancel">Cancel</string>
+</resources>

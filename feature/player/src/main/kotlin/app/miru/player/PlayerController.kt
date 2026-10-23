@@ -8,6 +8,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.Uri
 import android.provider.OpenableColumns
+import app.miru.offline.OfflineCoordinator
 import androidx.media3.common.*
 import androidx.media3.datasource.*
 import androidx.media3.datasource.okhttp.OkHttpDataSource
@@ -106,7 +107,9 @@ class PlayerController(
         initialization = scope.launch {
             try {
             val options = settingsRepository.settings.first()
-            val disk = withContext(Dispatchers.IO) { if(request.isPrivate) null else runCatching { PlaybackCache.get(context) }.getOrNull() }
+            val offline = request.offlineId?.let { id -> OfflineCoordinator.get(context).playback(id)
+                ?: throw java.io.IOException("Offline media is unavailable") }
+            val disk = withContext(Dispatchers.IO) { if(request.isPrivate || offline != null) null else runCatching { PlaybackCache.get(context) }.getOrNull() }
             val saved = if(restore && !request.isPrivate) withContext(Dispatchers.IO) {
                 runCatching { PlaybackHistory.get(context).progress().get(progressKey)?.let { PlaybackPolicy.resume(it.position, it.duration) } ?: 0L }.getOrDefault(0L)
             } else 0L
@@ -122,11 +125,15 @@ class PlayerController(
             created.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
             created.setHandleAudioBecomingNoisy(true)
             mediaSession = MediaSession.Builder(context, created).setId(java.util.UUID.randomUUID().toString()).build()
-            val upstream = DefaultDataSource.Factory(context, httpFactory())
+            // A completed offline item has an upstream-free factory for both manifests and
+            // segments. Missing cache bytes fail locally instead of silently using mobile data.
+            val upstream: DataSource.Factory = offline?.dataSourceFactory ?: DefaultDataSource.Factory(context, httpFactory())
             val partition = PlaybackPolicy.digest(headers.entries.sortedBy { it.key.lowercase() }.joinToString { "${it.key.lowercase()}=${it.value}" })
             val cached: DataSource.Factory = if(disk == null) upstream else CacheDataSource.Factory().setCache(disk).setUpstreamDataSourceFactory(upstream)
                 .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR).setCacheKeyFactory { spec -> "$partition:${PlaybackPolicy.normalizedCacheUrl(spec.uri.toString(), spec.position > 0 || spec.length != C.LENGTH_UNSET.toLong())}" }
-            val item = MediaItem.Builder().setUri(request.url).setMediaMetadata(MediaMetadata.Builder().setTitle(if(request.isPrivate) context.getString(R.string.player_title) else request.title).build()).apply { request.mimeType?.let(::setMimeType) }.build()
+            val item = (offline?.mediaItem?.buildUpon() ?: MediaItem.Builder().setUri(request.url))
+                .setMediaMetadata(MediaMetadata.Builder().setTitle(if(request.isPrivate) context.getString(R.string.player_title) else request.title).build())
+                .apply { request.mimeType?.let(::setMimeType) }.build()
             val type = request.mimeType.orEmpty().lowercase()
             val path = android.net.Uri.parse(request.url).path.orEmpty().lowercase()
             val source = when {

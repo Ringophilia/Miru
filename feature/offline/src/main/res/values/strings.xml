@@ -1,0 +1,14 @@
+<resources>
+    <string name="offline_title">视频离线</string>
+    <string name="offline_video">离线视频</string>
+    <string name="offline_downloading">正在下载 %1$d 个视频</string>
+    <string name="offline_waiting_network">等待网络</string>
+    <string name="offline_complete">离线视频已就绪</string>
+    <string name="offline_paused">已暂停</string>
+    <string name="offline_failed">下载失败，轻触以查看</string>
+    <string name="offline_auth_required">请返回原网页重新验证登录后继续</string>
+    <string name="offline_pause_all">全部暂停</string>
+    <string name="offline_cancel_all">全部取消</string>
+    <string name="offline_resume">继续</string>
+    <string name="offline_cancel">取消</string>
+</resources>

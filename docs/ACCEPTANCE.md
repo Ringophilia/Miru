@@ -2,7 +2,7 @@
 
 审计日期：2026-10-23（Asia/Shanghai）。需求来源为 [MIRU-SPEC.md](../MIRU-SPEC.md) 全文，包含第 11 节、其他章节的细节与附录，不仅是已经实现的功能。
 
-本次审计基线为 **42daa92 / 0.4.0**；此后 0.4.1 离线功能正在实现，应在取得新证据后更新本矩阵。不能把开发中的文件、旧版本测试或绿色构建等同于最终验收。
+原始审计基线为 **42daa92 / 0.4.0**；0.4.1 离线新增证据见 E4，并只更新被实际覆盖的条目。不能把开发中的文件、旧版本测试或绿色构建等同于最终验收。未注册的超分模块与后续 uBO 修复尚不计为完成。
 
 状态定义：
 
@@ -22,6 +22,7 @@ P0 是首个可用版本门，P1 是第二轮功能，P2 在规范中为“有�
 | E3 | [M3-VALIDATION.md](M3-VALIDATION.md)；`artifacts/m3/delivery-device.log` / `delivery-build.log` | 基线常规设备 **38/38**（137.221 s）、JVM **42/42**、Debug / ARM64 release 构建和 Lint。已读取最终日志成功行；设备为 x86_64 API 35。 |
 | E3-P | `M3ProbeIntegrationTest`、`M3MediaPanelIntegrationTest`、`ResolutionProbeTest` | 受控 HTTP 探测、范围读取 / 缓存 / 取消 / 认证隔离、H.264 / H.265 解析、真实 Gecko 面板显示。 |
 | E3-T | `M3TracksIntegrationTest`、`LocalSubtitlesTest`；`artifacts/m3/m3-*.png` | 实际 HLS 音轨 / 字幕切换、内存导入 SRT / VTT / ASS、按时间显示、解码重建、样式。没有完整系统 SAF 点击验收。 |
+| E4 | [M3-OFFLINE-VALIDATION.md](M3-OFFLINE-VALIDATION.md)、`artifacts/m3-offline/` | API35离线 HLS / DASH 完整停源播放、清晰度 / 音轨 / 字幕、缓存分区 / 取消竞态、真实私密下载入口和统一列表；47项常规 / 54项JVM。保留并行录屏轮9项失败，不能代替真机 / 录屏兼容矩阵。 |
 | SRC | 当前模块源码、Gradle、manifest、资源和 `design/tokens.json` | 证明存在代码 / 配置。单独不能证明运行正确、无泄漏、无掉帧或兼容所有站点。 |
 | LEGAL | [OPEN-SOURCE-REVIEW.md](OPEN-SOURCE-REVIEW.md)、[third_party/README.md](../third_party/README.md) | M0 源码公开范围的检查和后续依赖说明；不是含 uBO / 嵌套依赖的完整二进制分发审查。 |
 
@@ -96,7 +97,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | P9 P0 流缓存 | implemented | 独立 SimpleCache LRU、签名参数规则、清单走网络、auth 摘要分区、私密绕过；E2 / E3。 | 真断网已看部分回拖、真实重签名 / 私密 / 缓存错误矩阵，8GB上限设置差异。 |
 | P10 P0 预缓冲 | implemented | DefaultLoadControl、默认60s / 半数 min≥15s、起播1s / 重缓冲2.5s / 回退30s、DataSaver判断。 | 300s设置缺失；系统计费 / 白名单 / DataSaver设备专项。 |
 | P11 P1 磁盘区段 | pending | 当前只画已播放和 bufferedPosition，不是 getCachedSpans。 | 不连续磁盘区段映射到时间、渲染和断网回拖对照。 |
-| P12 P1 离线视频 | pending | 基线无 DownloadManager / Service。0.4.1进行中不能预记通过。 | HLS选清晰度 / DASH、独立非LRU filesDir/offline、断网完整实播、重启 / 删除 / 下载页。 |
+| P12 P1 离线视频 | implemented | E4：真实 DownloadManager / Service、两档HLS选低档、DASH、独立非LRU缓存、停源完整播放和音轨字幕；完成项强停后在模拟器飞行模式开启、无默认网络时经UUID重开完整播放。 | 真机飞行模式 / 网络切换 / 后台 / 手机重启；下载进行中杀进程续传与重签名网站矩阵。 |
 | P13 P1 超分 | pending | 无 feature:superres / GLSL / GL SurfaceView 渲染链。 | Anime4K / FSR模式S/M/L、统计 / 比较分割线；指定 8 Gen2 级设备 540P动画→1080P均衡<12ms。 |
 | P14 P1 超分 benchmark / 保护 | pending | 无实现。 | 3s720P三档，推荐<16ms最高档、记忆；倍速>1.5 / HDR / PiP、30帧85%降档、SEVERE / CRITICAL、错误直显不断播。 |
 | P15 P0 解码 | implemented | MediaCodecSelector auto / hw / sw、保位置重建、失败软解一次；E3-T软件重建实播。 | 硬解初始化失败路径受控复现、切换提示、各解码器 / 网络认证重建和无中断验证。 |
@@ -118,7 +119,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | D3 P0 传输 | implemented | 分段 / Room / Range / checkpoint / ETag / 重试；E1曾500MB force-stop续传SHA通过。 | 当前最终源码重验500MB、手机重启 / 网络切换 / 真断网、分片重试3次退避、Basic/Bearer及源失效边界。 |
 | D4 P0 通知 | implemented | FGS、分组、单项进度 / 暂停 / 续传 / 取消 / 完成打开，SRC。 | 真机通知权限 / 按钮 / 同时任务 / 系统FGS时限与无网络状态专项。 |
 | D5 P1 动画 | pending | 菜单有活动数量，不是飞入箭头 / 菜单6dp进度点。 | §7.3飞入500ms / 弹跳及完成形变，减少动画模式。 |
-| D6 P1 普通 / 离线统一 | pending | 基线仅普通下载页。 | 离线进度 / 暂停 / 继续 / 删除 / 撤销 / 搜索 / 分类一致，离线不得被清流缓存删除。 |
+| D6 P1 普通 / 离线统一 | implemented | E4/API35：同一ALL/VIDEO列表、日期、搜索、混合多选 / 删除撤销 / 重命名与点击播放；API实际暂停续传 / 取消、清流缓存保留离线。 | 界面暂停 / 继续 / 取消按钮的实际点击专项；验证范围为受控fixture / x86_64，真机通知与长时后台矩阵继续列在D4 / P12。 |
 | D7 P1 存储条 | pending | 未实现。 | 应用已用 / 设备剩余准确计算、实时更新和可访问性。 |
 
 ## 第 2–6 / 8–10 / 12–14 节补充要求
