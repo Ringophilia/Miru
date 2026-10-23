@@ -63,3 +63,12 @@ renderer 优先使用 `GL_EXT_disjoint_timer_query`；没有可用 GPU timer 时
 2026-10-23：`commit-validation-build.log` 记录 Debug / AndroidTest 构建成功（3m 8s）；本模块 HookShader 2 项、Policy 8 项 JVM 测试全部通过。`artifacts/m3-quality/commit-superres-device.log` 最终 **3/3 通过，98.099 秒**：三档 Anime / FSR 的真实 60 帧、实际 shader 故障直显回退，以及暂停对比 / 切档 / 画面比例 / 旋转同一播放器的全部断言均通过。此前失败保留作为修复依据。
 
 这是所述 API 35 专项的终态结果；上文标为未验收的 benchmark UI、物理 GPU 性能与完整回归仍未完成。版本号与其他待验证改动由后续应用整合批次记录，不把此模块提交当作完整 0.5.0 发布。
+
+## 性能测试对话框后续专项
+
+`SuperResBenchmarkUiIntegrationTest` 新增两项实际设置界面测试，在 `artifacts/browser-core/clipping-fix-device.log` 均通过。该轮总计9项中8通过、1项页面表单触摸失败；这里不将联合轮描述为全部通过。
+
+- 从真实菜单进入设置 / 播放器 / 本机测试，三档均完成真实测量并展示计时类型。API35 软件模拟器测得极速201.7、均衡263.4、高画质457.2 ms/帧，均为 **synchronized render time**；界面正确显示无推荐档位，未提供应用推荐按钮，也未静默修改设置。这些是模拟器回退计时，不是硬件GPU或<12ms验收成绩。
+- 有真实帧进度后取消并重开，再把Activity切至后台；界面报告中断，没有伪造成功结果。取消 / 中断 / 关闭后新增GL和ExoPlayer线程均退出，偏好保持不变。生产每档45秒期限未改。
+
+这补齐上述 benchmark UI 的测量、无推荐与生命周期范围；有硬件档位实际低于16ms时的“应用推荐”及持久化仍需对应设备验证。物理性能、温控和驱动矩阵继续保留。
