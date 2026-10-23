@@ -5,6 +5,7 @@ package app.miru.browser.engine
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import java.io.File
 import java.security.MessageDigest
@@ -12,13 +13,13 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import mozilla.components.browser.engine.gecko.GeckoEngine
@@ -44,8 +45,8 @@ internal class UblockController(
     private val onOpenUrl: (String) -> Unit,
 ) {
     private val preferences = context.getSharedPreferences("miru_adblock", Context.MODE_PRIVATE)
-    private var desiredEnabled = preferences.getBoolean("enabled", true)
-    private val mutableState = MutableStateFlow(AdblockSnapshot(enabled = desiredEnabled))
+    private val installation = UblockInstallState(preferences.getBoolean("enabled", true))
+    private val mutableState = MutableStateFlow(AdblockSnapshot(enabled = installation.desiredEnabled))
     val state = mutableState.asStateFlow()
     private val mutablePopup = MutableStateFlow<EngineSession?>(null)
     val popup = mutablePopup.asStateFlow()
@@ -55,10 +56,10 @@ internal class UblockController(
     private val tabActions = mutableMapOf<String, Action>()
     private val navigationObservers = mutableMapOf<String, Pair<EngineSession, EngineSession.Observer>>()
     private val unconfirmedPages = mutableSetOf<String>()
-    private val readyVersions = mutableSetOf<String>()
-    private var setupFinished = false
     private var startup = CompletableDeferred<Unit>()
-    private var installJob: Job? = null
+    private data class PendingInstall(val attempt: Long, val result: CompletableDeferred<WebExtension>)
+    private var pendingInstall: PendingInstall? = null
+    private var onEnabledApplied: (() -> Unit)? = null
     private val popupObserver = object : EngineSession.Observer {
         override fun onWindowRequest(windowRequest: WindowRequest) {
             if (windowRequest.type == WindowRequest.Type.CLOSE) closePopup()
@@ -95,70 +96,142 @@ internal class UblockController(
 
     fun retry() {
         val target = engine ?: return
-        if (installJob?.isActive == true) return
+        val attempt = installation.beginAttempt() ?: run {
+            Log.d("MiruAdblock", "Startup is still pending; retaining the existing native operation")
+            return
+        }
         startup = CompletableDeferred()
-        setupFinished = false
-        mutableState.value = mutableState.value.copy(status = AdblockStatus.INSTALLING, error = null)
-        installJob = scope.launch {
-            try {
-                withTimeout(240_000) {
-                Log.d("MiruAdblock", "Listing installed extensions")
-                val installed = suspendCancellableCoroutine<List<WebExtension>> { continuation ->
-                    target.listInstalledWebExtensions({ if(continuation.isActive) continuation.resume(it) }, { if(continuation.isActive) continuation.resumeWithException(it) })
-                }.firstOrNull { it.id == UBLOCK_ID }
-                Log.d("MiruAdblock", "Installed uBO found=${installed != null}, version=${installed?.getMetadata()?.version}")
-                val selected = if (installed == null || versionOlder(installed.getMetadata()?.version.orEmpty(), UBLOCK_VERSION)) {
-                    val localFile = withContext(Dispatchers.IO) { verifiedPackage() }
-                    suspendCancellableCoroutine<WebExtension> { continuation ->
-                        val operation = target.installWebExtension(Uri.fromFile(localFile).toString(), onSuccess = { if(continuation.isActive) continuation.resume(it) }, onError = { if(continuation.isActive) continuation.resumeWithException(it) })
-                        continuation.invokeOnCancellation { scope.launch(Dispatchers.Main.immediate) { operation.cancel() } }
-                    }
-                } else installed
-                extension = selected
-                Log.d("MiruAdblock", "Selected uBO version=${selected.getMetadata()?.version}, enabled=${selected.isEnabled()}, private=${selected.isAllowedInPrivateBrowsing()}")
-                if (!selected.isAllowedInPrivateBrowsing()) {
-                    selected.getMetadata()?.version?.let(readyVersions::remove)
-                    extension = suspendCancellableCoroutine { continuation ->
-                        target.setAllowedInPrivateBrowsing(selected, true, { if(continuation.isActive) continuation.resume(it) }, { if(continuation.isActive) continuation.resumeWithException(it) })
+        publish()
+        scope.launch {
+            val startedAt = SystemClock.elapsedRealtime()
+            var stage = "list"
+            fun logStage(value: String) {
+                stage = value
+                Log.d("MiruAdblock", "Startup stage=$value elapsedMs=${SystemClock.elapsedRealtime() - startedAt}")
+            }
+            val watchdog: Job = scope.launch {
+                while (installation.activeAttempt == attempt) {
+                    delay(240_000)
+                    if (installation.deadlineExceeded(attempt)) {
+                        Log.w("MiruAdblock", "Startup deadline exceeded stage=$stage elapsedMs=${SystemClock.elapsedRealtime() - startedAt}; native operation retained")
+                        publish()
+                        startup.complete(Unit)
                     }
                 }
-                applyDesiredEnabled()
-                setupFinished = true
-                Log.d("MiruAdblock", "Extension setup finished; readyVersions=$readyVersions")
+            }
+            try {
+                logStage("list")
+                val listed = suspendCancellableCoroutine<List<WebExtension>> { continuation ->
+                    target.listInstalledWebExtensions({ if(continuation.isActive) continuation.resume(it) }, { if(continuation.isActive) continuation.resumeWithException(it) })
+                }.firstOrNull { it.id == UBLOCK_ID }
+                // Native onInstalled/onReady may have arrived while the list request was running.
+                val installed = newestExtension(listed, extension)
+                Log.d("MiruAdblock", "Installed uBO found=${installed != null}, version=${installed?.getMetadata()?.version}")
+                val selected = if (installed == null || versionOlder(installed.getMetadata()?.version.orEmpty(), UBLOCK_VERSION)) {
+                    logStage("verify-package")
+                    val localFile = withContext(Dispatchers.IO) { verifiedPackage() }
+                    installation.startNativeInstall(attempt)
+                    logStage("native-install")
+                    val pending = PendingInstall(attempt, CompletableDeferred())
+                    pendingInstall = pending
+                    target.installWebExtension(
+                        Uri.fromFile(localFile).toString(),
+                        onSuccess = { if (pendingInstall === pending) pending.result.complete(it) },
+                        onError = { if (pendingInstall === pending) pending.result.completeExceptionally(it) },
+                    )
+                    try {
+                        try {
+                            pending.result.await()
+                        } catch (failure: Exception) {
+                            // Native errors and lifecycle events can cross in the event queue.
+                            // A genuine ready event for the required version takes precedence.
+                            extension?.takeIf {
+                                installation.hasReadyVersion(it.getMetadata()?.version) &&
+                                    !versionOlder(it.getMetadata()?.version.orEmpty(), UBLOCK_VERSION)
+                            } ?: throw failure
+                        }
+                    } finally {
+                        if (pendingInstall === pending) pendingInstall = null
+                    }
+                } else installed
+                if (installation.nativeInstallPending) installation.finishNativeInstall(attempt)
+                installation.startSetup(attempt)
+                selectExtension(newestExtension(selected, extension) ?: selected)
+                Log.d("MiruAdblock", "Selected uBO version=${selected.getMetadata()?.version}, enabled=${selected.isEnabled()}, private=${selected.isAllowedInPrivateBrowsing()}")
+                while (true) {
+                    val current = checkNotNull(extension)
+                    if (!current.isAllowedInPrivateBrowsing()) {
+                        installation.invalidateReady(current.getMetadata()?.version)
+                        logStage("private-permission")
+                        val permitted = suspendCancellableCoroutine<WebExtension> { continuation ->
+                            target.setAllowedInPrivateBrowsing(current, true, { if(continuation.isActive) continuation.resume(it) }, { if(continuation.isActive) continuation.resumeWithException(it) })
+                        }
+                        check(permitted.isAllowedInPrivateBrowsing()) { "Private browsing permission was not applied" }
+                        selectExtension(permitted)
+                    }
+                    logStage("enabled-state")
+                    applyDesiredEnabled()
+                    installation.observeInstalled(checkNotNull(extension).installState())
+                    // A setting can change while an enable/disable callback is pending. Read it
+                    // again and apply the latest intent before publishing setup completion.
+                    if (installation.finishSetup(attempt)) break
+                }
+                logStage("setup-finished")
                 attachSessionHandlers(store.state)
                 publish()
                 completeStartupIfReady()
-                }
+                onEnabledApplied?.also { onEnabledApplied = null }?.invoke()
             } catch (failure: Exception) {
                 Log.e("MiruAdblock", "Unable to initialize bundled extension", failure)
-                mutableState.value = mutableState.value.copy(status = AdblockStatus.FAILED, error = failure.javaClass.simpleName)
-                startup.complete(Unit)
+                if (installation.fail(attempt, failure.javaClass.simpleName)) {
+                    publish()
+                    startup.complete(Unit)
+                }
+            } finally {
+                watchdog.cancel()
             }
         }
     }
 
     fun setEnabled(enabled: Boolean, onApplied: () -> Unit = {}) {
-        desiredEnabled = enabled
+        installation.setDesiredEnabled(enabled)
         preferences.edit().putBoolean("enabled", enabled).apply()
-        mutableState.value = mutableState.value.copy(enabled = enabled, error = null)
-        scope.launch { runCatching { applyDesiredEnabled(); onApplied() }.onFailure { mutableState.value = mutableState.value.copy(status = AdblockStatus.FAILED, error = it.javaClass.simpleName) } }
+        onEnabledApplied = onApplied
+        publish()
+        // All permission and enabled-state writes run in the same startup driver. During a slow
+        // install this updates the desired state without opening a second native operation.
+        if (installation.activeAttempt == null) retry()
     }
 
     private suspend fun applyDesiredEnabled() {
         val target = engine ?: return
         val current = extension ?: return
-        val desired = desiredEnabled
+        val desired = installation.desiredEnabled
         if (current.isEnabled() != desired) {
-            current.getMetadata()?.version?.let(readyVersions::remove)
-            if (desired) mutableState.value = mutableState.value.copy(status = AdblockStatus.INSTALLING)
-            extension = suspendCancellableCoroutine { continuation ->
+            installation.invalidateReady(current.getMetadata()?.version)
+            val applied = suspendCancellableCoroutine<WebExtension> { continuation ->
                 val success: (WebExtension) -> Unit = { if(continuation.isActive) continuation.resume(it) }
                 val error: (Throwable) -> Unit = { if(continuation.isActive) continuation.resumeWithException(it) }
                 if (desired) target.enableWebExtension(current, onSuccess = success, onError = error)
                 else target.disableWebExtension(current, onSuccess = success, onError = error)
             }
+            selectExtension(applied)
         }
         publish()
+    }
+
+    private fun selectExtension(value: WebExtension) {
+        extension = value
+        installation.observeInstalled(value.installState())
+    }
+
+    private fun WebExtension.installState() = UblockInstallState.Installed(getMetadata()?.version, isEnabled(), isAllowedInPrivateBrowsing())
+
+    private fun newestExtension(first: WebExtension?, second: WebExtension?): WebExtension? = when {
+        first == null -> second
+        second == null -> first
+        versionOlder(second.getMetadata()?.version.orEmpty(), first.getMetadata()?.version.orEmpty()) -> first
+        else -> second
     }
 
     fun openPopup(): Boolean {
@@ -182,19 +255,15 @@ internal class UblockController(
     private fun publish() {
         val current = extension
         val installed = current != null
-        val enabled = current?.isEnabled() ?: desiredEnabled
+        val enabled = current?.isEnabled() ?: installation.desiredEnabled
         val badge = if(enabled) currentAction()?.badgeText.orEmpty() else ""
         mutableState.value = mutableState.value.copy(
             installed = installed,
             enabled = enabled,
             version = current?.getMetadata()?.version,
             privateAllowed = current?.isAllowedInPrivateBrowsing() == true,
-            status = when {
-                mutableState.value.error != null -> AdblockStatus.FAILED
-                installed && !enabled -> AdblockStatus.DISABLED
-                installed && setupFinished && current?.getMetadata()?.version in readyVersions -> AdblockStatus.READY
-                else -> mutableState.value.status
-            },
+            status = installation.status,
+            error = installation.error,
             badgeText = badge,
             pageNeedsReload = enabled && (badge == "!" || store.state.selectedTabId in unconfirmedPages),
             blockedCount = parseBadgeCount(badge),
@@ -214,14 +283,14 @@ internal class UblockController(
                             if(!loading) return
                             val url = store.state.tabs.firstOrNull { it.id == id }?.content?.url.orEmpty()
                             if(!url.startsWith("http://") && !url.startsWith("https://")) return
-                            if(desiredEnabled && mutableState.value.status != AdblockStatus.READY) unconfirmedPages += id
+                            if(installation.desiredEnabled && mutableState.value.status != AdblockStatus.READY) unconfirmedPages += id
                             else unconfirmedPages -= id
                             publish()
                         }
                     }
                     navigationObservers[id] = session to observer
                     session.register(observer)
-                    if(tab.content.loading && desiredEnabled && mutableState.value.status != AdblockStatus.READY) unconfirmedPages += id
+                    if(tab.content.loading && installation.desiredEnabled && mutableState.value.status != AdblockStatus.READY) unconfirmedPages += id
                 }
                 if(current == null) return@let
                 if (!current.hasActionHandler(session)) current.registerActionHandler(session, object : ActionHandler {
@@ -249,17 +318,33 @@ internal class UblockController(
         }
         override fun onUpdatePermissionRequest(extension: WebExtension, newPermissions: List<String>, newOrigins: List<String>, newDataCollectionPermissions: List<String>, onPermissionsGranted: (Boolean) -> Unit) { onPermissionsGranted(false) }
         override fun onOptionalPermissionsRequest(extension: WebExtension, permissions: List<String>, origins: List<String>, dataCollectionPermissions: List<String>, onPermissionsGranted: (Boolean) -> Unit) { onPermissionsGranted(false) }
-        override fun onInstalled(extension: WebExtension) { if(extension.id == UBLOCK_ID) { this@UblockController.extension = extension; publish() } }
+        override fun onInstalled(extension: WebExtension) { if(extension.id == UBLOCK_ID) { selectExtension(newestExtension(extension, this@UblockController.extension) ?: extension); publish() } }
         override fun onReady(extension: WebExtension) {
             if(extension.id != UBLOCK_ID) return
+            // Ignore an old-version ready callback while the bundled upgrade is still pending.
+            if(installation.nativeInstallPending && versionOlder(extension.getMetadata()?.version.orEmpty(), UBLOCK_VERSION)) return
             this@UblockController.extension = extension
             Log.d("MiruAdblock", "Native ready version=${extension.getMetadata()?.version}")
-            extension.getMetadata()?.version?.let(readyVersions::add)
+            val recover = installation.observeReady(extension.installState())
+            // A genuine ready event proves this install completed even when Gecko's install
+            // result arrives late. The retained driver still has to apply privacy/enabled state.
+            pendingInstall?.let { pending ->
+                if (installation.activeAttempt == pending.attempt && installation.nativeInstallPending) pending.result.complete(extension)
+            }
             attachSessionHandlers(store.state); publish()
             completeStartupIfReady()
+            if (recover) retry()
         }
-        override fun onEnabled(extension: WebExtension) { if(extension.id == UBLOCK_ID) { this@UblockController.extension = extension; publish() } }
-        override fun onDisabled(extension: WebExtension) { if(extension.id == UBLOCK_ID) { this@UblockController.extension = extension; publish() } }
+        override fun onEnabled(extension: WebExtension) {
+            if(extension.id != UBLOCK_ID) return
+            selectExtension(extension); publish()
+            if (installation.needsReconciliation) retry()
+        }
+        override fun onDisabled(extension: WebExtension) {
+            if(extension.id != UBLOCK_ID) return
+            selectExtension(extension); publish()
+            if (installation.needsReconciliation) retry()
+        }
         override fun onBrowserActionDefined(extension: WebExtension, action: Action) { if(extension.id == UBLOCK_ID) { defaultAction = action; publish() } }
         override fun onToggleActionPopup(extension: WebExtension, engineSession: EngineSession, action: Action, isPrivate: Boolean): EngineSession? {
             if(extension.id != UBLOCK_ID) { engineSession.close(); return null }
@@ -272,11 +357,11 @@ internal class UblockController(
             if(extension.id == UBLOCK_ID) { closePopup(); onNewTab(engineSession, url, active, isPrivate) } else engineSession.close()
         }
         override fun onOpenOptionsPage(extension: WebExtension) { if(extension.id == UBLOCK_ID) openDashboard() }
-        override fun onDisabledExtensionProcessSpawning() { mutableState.value = mutableState.value.copy(status = AdblockStatus.FAILED, error = "ExtensionProcessUnavailable") }
+        override fun onDisabledExtensionProcessSpawning() { installation.extensionProcessUnavailable(); publish() }
     }
 
     private fun completeStartupIfReady() {
-        if (setupFinished && (!desiredEnabled || extension?.let { it.isEnabled() && it.getMetadata()?.version in readyVersions } == true)) startup.complete(Unit)
+        if (installation.setupFinished && installation.status in setOf(AdblockStatus.READY, AdblockStatus.DISABLED)) startup.complete(Unit)
     }
 
     private fun verifiedPackage(): File {
