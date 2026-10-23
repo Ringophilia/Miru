@@ -2,7 +2,7 @@
 
 审计日期：2026-10-23（Asia/Shanghai）。需求来源为 [MIRU-SPEC.md](../MIRU-SPEC.md) 全文，包含第 11 节、其他章节的细节与附录，不仅是已经实现的功能。
 
-原始审计基线为 **42daa92 / 0.4.0**；0.4.1 离线新增证据见 E4，并只更新被实际覆盖的条目。不能把开发中的文件、旧版本测试或绿色构建等同于最终验收。未注册的超分模块与后续 uBO 修复尚不计为完成。
+原始审计基线为 **42daa92 / 0.4.0**；0.4.1 离线新增证据见 E4，后续超分见 E5，并只更新被实际覆盖的条目。不能把开发中的文件、旧版本测试或绿色构建等同于最终验收。M1 首装仍按专项记录验证，完整阶段均未宣称完成。
 
 状态定义：
 
@@ -23,6 +23,9 @@ P0 是首个可用版本门，P1 是第二轮功能，P2 在规范中为“有�
 | E3-P | `M3ProbeIntegrationTest`、`M3MediaPanelIntegrationTest`、`ResolutionProbeTest` | 受控 HTTP 探测、范围读取 / 缓存 / 取消 / 认证隔离、H.264 / H.265 解析、真实 Gecko 面板显示。 |
 | E3-T | `M3TracksIntegrationTest`、`LocalSubtitlesTest`；`artifacts/m3/m3-*.png` | 实际 HLS 音轨 / 字幕切换、内存导入 SRT / VTT / ASS、按时间显示、解码重建、样式。没有完整系统 SAF 点击验收。 |
 | E4 | [M3-OFFLINE-VALIDATION.md](M3-OFFLINE-VALIDATION.md)、`artifacts/m3-offline/` | API35离线 HLS / DASH 完整停源播放、清晰度 / 音轨 / 字幕、缓存分区 / 取消竞态、真实私密下载入口和统一列表；47项常规 / 54项JVM。保留并行录屏轮9项失败，不能代替真机 / 录屏兼容矩阵。 |
+| E5 | [M3-SUPERRES-VALIDATION.md](M3-SUPERRES-VALIDATION.md)、`artifacts/m3-quality/commit-superres-device.log`；1432d83 | 超分10项JVM、API35三项真实GL专项通过（98.099秒），含60帧/故障回退/暂停画面与旋转。不是物理GPU性能成绩或完整播放器回归。 |
+| E6 | [OFFLINE-NOTIFICATION-VALIDATION.md](OFFLINE-NOTIFICATION-VALIDATION.md)、`artifacts/m3-quality/notification-cleanup-device.log`；35ad373 | 2项socket JVM、3项API35真实通知专项通过（27.387秒），含挂读暂停、完成UUID停源全片播放、哈希碰撞隔离。不是厂商后台或权限拒绝矩阵。 |
+| E7 | [M1-BLOCKLIST-VALIDATION.md](M1-BLOCKLIST-VALIDATION.md)、`artifacts/m1-blocklist/` | 固定官方blocklist资源、36项归档检查、最终APK原4079项与5项新增的逐项完整性；API35 fresh-profile离线/在线各1项签名安装与受控拦截通过。未证明多轮真机稳定性、MLBF读取追踪或在线更新。 |
 | SRC | 当前模块源码、Gradle、manifest、资源和 `design/tokens.json` | 证明存在代码 / 配置。单独不能证明运行正确、无泄漏、无掉帧或兼容所有站点。 |
 | LEGAL | [OPEN-SOURCE-REVIEW.md](OPEN-SOURCE-REVIEW.md)、[third_party/README.md](../third_party/README.md) | M0 源码公开范围的检查和后续依赖说明；不是含 uBO / 嵌套依赖的完整二进制分发审查。 |
 
@@ -63,7 +66,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 
 | ID / 优先级 | 状态 | 已有实现与证据 | 仍需完成 / 证明 |
 | --- | --- | --- | --- |
-| A1 P0 官方 uBO 首启 | implemented | 固定 1.75.0、SHA、官方签名 XPI、file install / private 授权；E1。 | 首装稳定性现有超时失败；全新 profile 多轮；d3ward 与桌面 Firefox + 同版 uBO 同规则比较。 |
+| A1 P0 官方 uBO 首启 | implemented | 固定1.75.0、SHA、签名XPI、file install/private授权；E1。E7新增官方blocklist资源及全新资料离线/在线各1轮真实拦截通过。 | 历史超时不能据两轮抵消；全新profile多轮/真机/更新路径、d3ward与桌面Firefox同版uBO同规则比较。 |
 | A2 P0 盾牌 / 本页计数 | implemented | 实际 browserAction badge、未就绪 / `!` 刷新警告；本地 fixture 计数 >0。 | 零 / 变化数字、SPA / 导航 / 私密、UI / 准确性矩阵。 |
 | A3 P0 站点 / 高级；元素拾取 P1 | implemented | 原版 popup-fenix / dashboard，站点白名单来源在 uBO。 | 关闭本站→刷新广告恢复专项、完整 Compose 外框 / 单一网站开关、元素拾取实际路径。 |
 | A4 P0 全局 / 例外 | implemented | enable / disable / 原版 dashboard 例外。 | 可删除原生例外列表与切换 / 重启 / 私密回归。 |
@@ -97,9 +100,9 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | P9 P0 流缓存 | implemented | 独立 SimpleCache LRU、签名参数规则、清单走网络、auth 摘要分区、私密绕过；E2 / E3。 | 真断网已看部分回拖、真实重签名 / 私密 / 缓存错误矩阵，8GB上限设置差异。 |
 | P10 P0 预缓冲 | implemented | DefaultLoadControl、默认60s / 半数 min≥15s、起播1s / 重缓冲2.5s / 回退30s、DataSaver判断。 | 300s设置缺失；系统计费 / 白名单 / DataSaver设备专项。 |
 | P11 P1 磁盘区段 | pending | 当前只画已播放和 bufferedPosition，不是 getCachedSpans。 | 不连续磁盘区段映射到时间、渲染和断网回拖对照。 |
-| P12 P1 离线视频 | implemented | E4：真实 DownloadManager / Service、两档HLS选低档、DASH、独立非LRU缓存、停源完整播放和音轨字幕；完成项强停后在模拟器飞行模式开启、无默认网络时经UUID重开完整播放。 | 真机飞行模式 / 网络切换 / 后台 / 手机重启；下载进行中杀进程续传与重签名网站矩阵。 |
-| P13 P1 超分 | pending | 无 feature:superres / GLSL / GL SurfaceView 渲染链。 | Anime4K / FSR模式S/M/L、统计 / 比较分割线；指定 8 Gen2 级设备 540P动画→1080P均衡<12ms。 |
-| P14 P1 超分 benchmark / 保护 | pending | 无实现。 | 3s720P三档，推荐<16ms最高档、记忆；倍速>1.5 / HDR / PiP、30帧85%降档、SEVERE / CRITICAL、错误直显不断播。 |
+| P12 P1 离线视频 | implemented | E4：真实DownloadManager/Service、HLS/DASH、独立非LRU缓存、停源音轨字幕和完成项强停后无网络UUID回放。E6：真实通知暂停/继续/取消及历史完成副本全片播放。 | 真机飞行模式 / 网络切换 / 后台 / 手机重启；下载进行中杀进程续传与重签名网站矩阵。 |
+| P13 P1 超分 | implemented | E5：Anime4K S/M/L与FSR真实渲染、统计/暂停比较分割线、切档及旋转同一播放器。 | 指定 8 Gen2 级设备 540P动画→1080P均衡<12ms；完整GPU/生命周期兼容矩阵。 |
+| P14 P1 超分 benchmark / 保护 | implemented | E5：真实720P片段、三档60真实帧和<16ms推荐/记忆代码；保护策略单测、实际shader错误直显。 | benchmark UI完整流程、倍速/HDR/PiP及真实热状态/过载设备矩阵；不能以策略单测代替硬件行为。 |
 | P15 P0 解码 | implemented | MediaCodecSelector auto / hw / sw、保位置重建、失败软解一次；E3-T软件重建实播。 | 硬解初始化失败路径受控复现、切换提示、各解码器 / 网络认证重建和无中断验证。 |
 | P16 P0 续播 | implemented | Room摘要键、10s/退出、>5s且距结尾>15s、从头按钮、私密不读写；E2 / E3。 | 具体时间“已从12:34继续”提示、可关记忆设置、进程杀死 / 全站边界。 |
 | P17 P0 PiP / Session / 焦点 | implemented | PiP3操作 / sourceRect / auto开关、MediaSession、焦点 / noisy配置。 | Home / Back / 多窗口 / 进程死亡、耳机 / 蓝牙 / 锁屏 / 来电 / 别App抢焦点真机矩阵。 |
@@ -246,7 +249,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | MP13 >300ms缓冲 / 实时网速 | implemented | 300ms延迟 / 40dp / 2.5dp已实现；缺网速与指定fade。 |
 | MP14 P2最后30s下一集卡 | pending | 依赖playlist。 |
 | MP15 入播放器共享元素或黑底0.92→1 | pending | 独立Activity已有，指定入场未验。 |
-| MP16 超分可拖对比分割线 | pending | P13。 |
+| MP16 超分可拖对比分割线 | implemented | P13/E5：实际暂停同帧比较像素差、SetProgress可访问操作通过；触摸与TalkBack完整专项待补。 |
 | MP17 系统PiP / sourceRect | implemented | E2已有sourceRect / PiP动作；旋转 / 实际缩放连贯仍需真机。 |
 
 | ID / 通用规则 / §7.5 | 状态 | 待完成或证据边界 |
@@ -284,7 +287,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | REL02 正式签名 | pending | 基线无keystore.properties，现包Android Debug证书；需维护者提供安全签名配置，不在源码 / 日志中存秘密。 |
 | REL03 完整第三方告知 / 对应源码 | pending | LEGAL仅旧快照；uBO GPL、过滤列表、Gecko嵌套依赖、Media3和将来shader真实产物须重新审查；关于需可取到全部许可和准确源码。 |
 | REL04 图标 / 素材来源 | implemented | 原画、trace脚本、PROVENANCE与项目许可排除说明已有；发布时维护者权利 / 服务条款确认仍保留，不因AI生成推定全授权。 |
-| REL05 每批验证后Git提交 | implemented | 42daa92已提交M1–M3累积源码；后续每批实现+验证+对应文档应原子commit并记录hash，未授权自动push / 商店发布。 |
+| REL05 每批验证后Git提交 | implemented | 已有42daa92累积源码、fbca123离线、0941e3a安装状态修复、1432d83超分、35ad373通知独立提交；每批实现+验证+对应文档后做本地commit并报告hash。未授权自动push / 商店发布。 |
 | DEMO01 每里程碑操作录屏 | implemented | 仅发现`artifacts/m0/miru-m0.mp4`，约3MB；它未覆盖后续全部验收。M1/M2/M3/M4分别需screenrecord与步骤 / 版本 / SHA记录。 |
 
 ## M0–M5 总门与 iOS
@@ -294,7 +297,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | M0 骨架 | implemented | 不能把“已进入M3开发”当作M0所有P0通过；B1/B3/B4/B10/B11/B13/B19/B20及通用UI / 真机门未闭合。 |
 | M1 拦截与下载 | implemented | 首装uBO、A1/d3ward、全部冷启动 / 真机、通知 / 网络 / 手机重启、完整下载动效和阶段录屏。 |
 | M2 播放核心 | implemented | 全P0手势 / 時间门 / 系统焦点 / DataSaver / 外部文件 / 公网矩阵、UI动效、真机与阶段录屏。 |
-| M3 画质与离线 | implemented | 当前仅首批清晰度 / 字幕音轨有证据；离线 / 缩略图 / 超分 / 性能 / 阶段录屏待完成。 |
+| M3 画质与离线 | implemented | 清晰度/字幕音轨、受控离线与超分渲染有E3/E4/E5；缩略图、完整性能/真机矩阵和阶段录屏仍未完成。 |
 | M4 打磨 / 发布 | pending | §7全部动效、§5.11全部设置、无障碍、§12指标、正式release / 许可门和录屏。 |
 | M5 iOS | pending | 规范明确列出，Android M4后启动；需独立原生工程及以下全部平台替代实现 / 编译 / 运行 / 真机验收。 |
 
@@ -319,7 +322,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | R4 webRequest范围 | implemented | 本地frame / HLS / DASH / MP4有证据，SW / 公网站点待；YouTube不接管按规范是预期，不能作所有媒体100%成功要求。 |
 | R5 鉴权 / 签名 | implemented | 401 / 403刷新一次、失败回网页、释放期间不重建已测；真实站点登录Cookie / token轮换需补。 |
 | R6 Transformer离线导出 | pending | P2实现前先验证支持；失败再用TS+Muxer，不预承诺能无重编码导出。 |
-| R7 GL SurfaceView同步 / HDR | pending | 超分尚未开始，需Cove测试片段同帧对照、HDR关闭和不断播回退。 |
+| R7 GL SurfaceView同步 / HDR | implemented | E5实际同帧比较、暂停重绘/旋转/故障回退；HDR策略存在，真实HDR/驱动矩阵仍待补。 |
 | R8 ABI体积 | pending（超标） | 已单ARM64仍111,123,172字节>110MB；需优化实际产物。 |
 | R9 uBO / Gecko分发许可 | pending | 全部第三方 / 列表 / 嵌套库实际产物审查与人工确认；旧M0开源检查不能覆盖含uBO发行。 |
 | R10 Google Play视频下载政策 | pending（条件项） | 仅在决定上架Play时需当时政策与站点限制核对；当前本地构建没有商店发布证据。保留此门，不主动上架。 |

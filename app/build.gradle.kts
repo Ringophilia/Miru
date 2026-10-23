@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import java.util.Properties
+import app.miru.buildlogic.GenerateGeckoBlocklistAssets
+import app.miru.buildlogic.GeckoBlocklistOverlay
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 
 plugins {
     alias(libs.plugins.android.application)
@@ -15,8 +18,10 @@ android {
         applicationId = "app.miru.browser"
         minSdk = 26
         targetSdk = 37
-        versionCode = 7
-        versionName = "0.4.1"
+        versionCode = 8
+        versionName = "0.5.0"
+        // Miru's application UI supports Chinese and English; web content keeps Gecko's locales.
+        resourceConfigurations += listOf("en", "zh")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
@@ -52,6 +57,26 @@ android {
 // 发布 APK 压缩 so（libxul 未压缩约 150 MB），安装时解压到 nativeLibraryDir。
 androidComponents {
     onVariants(selector().withBuildType("release")) { it.packaging.jniLibs.useLegacyPackaging.set(true) }
+    onVariants { variant ->
+        // Resolve the AAR actually selected by this variant. Updating Gecko without its
+        // corresponding reviewed snapshot fails closed instead of overlaying stale code.
+        val geckoAars = configurations.named("${variant.name}RuntimeClasspath").map { configuration ->
+            configuration.incoming.artifactView {
+                attributes.attribute(Attribute.of("artifactType", String::class.java), "aar")
+                componentFilter { component ->
+                    component is ModuleComponentIdentifier && component.group == "org.mozilla.geckoview" &&
+                        component.module == "geckoview-omni" && component.version == GeckoBlocklistOverlay.GECKO_ARTIFACT_VERSION
+                }
+            }.files
+        }
+        val overlay = tasks.register<GenerateGeckoBlocklistAssets>("generate${variant.name.replaceFirstChar { it.uppercaseChar() }}GeckoBlocklistAssets") {
+            geckoAar.set(layout.file(geckoAars.map { it.singleFile }))
+            geckoArtifactVersion.set(GeckoBlocklistOverlay.GECKO_ARTIFACT_VERSION)
+            snapshotDirectory.set(rootProject.layout.projectDirectory.dir("third_party/mozilla-blocklist/snapshot"))
+            outputAssets.set(layout.buildDirectory.dir("generated/gecko-blocklist/${variant.name}"))
+        }
+        variant.sources.assets?.addGeneratedSourceDirectory(overlay, GenerateGeckoBlocklistAssets::getOutputAssets)
+    }
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 dependencies {

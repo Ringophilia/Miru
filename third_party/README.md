@@ -17,13 +17,15 @@
 | OkHttp / Okio | OkHttp `4.12.0`，Okio 为其传递依赖 | Apache-2.0；[OkHttp 许可](https://github.com/square/okhttp/blob/parent-4.12.0/LICENSE.txt) |
 | AndroidX Room / DocumentFile | Room `2.8.5`、DocumentFile `1.1.0` | Apache-2.0；Room 编译器与 KSP 仅用于构建 |
 | AndroidX Media3 | `1.11.1`，ExoPlayer / HLS / DASH / OkHttp datasource / session / UI | Apache-2.0；[对应版本源码](https://github.com/androidx/media/tree/1.11.1)、[许可](https://github.com/androidx/media/blob/1.11.1/LICENSE)；未引入 IMA、Cast 或 FFmpeg 扩展 |
+| Anime4K / AMD FSR 1.0 | 来自规范指定的 Ringo-Cove Android assets，14 个 GLSL 文件 | 保留各自 MIT 许可和原始 shader 文件；见 `feature/superres/NOTICE.md` 与 `src/main/assets/anime4k/` 中的两个许可文件 |
+| Mozilla add-on blocklist snapshot | 与 Gecko 同一固定修订的官方 dump / MLBF | MPL-2.0；来源、固定摘要及源码获取见 [mozilla-blocklist/README.md](mozilla-blocklist/README.md)，生成步骤在 `tools/gecko-blocklist-buildlogic/` |
 
 Android Components 与 GeckoView 的当前 POM 均将源码指向 Mozilla release 修订：
 
 - [e4ce606692cd81e6898547e2edd7c552fefcbb04](https://hg.mozilla.org/releases/mozilla-release/rev/e4ce606692cd81e6898547e2edd7c552fefcbb04)
 - [该修订的源码归档](https://hg.mozilla.org/releases/mozilla-release/archive/e4ce606692cd81e6898547e2edd7c552fefcbb04.tar.gz)
 
-应用级适配源码位于本仓库 `browser/engine/`；本次未修改或内嵌 Mozilla 库本身的源码。发布二进制时，仍须确保接收者能够取得实际使用版本的 MPL 对应源码及修改，而不是只提供上游最新分支链接。Gecko 与 application-services 内部的第三方声明也须随实际发布产物核对。
+应用级适配源码位于本仓库 `browser/engine/`。构建还会保留原始 `omni.ja` 全部 4,079 项 payload，加入同一修订的 5 份官方 add-on blocklist 资源，以 app asset 覆盖原始压缩包；生成逻辑和资源均在本仓库，原始 AAR 不变。发布二进制时，仍须确保接收者能够取得实际使用版本的 MPL 对应源码及修改，而不是只提供上游最新分支链接。Gecko 与 application-services 内部的第三方声明也须随实际发布产物核对。
 
 ## 解析结果与检查边界
 
@@ -37,7 +39,7 @@ Android Components 与 GeckoView 的当前 POM 均将源码指向 Mozilla releas
 
 ## 后续功能
 
-M1 已在 assets 中加入未修改的 uBO 官方签名 XPI；尚未接入 Anime4K 或 AMD FSR。M3 清晰度探测按产品规范第 8.9 / 13 节，参考本地 Ringo-Cove 的 `lib/core/resolution.dart` / `hls_probe.dart` 思路重新实现 Kotlin 解析器，没有复制 Dart 源文件或引入 Flutter / Dio / pointycastle 依赖；密码运算使用平台 `javax.crypto`。所参考的两个 Dart 文件无独立许可文件头，本地 Cove 根目录亦无 LICENSE；这里记录规范指定的参考来源，没有将其标记为第三方 Apache / MIT 代码。超分着色器接入时仍需保留各自许可与署名。
+M1 已在 assets 中加入未修改的 uBO 官方签名 XPI；0.5.0 开发批次接入 Anime4K 与 AMD FSR 的原始 GLSL，许可与署名见模块 NOTICE 和 assets。M3 清晰度探测按产品规范第 8.9 / 13 节，参考本地 Ringo-Cove 的 `lib/core/resolution.dart` / `hls_probe.dart` 思路重新实现 Kotlin 解析器，没有复制 Dart 源文件或引入 Flutter / Dio / pointycastle 依赖；密码运算使用平台 `javax.crypto`。所参考的两个 Dart 文件无独立许可文件头，本地 Cove 根目录亦无 LICENSE；这里记录规范指定的参考来源，没有将其标记为第三方 Apache / MIT 代码。
 
 M0 的 253 项依赖 JSON 尚未重做 M1 / M2 / M3 完整清单，不应用于描述新版的全部解析组件。公开发布 APK/AAB 前应按实际产物更新清单与告知，并复查 uBO 集成的 GPL 义务；不能仅凭独立扩展形式预先认定宿主必然属于简单聚合。
 
