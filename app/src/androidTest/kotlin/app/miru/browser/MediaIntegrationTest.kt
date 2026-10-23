@@ -67,7 +67,9 @@ class MediaIntegrationTest {
             val preferences = (compose.activity.application as MiruApplication).container.playerPreferences
             val originalOptions = runBlocking { preferences.settings.first() }
             try {
-                waitFor { target.playback.state.value.ready && target.playback.state.value.playing }
+                // STATE_READY can precede Media3's separate first video-size callback. Keep the
+                // exact dimensions assertions below, after a real video format has arrived.
+                waitFor { target.playback.state.value.let { it.ready && it.playing && it.width > 0 && it.height > 0 } }
                 val state = target.playback.state.value
                 assertTrue("Native playback must resume within two seconds of the web time: ${state.position}", state.position in 7_000..10_000)
                 assertEquals(320, state.width); assertEquals(180, state.height)

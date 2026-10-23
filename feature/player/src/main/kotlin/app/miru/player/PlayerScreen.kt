@@ -104,7 +104,7 @@ fun PlayerScreen(
             onVideoBounds(Rect(bounds.left.toInt(), bounds.top.toInt(), bounds.right.toInt(), bounds.bottom.toInt()))
         }) {
             PlayerVideoOutput(controller, state, preferences, pip, fit, if(compare) split else 0f, { output = it }, Modifier.fillMaxSize())
-            AndroidView(factory = { SubtitleView(it) }, modifier = Modifier.fillMaxSize().testTag("player_subtitle_text"), update = {
+            if(cues.isNotEmpty()) AndroidView(factory = { SubtitleView(it) }, modifier = Modifier.fillMaxSize().testTag("player_subtitle_text"), update = {
                 applySubtitleStyle(it, preferences)
                 it.setCues(cues)
             })
