@@ -1,0 +1,34 @@
+<resources>
+    <string name="player_quality">画质✦</string>
+    <string name="player_superres">超分辨率</string>
+    <string name="player_superres_off">关闭</string>
+    <string name="player_superres_auto">自动</string>
+    <string name="player_superres_anime">动画线条</string>
+    <string name="player_superres_general">通用</string>
+    <string name="player_superres_fast">流畅</string>
+    <string name="player_superres_balanced">均衡</string>
+    <string name="player_superres_quality">画质</string>
+    <string name="player_superres_tier">超分档位</string>
+    <string name="player_superres_compare">对比原画</string>
+    <string name="player_superres_split">原画与超分的分割位置</string>
+    <string name="player_superres_original">原画</string>
+    <string name="player_superres_enhanced">超分</string>
+    <string name="player_superres_source">片源　%1$d×%2$d · %3$s</string>
+    <string name="player_superres_output">输出　%1$d×%2$d</string>
+    <string name="player_superres_gpu_time">GPU　%1$.1f ms / 帧（预算 %2$.1f ms）</string>
+    <string name="player_superres_render_time">渲染　%1$.1f ms / 帧（同步计时）</string>
+    <string name="player_superres_waiting">等待解码画面与渲染统计…</string>
+    <string name="player_superres_failed">超分已关闭：%1$s</string>
+    <string name="player_superres_reduced">超分已降至%1$s档</string>
+    <string name="player_superres_disabled_heat">设备发热，已暂停超分</string>
+    <string name="player_superres_disabled_load">设备负载过高，本次播放已关闭超分</string>
+    <string name="player_superres_limit">本机稳定上限：%1$s</string>
+    <string name="player_superres_benchmark">测试本机性能</string>
+    <string name="player_superres_bypass_off">直接显示解码画面</string>
+    <string name="player_superres_bypass_native">片源分辨率已接近输出，自动模式不处理</string>
+    <string name="player_superres_bypass_hdr">HDR 片源使用直接显示</string>
+    <string name="player_superres_bypass_secure">受保护内容使用直接显示</string>
+    <string name="player_superres_bypass_speed">倍速超过 1.5x，已暂停超分</string>
+    <string name="player_superres_bypass_pip">画中画中暂停超分</string>
+    <string name="player_superres_bypass_error">本次播放已回到直接显示</string>
+</resources>

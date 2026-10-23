@@ -1,0 +1,24 @@
+<resources>
+    <string name="superres_benchmark_title">Super resolution benchmark</string>
+    <string name="superres_benchmark_detail">Test all three Anime4K tiers on a real 1080P output using a local 3-second 720P clip. Each tier renders at least 60 frames. Keep the app in the foreground.</string>
+    <string name="superres_benchmark_preview">1080P super resolution benchmark preview</string>
+    <string name="superres_benchmark_preparing">Preparing the preview…</string>
+    <string name="superres_benchmark_progress">%1$s: %2$d / 60 frames</string>
+    <string name="superres_benchmark_result">%1$s: %2$.1f ms/frame · %3$s</string>
+    <string name="superres_benchmark_gpu_timer">hardware GPU timer</string>
+    <string name="superres_benchmark_sync_timer">synchronized render time</string>
+    <string name="superres_benchmark_fast">Fast</string>
+    <string name="superres_benchmark_balanced">Balanced</string>
+    <string name="superres_benchmark_quality">Quality</string>
+    <string name="superres_benchmark_recommendation">Recommended: %1$s, the highest tier measured below 16 ms per frame.</string>
+    <string name="superres_benchmark_no_recommendation">No tier measured below 16 ms per frame. Keeping super resolution off is recommended.</string>
+    <string name="superres_benchmark_limitations">Devices without hardware GPU timers show synchronized render time. Results reflect the current device and temperature; they do not replace physical-device performance acceptance.</string>
+    <string name="superres_benchmark_hot">The device is too warm. Let it cool down before testing again.</string>
+    <string name="superres_benchmark_timeout">The benchmark timed out without enough valid rendered frames.</string>
+    <string name="superres_benchmark_decode_failed">Could not decode the local benchmark clip.</string>
+    <string name="superres_benchmark_render_failed">Super resolution rendering failed. No result was generated.</string>
+    <string name="superres_benchmark_interrupted">The benchmark was interrupted. Reopen it to try again.</string>
+    <string name="superres_benchmark_apply">Apply recommended tier</string>
+    <string name="superres_benchmark_cancel">Cancel benchmark</string>
+    <string name="superres_benchmark_close">Close</string>
+</resources>

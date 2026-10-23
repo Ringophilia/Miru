@@ -1,0 +1,34 @@
+<resources>
+    <string name="player_quality">Quality ✦</string>
+    <string name="player_superres">Super resolution</string>
+    <string name="player_superres_off">Off</string>
+    <string name="player_superres_auto">Auto</string>
+    <string name="player_superres_anime">Animation</string>
+    <string name="player_superres_general">General</string>
+    <string name="player_superres_fast">Fast</string>
+    <string name="player_superres_balanced">Balanced</string>
+    <string name="player_superres_quality">Quality</string>
+    <string name="player_superres_tier">Processing tier</string>
+    <string name="player_superres_compare">Compare with original</string>
+    <string name="player_superres_split">Original and enhanced split position</string>
+    <string name="player_superres_original">Original</string>
+    <string name="player_superres_enhanced">Enhanced</string>
+    <string name="player_superres_source">Source  %1$d×%2$d · %3$s</string>
+    <string name="player_superres_output">Output  %1$d×%2$d</string>
+    <string name="player_superres_gpu_time">GPU  %1$.1f ms/frame (budget %2$.1f ms)</string>
+    <string name="player_superres_render_time">Render  %1$.1f ms/frame (synchronized timing)</string>
+    <string name="player_superres_waiting">Waiting for decoded video and rendering statistics…</string>
+    <string name="player_superres_failed">Super resolution disabled: %1$s</string>
+    <string name="player_superres_reduced">Super resolution reduced to %1$s</string>
+    <string name="player_superres_disabled_heat">Device is hot; super resolution paused</string>
+    <string name="player_superres_disabled_load">Device load is high; super resolution disabled for this playback</string>
+    <string name="player_superres_limit">Stable device limit: %1$s</string>
+    <string name="player_superres_benchmark">Test device performance</string>
+    <string name="player_superres_bypass_off">Displaying decoded video directly</string>
+    <string name="player_superres_bypass_native">Source is close to the output resolution; Auto skips processing</string>
+    <string name="player_superres_bypass_hdr">HDR video uses direct output</string>
+    <string name="player_superres_bypass_secure">Protected content uses direct output</string>
+    <string name="player_superres_bypass_speed">Playback is above 1.5×; super resolution paused</string>
+    <string name="player_superres_bypass_pip">Super resolution paused in picture-in-picture</string>
+    <string name="player_superres_bypass_error">This playback has returned to direct output</string>
+</resources>

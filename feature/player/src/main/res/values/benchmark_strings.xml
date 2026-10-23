@@ -1,0 +1,24 @@
+<resources>
+    <string name="superres_benchmark_title">超分性能测试</string>
+    <string name="superres_benchmark_detail">使用本地 3 秒 720P 片段，在真实 1080P 画面上依次测试 Anime4K 三档，每档至少渲染 60 帧。请保持应用在前台。</string>
+    <string name="superres_benchmark_preview">1080P 超分测试画面</string>
+    <string name="superres_benchmark_preparing">正在准备测试画面…</string>
+    <string name="superres_benchmark_progress">%1$s：%2$d / 60 帧</string>
+    <string name="superres_benchmark_result">%1$s：%2$.1f ms／帧 · %3$s</string>
+    <string name="superres_benchmark_gpu_timer">GPU 硬件计时</string>
+    <string name="superres_benchmark_sync_timer">同步渲染耗时</string>
+    <string name="superres_benchmark_fast">极速</string>
+    <string name="superres_benchmark_balanced">均衡</string>
+    <string name="superres_benchmark_quality">高画质</string>
+    <string name="superres_benchmark_recommendation">推荐%1$s：这是测得每帧耗时低于 16 ms 的最高档。</string>
+    <string name="superres_benchmark_no_recommendation">三档均未达到每帧低于 16 ms，建议保持关闭。</string>
+    <string name="superres_benchmark_limitations">不支持 GPU 硬件计时的设备会显示同步渲染耗时。结果仅代表当前设备和温度，不能代替真机性能验收。</string>
+    <string name="superres_benchmark_hot">设备温度较高，请降温后再测试。</string>
+    <string name="superres_benchmark_timeout">测试超时，未能取得足够的有效渲染帧。</string>
+    <string name="superres_benchmark_decode_failed">无法解码本地测试片段。</string>
+    <string name="superres_benchmark_render_failed">超分渲染失败，未生成测试结果。</string>
+    <string name="superres_benchmark_interrupted">测试已中断，请重新打开后再试。</string>
+    <string name="superres_benchmark_apply">应用推荐档位</string>
+    <string name="superres_benchmark_cancel">取消测试</string>
+    <string name="superres_benchmark_close">关闭</string>
+</resources>

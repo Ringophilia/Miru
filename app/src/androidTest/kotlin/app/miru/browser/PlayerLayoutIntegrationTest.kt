@@ -129,7 +129,7 @@ class PlayerLayoutIntegrationTest {
     }
 
     private fun findPlayerView(view: View): View? {
-        if(view.javaClass.name == "androidx.media3.ui.PlayerView") return view
+        if(view.javaClass.name in setOf("androidx.media3.ui.PlayerView", "app.miru.superres.RoutedVideoView")) return view
         if(view is ViewGroup) for(index in 0 until view.childCount) findPlayerView(view.getChildAt(index))?.let { return it }
         return null
     }

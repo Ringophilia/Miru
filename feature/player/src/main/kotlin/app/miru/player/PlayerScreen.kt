@@ -11,7 +11,6 @@ import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
 import android.util.TypedValue
-import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -48,12 +47,11 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.common.text.Cue
 import kotlinx.coroutines.delay
+import app.miru.superres.SuperResViewState
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -71,7 +69,7 @@ fun PlayerScreen(
 ) {
     val state by controller.state.collectAsState()
     val tracks by controller.trackOptions.collectAsState()
-    val subtitleText by controller.subtitleText.collectAsState()
+    val cues by controller.subtitleCues.collectAsState()
     val preferences by controller.preferences.collectAsState()
     val activity = LocalContext.current as Activity
     val configuration = LocalConfiguration.current
@@ -83,6 +81,10 @@ fun PlayerScreen(
     var speedPanel by remember { mutableStateOf(false) }
     var decoderPanel by remember { mutableStateOf(false) }
     var tracksPanel by remember { mutableStateOf(false) }
+    var qualityPanel by remember { mutableStateOf(false) }
+    var compare by remember { mutableStateOf(false) }
+    var split by remember { mutableFloatStateOf(.5f) }
+    var output by remember { mutableStateOf(SuperResViewState()) }
     var fit by remember { mutableIntStateOf(0) }
     var drag by remember { mutableStateOf<Float?>(null) }
     var buffering by remember { mutableStateOf(false) }
@@ -92,7 +94,7 @@ fun PlayerScreen(
     LaunchedEffect(locked) { onLockChanged(locked) }
     DisposableEffect(touch) { onDispose { touch.dispose() } }
     LaunchedEffect(state.buffering) { buffering = false; if(state.buffering) { delay(300); buffering = true } }
-    LaunchedEffect(visible, state.playing, locked, speedPanel, decoderPanel, tracksPanel) { if(visible && state.playing && !speedPanel && !decoderPanel && !tracksPanel) { delay(3_000); visible = false } }
+    LaunchedEffect(visible, state.playing, locked, speedPanel, decoderPanel, tracksPanel, qualityPanel) { if(visible && state.playing && !speedPanel && !decoderPanel && !tracksPanel && !qualityPanel) { delay(3_000); visible = false } }
     BackHandler { if(locked) { locked = false; visible = true } else onBack() }
     MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFFFB4AB), background = Color.Black, surface = Color(0xFF1C1B1F))) {
         Column(Modifier.fillMaxSize().background(Color.Black).then(if(embedded) Modifier.safeDrawingPadding() else Modifier)) {
@@ -101,17 +103,10 @@ fun PlayerScreen(
             val bounds = coordinates.boundsInWindow()
             onVideoBounds(Rect(bounds.left.toInt(), bounds.top.toInt(), bounds.right.toInt(), bounds.bottom.toInt()))
         }) {
-            AndroidView(factory = { context -> PlayerView(context).apply { useController = false; keepScreenOn = true } }, modifier = Modifier.fillMaxSize(), update = {
-                it.player = controller.player
-                it.resizeMode = when(fit) { 1 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM; 2 -> AspectRatioFrameLayout.RESIZE_MODE_FILL; else -> AspectRatioFrameLayout.RESIZE_MODE_FIT }
-                it.subtitleView?.let { subtitles ->
-                    subtitles.visibility = if(tracks.localSubtitleSelected || tracks.subtitlesOff) View.INVISIBLE else View.VISIBLE
-                    applySubtitleStyle(subtitles, preferences)
-                }
-            }, onRelease = { it.player = null })
-            if(tracks.localSubtitleSelected) AndroidView(factory = { SubtitleView(it) }, modifier = Modifier.fillMaxSize().testTag("player_subtitle_text"), update = {
+            PlayerVideoOutput(controller, state, preferences, pip, fit, if(compare) split else 0f, { output = it }, Modifier.fillMaxSize())
+            AndroidView(factory = { SubtitleView(it) }, modifier = Modifier.fillMaxSize().testTag("player_subtitle_text"), update = {
                 applySubtitleStyle(it, preferences)
-                it.setCues(if(subtitleText.isBlank()) emptyList() else listOf(Cue.Builder().setText(subtitleText).build()))
+                it.setCues(cues)
             })
             if(!pip) Box(Modifier.fillMaxSize().onSizeChanged { touch.width = it.width.toFloat(); touch.height = it.height.toFloat() }.pointerInteropFilter(onTouchEvent = touch::event))
             if(buffering && !pip && !state.error && !state.timedOut) CircularProgressIndicator(Modifier.align(Alignment.Center).size(40.dp), color = Color.White, strokeWidth = 2.5.dp)
@@ -123,6 +118,7 @@ fun PlayerScreen(
                             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.player_back), tint = Color.White) }
                             Text(controller.request.title, Modifier.weight(1f), color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if(state.height > 0) Text(playerResolutionLabel(state.width, state.height), color = Color.White, style = MaterialTheme.typography.labelMedium)
+                            TextButton(onClick = { qualityPanel = true }, modifier = Modifier.testTag("player_quality")) { Text(stringResource(R.string.player_quality), color = if(output.rendering.active) MaterialTheme.colorScheme.primary else Color.White) }
                             if(!embedded) IconButton(onClick = { tracksPanel = true }, modifier = Modifier.testTag("player_tracks")) { Icon(Icons.Outlined.Subtitles, stringResource(R.string.player_tracks), tint = Color.White) }
                             IconButton(onClick = { decoderPanel = true }) { Icon(Icons.Outlined.Settings, stringResource(R.string.player_playback_options), tint = Color.White) }
                         }
@@ -174,6 +170,8 @@ fun PlayerScreen(
                 }
             }
             if(state.resumed && visible && !pip && !state.error) TextButton(onClick = controller::restart, modifier = Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(top = 56.dp)) { Text(stringResource(R.string.player_resumed)) }
+            if(compare && output.rendering.active && output.decision.enabled && !pip && !locked)
+                SuperResComparison(output, split) { split = it }
         }
         if(embedded) Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(controller.request.title.ifBlank { stringResource(R.string.player_title) }, color = Color.White, style = MaterialTheme.typography.titleLarge)
@@ -186,6 +184,7 @@ fun PlayerScreen(
             }
             TextButton(onClick = { decoderPanel = true }) { Text(stringResource(R.string.player_playback_options)) }
             TextButton(onClick = { tracksPanel = true }, modifier = Modifier.testTag("player_tracks")) { Text(stringResource(R.string.player_tracks)) }
+            TextButton(onClick = { qualityPanel = true }, modifier = Modifier.testTag("player_quality_details")) { Text(stringResource(R.string.player_quality)) }
         }
         }
         if(speedPanel) AlertDialog(onDismissRequest = { speedPanel = false }, title = { Text(stringResource(R.string.player_speed)) }, text = { Column {
@@ -193,6 +192,10 @@ fun PlayerScreen(
         } }, confirmButton = {})
         if(decoderPanel) PlaybackOptionsDialog(activity, controller, onDismiss = { decoderPanel = false })
         if(tracksPanel) TracksDialog(controller, onImportSubtitle, onDismiss = { tracksPanel = false })
+        if(qualityPanel) SuperResQualityPanel(controller, output, compare, onCompare = {
+            compare = it
+            if(it) { qualityPanel = false; visible = false }
+        }, onDismiss = { qualityPanel = false })
     }
 }
 

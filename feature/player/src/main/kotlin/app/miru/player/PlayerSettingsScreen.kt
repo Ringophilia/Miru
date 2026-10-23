@@ -19,6 +19,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
+import app.miru.superres.SuperResMode
+import app.miru.superres.SuperResTier
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +44,11 @@ fun PlayerSettingsScreen(repository: PlayerPreferencesRepository, snackbar: Snac
         IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.player_back)) }
     }) }) { padding ->
         Column(Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+            PlayerGroup(R.string.player_quality)
+            PlayerSetting(stringResource(R.string.player_superres), stringResource(superResModeLabel(options.superResMode))) { dialog = "superres-mode" }
+            PlayerSetting(stringResource(R.string.player_superres_tier), stringResource(superResTierLabel(options.superResTier))) { dialog = "superres-tier" }
+            options.superResDeviceCeiling?.let { Text(stringResource(R.string.player_superres_limit, stringResource(superResTierLabel(it))), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall) }
+            PlayerSetting(stringResource(R.string.player_superres_benchmark), "720P → 1080P") { dialog = "superres-benchmark" }
             PlayerGroup(R.string.player_cache_group)
             PlayerSetting(stringResource(R.string.player_cache_limit), stringResource(R.string.player_megabytes, options.cacheMb)) { dialog = "cache" }
             PlayerSetting(stringResource(R.string.player_prebuffer), stringResource(R.string.player_seconds, options.bufferSeconds)) { dialog = "buffer" }
@@ -68,6 +75,9 @@ fun PlayerSettingsScreen(repository: PlayerPreferencesRepository, snackbar: Snac
         }
     }
     when(dialog) {
+        "superres-mode" -> PlayerChoice(stringResource(R.string.player_superres), SuperResMode.entries.toList(), options.superResMode, { stringResource(superResModeLabel(it)) }, { value -> change { it.copy(superResMode = value) }; dialog = null }, { dialog = null })
+        "superres-tier" -> PlayerChoice(stringResource(R.string.player_superres_tier), SuperResTier.entries.toList(), options.superResTier, { stringResource(superResTierLabel(it)) }, { value -> change { it.copy(superResTier = value) }; dialog = null }, { dialog = null })
+        "superres-benchmark" -> SuperResBenchmarkDialog(onDismiss = { dialog = null }, onApply = { tier -> change { it.copy(superResTier = tier, superResDeviceCeiling = null) }; dialog = null })
         "cache" -> PlayerChoice(stringResource(R.string.player_cache_limit), listOf(256, 512, 1024, 2048, 4096), options.cacheMb, { stringResource(R.string.player_megabytes, it) }, { value -> change { it.copy(cacheMb = value) }; dialog = null }, { dialog = null })
         "buffer" -> PlayerChoice(stringResource(R.string.player_prebuffer), listOf(15, 30, 60, 120, 180), options.bufferSeconds, { stringResource(R.string.player_seconds, it) }, { value -> change { it.copy(bufferSeconds = value) }; dialog = null }, { dialog = null })
         "seek" -> PlayerChoice(stringResource(R.string.player_double_tap), listOf(5, 10, 15, 30), options.doubleTapSeconds, { stringResource(R.string.player_seconds, it) }, { value -> change { it.copy(doubleTapSeconds = value) }; dialog = null }, { dialog = null })

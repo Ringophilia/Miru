@@ -18,6 +18,7 @@ ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 dependencies {
     implementation(project(":core:design"))
     implementation(project(":feature:offline"))
+    api(project(":feature:superres"))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.android)

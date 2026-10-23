@@ -42,7 +42,11 @@ data class PlayerSnapshot(
     val speed: Float = 1f, val width: Int = 0, val height: Int = 0, val live: Boolean = false,
     val error: Boolean = false, val timedOut: Boolean = false, val resumed: Boolean = false,
     val decoder: String = "auto",
+    val format: PlayerVideoInfo = PlayerVideoInfo(),
 )
+
+data class PlayerVideoInfo(val codec: String = "", val bitrate: Int = 0, val frameRate: Float = 0f,
+    val pixelWidthHeightRatio: Float = 1f, val hdr: Boolean = false, val protectedContent: Boolean = false)
 
 class PlayerController(
     private val context: Context,
@@ -78,6 +82,9 @@ class PlayerController(
     val trackOptions = mutableTracks.asStateFlow()
     private val mutableSubtitleText = MutableStateFlow("")
     val subtitleText = mutableSubtitleText.asStateFlow()
+    private val mutableCues = MutableStateFlow<List<androidx.media3.common.text.Cue>>(emptyList())
+    val subtitleCues = mutableCues.asStateFlow()
+    private var embeddedCues: List<androidx.media3.common.text.Cue> = emptyList()
     private var localSubtitle: LocalSubtitleDocument? = null
     private var subtitleMode = "auto"
     private var selectedAudioId: String? = null
@@ -102,6 +109,7 @@ class PlayerController(
         mediaSession?.release(); mediaSession = null
         player?.release(); player = null
         embeddedSubtitleText = ""
+        embeddedCues = emptyList(); mutableCues.value = emptyList()
         mutableTracks.value = mutableTracks.value.copy(audio = emptyList(), subtitles = emptyList())
         mutable.value = mutable.value.copy(ready = false, buffering = true, error = false, timedOut = false, decoder = decoder)
         initialization = scope.launch {
@@ -151,6 +159,7 @@ class PlayerController(
                 override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
                     if(released || revision != sourceRevision || player !== created) return
                     embeddedSubtitleText = cueGroup.cues.mapNotNull { it.text?.toString() }.joinToString("\n").take(8_192)
+                    embeddedCues = cueGroup.cues.toList()
                     updateSubtitleText()
                 }
                 override fun onPlayerError(error: PlaybackException) {
@@ -215,6 +224,12 @@ class PlayerController(
         val target = player ?: return
         if(released) return
         val size = target.videoSize
+        val format = target.videoFormat
+        val transfer = format?.colorInfo?.colorTransfer
+        val videoInfo = PlayerVideoInfo(format?.codecs ?: format?.sampleMimeType.orEmpty(),
+            (format?.bitrate ?: 0).coerceAtLeast(0), (format?.frameRate ?: 0f).coerceAtLeast(0f),
+            size.pixelWidthHeightRatio,
+            transfer == C.COLOR_TRANSFER_ST2084 || transfer == C.COLOR_TRANSFER_HLG, format?.drmInitData != null)
         if(size.width > 0 && size.height > 0 && lastVideoSize != (size.width to size.height)) {
             lastVideoSize = size.width to size.height
             runCatching { request.onVideoSize?.invoke(size.width, size.height) }
@@ -222,7 +237,7 @@ class PlayerController(
         mutable.value = mutable.value.copy(ready = mutable.value.ready || target.playbackState == Player.STATE_READY || target.playbackState == Player.STATE_ENDED,
             playing = target.isPlaying, buffering = waitingForNetwork || target.playbackState == Player.STATE_BUFFERING,
             position = target.currentPosition.coerceAtLeast(0), duration = target.duration.coerceAtLeast(0), buffered = target.bufferedPosition.coerceAtLeast(0),
-            speed = target.playbackParameters.speed, width = size.width, height = size.height, live = target.isCurrentMediaItemLive)
+            speed = target.playbackParameters.speed, width = size.width, height = size.height, live = target.isCurrentMediaItemLive, format = videoInfo)
         updateTracks(target)
         updateSubtitleText()
     }
@@ -287,6 +302,7 @@ class PlayerController(
         selectedSubtitleId = id
         subtitleMode = if(id == null) "off" else "embedded"
         embeddedSubtitleText = ""
+        embeddedCues = emptyList()
         player?.let { target ->
             target.trackSelectionParameters = target.trackSelectionParameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_TEXT).build()
             applyTrackPreferences(target)
@@ -303,6 +319,7 @@ class PlayerController(
             subtitleMode = "local"
             selectedSubtitleId = null
             embeddedSubtitleText = ""
+            embeddedCues = emptyList()
             player?.let { applyTrackPreferences(it); updateTracks(it) }
             mutableTracks.value = mutableTracks.value.copy(importError = false)
             updateSubtitleText()
@@ -314,6 +331,7 @@ class PlayerController(
         cancelSubtitleImport()
         subtitleMode = "local"
         embeddedSubtitleText = ""
+        embeddedCues = emptyList()
         player?.let { applyTrackPreferences(it); updateTracks(it) }
         updateSubtitleText()
     }
@@ -362,12 +380,25 @@ class PlayerController(
             "local" -> localSubtitle?.textAt(player?.currentPosition ?: state.value.position).orEmpty()
             else -> embeddedSubtitleText
         }
+        mutableCues.value = when(subtitleMode) {
+            "off" -> emptyList()
+            "local" -> mutableSubtitleText.value.takeIf { it.isNotBlank() }?.let {
+                listOf(androidx.media3.common.text.Cue.Builder().setText(it).build())
+            } ?: emptyList()
+            else -> embeddedCues
+        }
     }
 
     fun subtitleStyle(sizeSp: Float? = null, bottomMargin: Float? = null, backgroundOpacity: Float? = null) {
         scope.launch { settingsRepository.update { it.copy(subtitleSizeSp = sizeSp ?: it.subtitleSizeSp,
             subtitleBottomMargin = bottomMargin ?: it.subtitleBottomMargin, subtitleBackgroundOpacity = backgroundOpacity ?: it.subtitleBackgroundOpacity) } }
     }
+
+    fun superResMode(value: app.miru.superres.SuperResMode) { scope.launch { settingsRepository.update { it.copy(superResMode = value) } } }
+    fun superResTier(value: app.miru.superres.SuperResTier) { scope.launch { settingsRepository.update { it.copy(superResTier = value) } } }
+    fun recordSuperResCeiling(value: app.miru.superres.SuperResTier) { scope.launch { settingsRepository.update {
+        it.copy(superResDeviceCeiling = value.limitedBy(it.superResDeviceCeiling))
+    } } }
 
     fun toggle() { player?.let { if(it.isPlaying) it.pause() else { if(it.playbackState == Player.STATE_ENDED) it.seekTo(0); it.play() } } }
     fun resume() { if(!released) player?.play() }
@@ -400,5 +431,5 @@ class PlayerController(
             progress.prune()
         } }
     }
-    fun release() { if(released) return; save(); released = true; sourceRevision++; speedRevision++; subtitleImportRevision++; subtitleImport?.cancel(); localSubtitle = null; embeddedSubtitleText = ""; mutableSubtitleText.value = ""; authentication?.cancel(); authentication = null; runCatching { connectivity.unregisterNetworkCallback(networkCallback) }; initialization?.cancel(); startup?.cancel(); ticker?.cancel(); mediaSession?.release(); mediaSession = null; player?.release(); player = null }
+    fun release() { if(released) return; save(); released = true; sourceRevision++; speedRevision++; subtitleImportRevision++; subtitleImport?.cancel(); localSubtitle = null; embeddedSubtitleText = ""; embeddedCues = emptyList(); mutableCues.value = emptyList(); mutableSubtitleText.value = ""; authentication?.cancel(); authentication = null; runCatching { connectivity.unregisterNetworkCallback(networkCallback) }; initialization?.cancel(); startup?.cancel(); ticker?.cancel(); mediaSession?.release(); mediaSession = null; player?.release(); player = null }
 }
