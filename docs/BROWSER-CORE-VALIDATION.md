@@ -201,3 +201,31 @@ AVD `hw.gpu.enabled=no`；Windows同时存在RTX3080Ti和Intel UHD显卡。
 启动/退出日志为 `emulator-host-gpu-stdout.log` / `emulator-host-gpu-stderr.log`。
 原生API35软件实例5574随后以同一只读AVD重启，继续执行无需宿主GPU的重启/数据专项；
 原有AVD配置、其他离线设备与宿主fixture不改动。
+
+## 0.5.2 私密/首次图片复制继续修复
+
+在稳定软件实例5574中，新增“普通页复制后，连续三个独立私密标签复制”的真实夹具。
+`final-header-device.log` **10项9通过、1失败，109.935秒**：新夹具的一次私密复制等待20秒未发布URI；
+日志显示单连接700ms退休、总预算3.5秒无结果。因此不能只从前一轮baseline-unavailable推断唯一根因。
+`relay-total-budget-device.log` **9项8通过、1失败，103.680秒**：保留连接完整预算后连续私密用例通过，
+但首次同URL双图查询仍无响应，未以旧结果冒充成功。
+
+Bridge现为0.3.7，应用0.5.2/code10：
+
+- HTTP策略读取改为最终 `onResponseStarted`，避免从其他扩展尚可修改的中间响应头推断有效策略；
+  导航初始化仅对main_frame/sub_frame同步返回空blocking response，不取消、重定向或修改头。
+  依据 [Mozilla onHeadersReceived](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/webRequest/onHeadersReceived)
+  与 [onBeforeRequest](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/webRequest/onBeforeRequest)。
+- Native保持原3.5秒总期限，最多保留8个连接的待回复并接受同一活连接迟到响应；到总期限才退休无回复连接，
+  不在成功、取消或明确不可用回复时误删其他活连接。不新增默认策略回退。
+- 私密授权变更返回新WebExtension后，background/content两类消息handler统一绑定最终实例；此前background仍注册在旧对象。
+- 新增固定阶段回执，区分内容脚本接收、过期ID与绑定不符；日志不含网址、请求头、nonce或图片内容。
+
+`configured-bridge-build.log`：Debug/AndroidTest和engine JVM构建成功（79秒，32项engine测试0失败）；
+真实生产background的协议测试 **16/16通过**（`final-policy-protocol.log`），含中间unsafe-url头不能替代最终no-referrer。
+`configured-bridge-device.log` **9/9，通过，69.839秒**，覆盖8项策略和原普通/私密菜单复制。
+包括首次普通页、连续三个私密页、真实Referer/原始PNG/敏感剪贴板及FLAG_SECURE；不增加期限或减少检查。
+仍需新进程复跑、完整78项回归和0.5.2 release/lint/包体重建；0.5.1 APK不能作为此后源码的产物证据。
+
+外部强停重启专项组合命令遭自动审批拒绝（工具仅返回blocked by policy），命令未执行。
+当前没有将500MB或离线的0.5.2强停验证记为通过，也未用其他路径绕过拒绝。

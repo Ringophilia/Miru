@@ -57,13 +57,18 @@ browser.webRequest.onBeforeRequest.addListener(details => {
     imageDocuments.delete(documentKey(details.tabId, details.frameId));
     if (imagePresses.get(details.tabId)?.frameId === details.frameId) imagePresses.delete(details.tabId);
   }
-}, { urls: ['<all_urls>'] });
+  // Set the navigation generation before Gecko can create its document. This
+  // listener is synchronous and never cancels, redirects or changes a header.
+  return {};
+}, { urls: ['<all_urls>'], types: ['main_frame', 'sub_frame'] }, ['blocking']);
 browser.webRequest.onBeforeSendHeaders.addListener(details => {
   if (details.tabId < 0) return;
   requestHeaders.set(details.requestId, { tabId: details.tabId, generation: generations.get(details.tabId) || 0, headers: MiruMedia.headers(details.requestHeaders) });
   if (requestHeaders.size > 512) requestHeaders.delete(requestHeaders.keys().next().value);
 }, { urls: ['<all_urls>'] }, ['requestHeaders']);
-browser.webRequest.onHeadersReceived.addListener(details => {
+// Observe the final headers after uBO/other blocking listeners have finished.
+// onHeadersReceived exposes intermediate headers that another extension may change.
+browser.webRequest.onResponseStarted.addListener(details => {
   if (details.tabId < 0) return;
   if (details.type === 'main_frame' || details.type === 'sub_frame') {
     const key = documentKey(details.tabId, details.frameId), previous = imageDocuments.get(key);
@@ -76,6 +81,9 @@ browser.webRequest.onHeadersReceived.addListener(details => {
     }
     if (imageDocuments.size > 512) imageDocuments.delete(imageDocuments.keys().next().value);
   }
+}, { urls: ['<all_urls>'], types: ['main_frame', 'sub_frame'] }, ['responseHeaders']);
+browser.webRequest.onHeadersReceived.addListener(details => {
+  if (details.tabId < 0) return;
   if (details.statusCode >= 400) return;
   const captured = requestHeaders.get(details.requestId);
   if (!captured || captured.generation !== (generations.get(details.tabId) || 0)) return;

@@ -56,6 +56,30 @@ class ContextImagePolicyIntegrationTest {
         } }
     }
 
+    @Test fun privateDocumentsWithTheObservedDefaultPolicyCopyAfterAnOrdinaryDocument() {
+        PolicyOrigin().use { image -> PolicyOrigin().use { page ->
+            page.document = { "<title>Policy default loading</title><img src='${image.url}/image.png' " +
+                "onload=\"requestAnimationFrame(()=>requestAnimationFrame(()=>{document.title='Policy default ready'}))\">" }
+            val url = "${page.url}/document?path=must-not-cross-origins"
+            open(url, "Policy default ready")
+            val ordinaryId = checkNotNull(browser.state.value.selectedTabId)
+            copy(image, 45f)
+            assertEquals("${page.url}/", image.images.last().referrer)
+            repeat(3) {
+                open(url, "Policy default ready", private = true)
+                val privateId = checkNotNull(browser.state.value.selectedTabId)
+                assertTrue(compose.activity.window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_SECURE != 0)
+                try {
+                    copy(image, 45f)
+                    assertEquals("An observed empty HTTP policy must use the actual default, without a private path or query",
+                        "${page.url}/", image.images.last().referrer)
+                    assertTrue(context.getSystemService(ClipboardManager::class.java).primaryClip!!.description.extras!!
+                        .getBoolean(android.content.ClipDescription.EXTRA_IS_SENSITIVE))
+                } finally { compose.runOnIdle { browser.closeTab(privateId); browser.selectTab(ordinaryId) } }
+            }
+        } }
+    }
+
     @Test fun metaNoReferrerOverridesTheDocumentHttpBaseline() {
         PolicyOrigin().use { image -> PolicyOrigin().use { page ->
             page.document = { "<meta name=referrer content=no-referrer><title>Policy meta</title><img src='${image.url}/image.png'>" }

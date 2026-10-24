@@ -53,8 +53,13 @@
         holdSettings = { holdEnabled: message.holdEnabled !== false, holdSpeed: Number.isFinite(message.holdSpeed) ? message.holdSpeed : 2 };
         webHold.configure(holdSettings);
       } else if (message.kind === 'query-image-policy') {
-        if (message.relayNonce !== connectionNonce || message.documentNonce !== globalThis.MiruImagePolicy?.documentNonce ||
-            typeof message.id !== 'string' || message.id.length !== 36) return;
+        const accepted = message.relayNonce === connectionNonce && message.documentNonce === globalThis.MiruImagePolicy?.documentNonce &&
+          typeof message.id === 'string' && message.id.length === 36;
+        if (typeof message.id === 'string' && message.id.length === 36 && globalThis.MiruImagePolicy) {
+          connection.postMessage({ kind: 'image-query-status', id: message.id, relayNonce: connectionNonce,
+            documentNonce: MiruImagePolicy.documentNonce, status: accepted ? 'received' : 'rejected' });
+        }
+        if (!accepted) return;
         browser.runtime.sendMessage({ kind: 'miru-image-policy-query', url: message.url, pressedAtMillis: message.pressedAtMillis,
           gestureStartedAtMillis: message.gestureStartedAtMillis })
           .then(result => {

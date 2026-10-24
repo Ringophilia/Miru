@@ -20,9 +20,11 @@ const IMAGE = 'https://images.test/image.png';
 
 function fixture() {
   const listeners = new Map();
+  const registrations = [];
   const requests = [];
   const state = { tabId: 1, frameId: 0, documentUrl: PAGE, senderUrl: PAGE, topUrl: PAGE, documentNonce: DOCUMENT };
-  const event = name => ({ addListener(callback) {
+  const event = name => ({ addListener(callback, filter, extra) {
+    registrations.push({ name, filter, extra, callback });
     if (!listeners.has(name)) listeners.set(name, []);
     listeners.get(name).push(callback);
   } });
@@ -35,6 +37,7 @@ function fixture() {
     runtime: { connectNative() { return nativePort; }, onMessage: event('message') },
     webRequest: {
       onBeforeRequest: event('before'), onBeforeSendHeaders: event('sendHeaders'), onHeadersReceived: event('headers'),
+      onResponseStarted: event('responseStarted'),
       onCompleted: event('completed'), onErrorOccurred: event('error'),
     },
     tabs: {
@@ -60,14 +63,16 @@ function fixture() {
   const sender = () => ({ tab: { id: state.tabId, url: state.topUrl }, frameId: state.frameId, url: state.senderUrl });
   const message = data => emit('message', data, sender());
   return {
-    state, requests, emit, message,
+    state, requests, registrations, emit, message,
     setPeer(callback) { peer = callback; },
     before(requestId, type = state.frameId === 0 ? 'main_frame' : 'sub_frame') {
       emit('before', { tabId: state.tabId, frameId: state.frameId, type, requestId });
     },
     headers(requestId, policy, { statusCode = 200, url = state.senderUrl, responseHeaders } = {}) {
-      emit('headers', { tabId: state.tabId, frameId: state.frameId, type: state.frameId === 0 ? 'main_frame' : 'sub_frame',
-        requestId, url, statusCode, responseHeaders: responseHeaders || (policy === null ? [] : [{ name: 'Referrer-Policy', value: policy }]) });
+      const details = { tabId: state.tabId, frameId: state.frameId, type: state.frameId === 0 ? 'main_frame' : 'sub_frame',
+        requestId, url, statusCode, responseHeaders: responseHeaders || (policy === null ? [] : [{ name: 'Referrer-Policy', value: policy }]) };
+      emit('headers', details);
+      emit('responseStarted', details);
     },
     announce() { message({ kind: 'miru-image-document', documentNonce: state.documentNonce, documentUrl: state.documentUrl }); },
     press({ at = Date.now(), gestureAt = at - 600, url = IMAGE, pressNonce = PRESS } = {}) {
@@ -86,6 +91,26 @@ test('announce before the queued HTTP headers retains the no-referrer baseline',
   assert.equal(result.found, true);
   assert.equal(result.policy, 'no-referrer');
   assert.equal(f.requests.at(-1).message.headerPolicy, 'no-referrer');
+});
+
+test('only document navigation setup blocks and returns no network modification', () => {
+  const f = fixture();
+  const registration = f.registrations.find(r => r.name === 'before');
+  assert.deepEqual(Array.from(registration.filter.types).sort(), ['main_frame', 'sub_frame']);
+  assert.deepEqual(Array.from(registration.extra), ['blocking']);
+  const returned = registration.callback({ tabId: 1, frameId: 0, type: 'main_frame', requestId: 'sync-navigation' });
+  assert.equal(Object.keys(returned).length, 0);
+});
+
+test('intermediate response headers never supply a final document policy', async () => {
+  const f = fixture();
+  f.before('final-policy');
+  const details = { tabId: 1, frameId: 0, type: 'main_frame', requestId: 'final-policy', url: PAGE, statusCode: 200 };
+  f.emit('headers', { ...details, responseHeaders: [{ name: 'Referrer-Policy', value: 'unsafe-url' }] });
+  f.announce();
+  assert.equal((await f.pressAndQuery()).found, false, 'An intermediate wider policy is not evidence');
+  f.emit('responseStarted', { ...details, responseHeaders: [{ name: 'Referrer-Policy', value: 'no-referrer' }] });
+  assert.equal((await f.pressAndQuery()).policy, 'no-referrer');
 });
 
 test('a same-URL press from an earlier native touch cannot own the current menu', async () => {

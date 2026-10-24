@@ -19,6 +19,9 @@ headers from an old navigation, and completing the current unknown baseline.
 Additional checks cover a previous native gesture being rejected even for the same URL,
 HTTP policy lists, trusted iframe routing, explicit image
 overrides, response identity, changing press identity, expiration and cleanup.
+There are now 16 checks, including synchronous, non-modifying navigation setup
+limited to documents and rejecting an intermediate wider header until the final
+`onResponseStarted` policy is observed.
 
 These are background protocol checks. They do not prove Gecko event ordering,
 DOM/meta behavior, native Port lifecycle, image bytes, URI grants or actual

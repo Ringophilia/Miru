@@ -71,9 +71,9 @@ internal class CookieBridge(private val scope: CoroutineScope, private val store
     } } }
 
     fun start(engine: GeckoEngine) {
-        engine.installBuiltInWebExtension("bridge@miru.app", "resource://android/assets/extensions/miru-bridge/", onSuccess = { value ->
+        fun bindConfigured(value: WebExtension) {
             extension = value
-            attach()
+            sessions.clear()
             value.registerBackgroundMessageHandler("miru", object : MessageHandler {
                 override fun onPortConnected(port: Port) { this@CookieBridge.port = port; connected.complete(Unit) }
                 override fun onPortDisconnected(port: Port) {
@@ -87,8 +87,14 @@ internal class CookieBridge(private val scope: CoroutineScope, private val store
                     pending.remove(data.optString("id"))?.complete(if(data.optBoolean("error")) null else data.optString("cookie"))
                 }
             })
-            if(value.isAllowedInPrivateBrowsing()) configured.complete(Unit)
-            else engine.setAllowedInPrivateBrowsing(value, true, onSuccess = { extension = it; sessions.clear(); attach(); configured.complete(Unit) }, onError = { configured.complete(Unit) })
+            attach()
+            configured.complete(Unit)
+        }
+        engine.installBuiltInWebExtension("bridge@miru.app", "resource://android/assets/extensions/miru-bridge/", onSuccess = { value ->
+            // AC returns a replacement WebExtension after private-permission changes.
+            // Both background and content delegates must belong to that final instance.
+            if(value.isAllowedInPrivateBrowsing()) bindConfigured(value)
+            else engine.setAllowedInPrivateBrowsing(value, true, onSuccess = ::bindConfigured, onError = { bindConfigured(value) })
         })
     }
 
@@ -122,7 +128,7 @@ internal class CookieBridge(private val scope: CoroutineScope, private val store
                 override fun onPortDisconnected(port: Port) { contentPorts.remove(port); frameMedia.remove(port); frameOwners.entries.removeAll { it.value === port }; refresh(tab.id) }
                 override fun onPortMessage(message: Any, port: Port) {
                     val data = message as? JSONObject ?: return
-                    if(data.optString("kind") in setOf("image-relay", "image-policy")) {
+                    if(data.optString("kind") in setOf("image-relay", "image-policy", "image-query-status")) {
                         imageMessage(tab.id, session, data, port)
                         return
                     }
@@ -158,6 +164,8 @@ internal class CookieBridge(private val scope: CoroutineScope, private val store
     }
 
     private fun imageMessage(tabId: String, session: EngineSession, data: JSONObject, port: Port) {
+        val reply = data.optString("kind") in setOf("image-policy", "image-query-status")
+        if(reply) android.util.Log.d("MiruImagePolicy", "reply-seen")
         val active = store.state.tabs.firstOrNull { it.id == tabId && it.engineState.engineSession === session } ?: return
         val senderUrl = runCatching { port.senderUrl() }.getOrNull() ?: return
         val documentNonce = data.optString("documentNonce")
@@ -172,12 +180,22 @@ internal class CookieBridge(private val scope: CoroutineScope, private val store
             while(imageRelays.size > 128) imageRelays.remove(imageRelays.keys.first())
             return
         }
-        val query = imageQueries[data.optString("id")] ?: return
+        val query = imageQueries[data.optString("id")] ?: run {
+            if(reply) android.util.Log.d("MiruImagePolicy", "reply-not-pending")
+            return
+        }
         val relay = query.relay
         if(relay.tabId != tabId || relay.session !== session || relay.documentNonce != documentNonce || relay.relayNonce != relayNonce ||
             !sameDocumentOrigin(relay.documentUrl, senderUrl) ||
             relay.pageUrl.substringBefore('#') != active.content.url.substringBefore('#') ||
-            imageRelays["$tabId:$documentNonce"]?.relayNonce != relayNonce) return
+            imageRelays["$tabId:$documentNonce"]?.relayNonce != relayNonce) {
+            android.util.Log.d("MiruImagePolicy", "reply-binding-mismatch")
+            return
+        }
+        if(data.optString("kind") == "image-query-status") {
+            android.util.Log.d("MiruImagePolicy", if(data.optString("status") == "received") "content-query-received" else "content-query-rejected")
+            return
+        }
         val result = data.optJSONObject("result")
         val stage = result?.optString("stage")
         if(stage in IMAGE_STAGES) android.util.Log.d("MiruImagePolicy", stage!!)
@@ -198,31 +216,52 @@ internal class CookieBridge(private val scope: CoroutineScope, private val store
         if(store.state.selectedTabId != tabId || gestureStartedAtMillis < 0 || pressedAtMillis < gestureStartedAtMillis) return@withContext null
         android.util.Log.d("MiruImagePolicy", "query-start")
         val attempted = mutableSetOf<String>()
-        val result = withTimeoutOrNull(3_500) {
+        val outstanding = linkedMapOf<String, ImageQuery>()
+        var receivedReply = false
+        var budgetExpired = false
+        val result = try { withTimeoutOrNull(3_500) {
             while(true) {
+                // A slow live port remains eligible for the entire capability budget.
+                // Retiring it after 700ms discarded otherwise valid late responses on
+                // busy/private documents. New connections can be queried concurrently.
+                val completed = outstanding.values.firstOrNull { it.response.isCompleted }
+                if(completed != null) {
+                    receivedReply = true
+                    return@withTimeoutOrNull completed.response.await()
+                }
                 val relay = imageRelays.values.filter { it.tabId == tabId && it.session === session && it.relayNonce !in attempted &&
                     it.pageUrl.substringBefore('#') == pageUrl.substringBefore('#') }.maxByOrNull { it.sequence }
-                if(relay == null) { kotlinx.coroutines.delay(50); continue }
+                if(relay == null || outstanding.size >= 8) { kotlinx.coroutines.delay(50); continue }
                 android.util.Log.d("MiruImagePolicy", "relay-selected")
                 attempted.add(relay.relayNonce)
                 val id = UUID.randomUUID().toString()
                 val response = CompletableDeferred<ContextImagePolicy?>()
-                imageQueries[id] = ImageQuery(relay, response)
+                val query = ImageQuery(relay, response)
+                imageQueries[id] = query
+                outstanding[id] = query
                 try {
-                    val returned = withTimeoutOrNull(700) {
-                        relay.port.postMessage(JSONObject().put("kind", "query-image-policy").put("id", id)
-                            .put("documentNonce", relay.documentNonce).put("relayNonce", relay.relayNonce)
-                            .put("url", url).put("pressedAtMillis", pressedAtMillis).put("gestureStartedAtMillis", gestureStartedAtMillis))
-                        response.await()
-                    }
-                    if(response.isCompleted) return@withTimeoutOrNull returned
+                    relay.port.postMessage(JSONObject().put("kind", "query-image-policy").put("id", id)
+                        .put("documentNonce", relay.documentNonce).put("relayNonce", relay.relayNonce)
+                        .put("url", url).put("pressedAtMillis", pressedAtMillis).put("gestureStartedAtMillis", gestureStartedAtMillis))
                 } catch(cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                catch(_: Exception) { /* A disconnected native port need not throw; timeouts also retire it below. */ }
-                finally { imageQueries.remove(id) }
-                android.util.Log.d("MiruImagePolicy", "relay-retired")
-                if(imageRelays["$tabId:${relay.documentNonce}"]?.relayNonce == relay.relayNonce) imageRelays.remove("$tabId:${relay.documentNonce}")
+                catch(_: Exception) {
+                    imageQueries.remove(id)
+                    outstanding.remove(id)
+                    if(imageRelays["$tabId:${relay.documentNonce}"]?.relayNonce == relay.relayNonce) imageRelays.remove("$tabId:${relay.documentNonce}")
+                }
+                kotlinx.coroutines.delay(50)
             }
             @Suppress("UNREACHABLE_CODE") null
+        }.also { budgetExpired = !receivedReply } } finally {
+            outstanding.forEach { (id, query) ->
+                imageQueries.remove(id)
+                // Only an unanswered port at the total deadline is stale. A genuine
+                // unavailable-policy reply must not be replaced by an invented default.
+                if(budgetExpired && !query.response.isCompleted) {
+                    val relay = query.relay
+                    if(imageRelays["$tabId:${relay.documentNonce}"]?.relayNonce == relay.relayNonce) imageRelays.remove("$tabId:${relay.documentNonce}")
+                }
+            }
         }
         val current = store.state.tabs.firstOrNull { it.id == tabId }
         android.util.Log.d("MiruImagePolicy", if(result == null) "query-unavailable" else "query-live")

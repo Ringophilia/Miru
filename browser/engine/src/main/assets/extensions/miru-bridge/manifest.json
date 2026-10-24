@@ -1,9 +1,9 @@
 {
   "manifest_version": 2,
   "name": "Miru Bridge",
-  "version": "0.3.5",
+  "version": "0.3.7",
   "browser_specific_settings": { "gecko": { "id": "bridge@miru.app" } },
-  "permissions": ["cookies", "tabs", "webRequest", "<all_urls>", "nativeMessaging", "nativeMessagingFromContent", "geckoViewAddons"],
+  "permissions": ["cookies", "tabs", "webRequest", "webRequestBlocking", "<all_urls>", "nativeMessaging", "nativeMessagingFromContent", "geckoViewAddons"],
   "background": { "scripts": ["media-classifier.js", "background.js"] },
   "content_scripts": [
     { "matches": ["<all_urls>"], "js": ["image-policy.js"], "all_frames": true, "run_at": "document_start" },
