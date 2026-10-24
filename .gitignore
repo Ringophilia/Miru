@@ -11,3 +11,5 @@ artifacts/
 tools/local-*/
 *.log
 keystore.properties
+__pycache__/
+*.py[cod]

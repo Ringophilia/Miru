@@ -1,6 +1,6 @@
 # ARM64 APK 体积研究（待执行优化）
 
-2026-10-24。此文是打包路径研究，不是 PERF08 验收通过记录；本轮未构建、重压缩、重签或操作设备。
+2026-10-24。此文包含打包路径研究和后续未签中间产物实测，不是完整 PERF08 / 发布验收通过记录；最终签名与 release 运行验证仍须单独取证。
 
 ## 当前证据
 
@@ -59,7 +59,27 @@ unsigned ARM64 release APK
 
 同一机制可缓存优化后的库条目；缓存键必须包括原始载荷 SHA-256、SDK/zipalign 二进制版本或 SHA、压缩选项、归档格式版本，并对缓存内容重新验 SHA。Gecko 原生库相同而应用代码改变时可复用，Gecko 升级会自然失效。这是待实现的构建逻辑，不是现有开箱即用的 `zipalign` 选项。是否值得先筛选 `libxul.so` 或全部 17 个库，须由第一次压缩收益决定，不能先保证能少 1.06 MB。
 
+2026-10-24 后续新增独立 [`tools/apk-release-buildlogic`](../tools/apk-release-buildlogic/README.md)，尚未接入全局 Gradle。它使用固定官方 Zipflinger 9.1.1 的 `ZipSource.COMPRESSION_NO_CHANGE`，从一个**已完成且完整 SHA 固定**的优化缓存 APK 复用同路径、实际原始 SHA/len/CRC/method 与文件元属性均相同且压缩后更小的条目。发生变化的 DEX/JS 等直接使用当前 AGP APK 的压缩字节；缓存额外文件不会混入。全量写入新未签归档后再次独立验证路径集合、原始载荷和所选来源的压缩字节，并去除原应用签名文件与签名块。已用小型 fixture 跑过 74 项检查，包括相同 len/CRC 但 SHA 不同的替换攻击、重复项、损坏缓存、路径遍历、许可证保留和签名移除；独立重编后也再次 74 项通过。日志为 `artifacts/apk-size-reuse/run-20261024-073531-8c4c77de/tests.log` 与 `run-20261024-074509-646d4682/tests.log`。
+
+## 已完成的真实中间产物实验
+
+独立 SDK whole-APK Zopfli 进程正常退出，耗时 **854.184 秒**（约 14 分 14 秒），产出 107,570,406 字节的未签 APK，SHA-256 为 `204ad07b3fd782a1c0324567dae33c13e455a74176b9fd2838ae056a55702bcc`。与固定原包的全部 **1516** 个非签名 payload 逐项比较通过，普通 SDK 对齐检查退出码为 0。证据：`artifacts/apk-size/zopfli-result.json`、`zopfli-payload-verification.json`。
+
+在该进程完成并固定 SHA 后，helper 实际复用 1220 项、从当前 APK 复制 296 项，生成 107,569,934 字节的未签 APK，SHA-256 为 `74fbe1a46fbed1db57b1697867aa0d14f9303de4af3ec19a9ab4bd9594216f64`。独立 Python 再次证明全部 1516 个 payload 的路径、长度、CRC、SHA 和压缩方式与当前 APK 相同。证据：`artifacts/apk-size/reuse-original-report.json`、`reuse-payload-verification.json`。**这些是未签中间产物，不能替代最终签名文件大小、证书或运行验收。**
+
+新增 [`tools/optimize-release.ps1`](../tools/optimize-release.ps1) 将已签 AGP 原包/完整 SHA、已完成缓存/完整 SHA、固定官方 Jar、JDK、SDK Build Tools、Python、keystore/alias 与两个密码环境变量名作为显式输入，串联 helper 编译/复用、普通对齐、SDK 签名、最终对齐/签名与原证书集合一致性、独立 Python 严格 `<110,000,000` 逐 payload 校验；全部通过且输入 SHA 仍匹配后才无覆盖发布新 output。脚本只传 `env:NAME` 给 SDK signer，不读取/打印密码值，不接全局 Gradle。日志和 JSON 留在 output 旁，无递归删除。19 项预检/拒绝路径检查通过，证据为 `artifacts/apk-release-script-tests/run-20261024-075609-b170a586/tests.log`；该串联脚本尚未执行真实签名。
+
 ## 后续可选路径
+
+2026-10-24 完整串联已在保留的旧 browser-core 原包上实际通过：最终已签 APK 为
+`artifacts/apk-size/Miru-0.5.1-pipeline-proof-arm64.apk`，**107,696,213 字节**，
+SHA-256 `ace087341183ea48abd826f199d0c6111fc86faff50f2b6eefd78fdc40467c48`。
+SDK 对齐、签名和原 Android Debug 证书一致性通过，独立 Python 证明全部 1516 payload 保留且严格小于
+110,000,000 字节；日志为同名 `.verification-20261024-082012-1fea0657/pipeline.json`。
+首次实跑发现 SDK37 的 `V2 Signer:` 格式与旧正则不兼容，已抽取证书解析器并用真实输出等 18 项检查验证；
+随后修复 JSON 中大小写不同资源路径被 PowerShell 默认对象解析拒绝的问题，脚本明确要求 PowerShell7。
+这证明固定旧输入的打包工具链，不证明最新源码产物或 ARM64 真机运行，也不替代正式发布密钥。
+
 
 官方 bundletool 1.18.3 的 [`BundleConfig.Compression.apk_compression_algorithm=P7ZIP`](https://github.com/google/bundletool/blob/1.18.3/src/main/proto/config.proto) 也是受支持的 DEFLATE 编码选择，其注释说明较小 APK 可能换来较大更新补丁。若采用，需保留完整 AAB 配置和签名链、验证真实安装 APK 集；不能把 AAB 文件长度、下载估算、单个配置 split 或 MiB 数字当作当前单 ARM64 APK 门槛通过证据。
 
