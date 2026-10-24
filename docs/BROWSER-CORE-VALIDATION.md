@@ -186,3 +186,18 @@ SDK对齐/签名与原证书集合相同，只有arm64-v8a的17个native库，�
 AVD `hw.gpu.enabled=no`；Windows同时存在RTX3080Ti和Intel UHD显卡。
 现已结束自有只读5570实例，临时通过SDK支持的 `-gpu host` 在5572启动同一只读AVD，
 不修改保存配置；待实际GL驱动确认和该实例的完整回归终态后再补证据。
+
+## 宿主GPU实例的失败边界
+
+`host-gpu-driver.log` 确认5572实际使用NVIDIA RTX3080Ti、OpenGL ES3.1，非软件后端。
+同一Debug源码和诊断测试包、全新应用资料运行 `host-gpu-full-device.log`，**只完成60/77项**：
+其中59项通过，1项私密图片复制在20秒内没有发布敏感剪贴板URI。
+固定阶段日志显示 `baseline-unavailable`；实现返回不可用，没有凭空使用默认策略。
+这仍是实际可用性缺陷，须继续定位HTTP基线的私密/初始文档时序，不由其他策略用例通过覆盖。
+
+随后adb中5572消失，Windows中emulator/qemu进程也不存在；SDK stdout末尾为
+`Failed to find ColorBuffer`，没有77项终态。该事实证明模拟器进程退出，不能只凭日志认定
+应用或显卡驱动的具体根因，也不能将未运行的17项记成功。
+启动/退出日志为 `emulator-host-gpu-stdout.log` / `emulator-host-gpu-stderr.log`。
+原生API35软件实例5574随后以同一只读AVD重启，继续执行无需宿主GPU的重启/数据专项；
+原有AVD配置、其他离线设备与宿主fixture不改动。
