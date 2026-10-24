@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Ringophilia and xiaomao
 // SPDX-License-Identifier: MPL-2.0
 (() => {
-  let nativePort, stopped = false, timer, networks = [], pageUrl = '', paused, revision = 0;
+  let nativePort, relayNonce, stopped = false, timer, networks = [], pageUrl = '', paused, revision = 0;
   let holdSettings = { holdEnabled: true, holdSpeed: 2 };
   const webHold = MiruWebHold.install(document, window);
   webHold.configure(holdSettings);
@@ -18,6 +18,10 @@
     const response = await browser.runtime.sendMessage({ kind: 'miru-media-query' }).catch(() => null);
     if (!response || stopped || current !== revision) return;
     networks = response.items; pageUrl = response.pageUrl;
+    if (globalThis.MiruImagePolicy) try {
+      nativePort.postMessage({ kind: 'image-relay', pageUrl: window === window.top ? document.URL : pageUrl, documentUrl: document.URL,
+        documentNonce: MiruImagePolicy.documentNonce, relayNonce });
+    } catch (_) {}
     const items = new Map(networks.map(item => [item.id, { ...item }]));
     for (const element of elements()) {
       const url = source(element), id = MiruMedia.key(url), kind = MiruMedia.classify(url);
@@ -35,6 +39,8 @@
   function connectMedia() {
     if (stopped || nativePort) return;
     const connection = browser.runtime.connectNative('miru_media');
+    relayNonce = globalThis.MiruImagePolicy?.newNonce() || '';
+    const connectionNonce = relayNonce;
     nativePort = connection;
     connection.onDisconnect.addListener(() => {
       if (nativePort !== connection) return;
@@ -46,6 +52,18 @@
       if (message.kind === 'media-settings') {
         holdSettings = { holdEnabled: message.holdEnabled !== false, holdSpeed: Number.isFinite(message.holdSpeed) ? message.holdSpeed : 2 };
         webHold.configure(holdSettings);
+      } else if (message.kind === 'query-image-policy') {
+        if (message.relayNonce !== connectionNonce || message.documentNonce !== globalThis.MiruImagePolicy?.documentNonce ||
+            typeof message.id !== 'string' || message.id.length !== 36) return;
+        browser.runtime.sendMessage({ kind: 'miru-image-policy-query', url: message.url, pressedAtMillis: message.pressedAtMillis,
+          gestureStartedAtMillis: message.gestureStartedAtMillis })
+          .then(result => {
+            if (!stopped && nativePort === connection) connection.postMessage({ kind: 'image-policy', id: message.id,
+              relayNonce: connectionNonce, documentNonce: MiruImagePolicy.documentNonce, result });
+          }).catch(() => {
+            if (!stopped && nativePort === connection) try { connection.postMessage({ kind: 'image-policy', id: message.id,
+              relayNonce: connectionNonce, documentNonce: MiruImagePolicy.documentNonce, result: { found: false } }); } catch (_) {}
+          });
       } else if (message.kind === 'prepare') {
         webHold.cancel();
         const item = networks.find(item => item.id === message.mediaId) || { id: message.mediaId };

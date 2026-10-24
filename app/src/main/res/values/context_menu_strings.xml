@@ -1,0 +1,24 @@
+<resources>
+    <string name="context_link_label">链接</string>
+    <string name="context_image_label">图片</string>
+    <string name="context_video_label">视频</string>
+    <string name="context_clipboard_label">Miru</string>
+    <string name="context_new_tab">在新标签中打开</string>
+    <string name="context_private_tab">在无痕标签中打开</string>
+    <string name="context_copy_link">复制链接地址</string>
+    <string name="context_copy_text">复制链接文字</string>
+    <string name="context_download_link">下载链接</string>
+    <string name="context_share_link">分享链接</string>
+    <string name="context_open_image">在新标签中打开图片</string>
+    <string name="context_download_image">下载图片</string>
+    <string name="context_copy_image">复制图片</string>
+    <string name="context_share_image">分享图片</string>
+    <string name="context_play_video">用 Miru 播放器播放</string>
+    <string name="context_download_video">下载视频</string>
+    <string name="context_copy_video">复制视频地址</string>
+    <string name="context_preparing_image">正在准备图片…</string>
+    <string name="context_copied">已复制</string>
+    <string name="context_expired">页面已改变，请重新长按</string>
+    <string name="context_action_failed">暂时无法完成此操作</string>
+    <string name="context_image_failed">无法读取此图片，请重试或下载图片</string>
+</resources>

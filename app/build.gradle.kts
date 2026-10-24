@@ -18,8 +18,8 @@ android {
         applicationId = "app.miru.browser"
         minSdk = 26
         targetSdk = 37
-        versionCode = 8
-        versionName = "0.5.0"
+        versionCode = 9
+        versionName = "0.5.1"
         // Miru's application UI supports Chinese and English; web content keeps Gecko's locales.
         resourceConfigurations += listOf("en", "zh")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -97,6 +97,8 @@ dependencies {
     implementation(project(":feature:player"))
     implementation(project(":feature:offline"))
     implementation(libs.androidx.core.ktx)
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.2.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)

@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -78,16 +79,37 @@ class WebMediaInteractionTest {
             touch(MotionEvent.ACTION_DOWN, disabled, 120f)
             try { SystemClock.sleep(800); assertEquals("rate:1.0:playing", browser.state.value.selectedTab?.title) }
             finally { touch(MotionEvent.ACTION_UP, disabled, 120f) }
+            // With web hold disabled the same long press now intentionally opens the
+            // native video context menu. Close that real overlay before independently
+            // exercising webpage fullscreen and its single-Back exit contract.
+            waitFor { browser.contextMenus.state.value?.videoUrl != null }
+            compose.onNodeWithTag("context_play_video").assertIsDisplayed()
+            compose.onNodeWithTag("context_copy_video").assertIsDisplayed()
+            instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+            waitFor { browser.contextMenus.state.value == null }
+            compose.onNodeWithTag("context_play_video").assertDoesNotExist()
+            waitFor { compose.activity.hasWindowFocus() }
             val id = browser.state.value.selectedTabId
             tap(310f)
-            waitFor { browser.state.value.selectedTab?.fullScreen == true }
+            try { waitFor { browser.state.value.selectedTab?.fullScreen == true } }
+            catch(error: Throwable) { recordFullscreenFailure("request"); throw error }
             compose.onNodeWithContentDescription(compose.activity.getString(app.miru.toolbar.R.string.toolbar_menu)).assertDoesNotExist()
+            waitFor { compose.activity.hasWindowFocus() }
             instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
-            waitFor { browser.state.value.selectedTab?.fullScreen == false }
+            try { waitFor { browser.state.value.selectedTab?.fullScreen == false } }
+            catch(error: Throwable) { recordFullscreenFailure("exit"); throw error }
             assertEquals(id, browser.state.value.selectedTabId)
             assertEquals("${origin.url}/page", browser.state.value.selectedTab?.url)
             compose.onNodeWithContentDescription(compose.activity.getString(app.miru.toolbar.R.string.toolbar_menu)).assertIsDisplayed()
         } finally { runBlocking { container.playerPreferences.update { original } } } }
+    }
+
+    private fun recordFullscreenFailure(stage: String) {
+        android.util.Log.i("MiruWebUiTest", "fullscreenStage=$stage fullscreen=${browser.state.value.selectedTab?.fullScreen} contextKind=${browser.contextMenus.state.value?.kind} focused=${compose.activity.hasWindowFocus()} bounds=${webBounds()}")
+        instrumentation.uiAutomation.takeScreenshot()?.let { bitmap ->
+            java.io.File(instrumentation.targetContext.filesDir, "core-web-fullscreen-$stage.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
     }
 
     @Test fun automaticTakeoverIsOptInAndPausesTheWebVideo() {

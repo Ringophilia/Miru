@@ -1,0 +1,24 @@
+<resources>
+    <string name="context_link_label">Link</string>
+    <string name="context_image_label">Image</string>
+    <string name="context_video_label">Video</string>
+    <string name="context_clipboard_label">Miru</string>
+    <string name="context_new_tab">Open in new tab</string>
+    <string name="context_private_tab">Open in private tab</string>
+    <string name="context_copy_link">Copy link address</string>
+    <string name="context_copy_text">Copy link text</string>
+    <string name="context_download_link">Download link</string>
+    <string name="context_share_link">Share link</string>
+    <string name="context_open_image">Open image in new tab</string>
+    <string name="context_download_image">Download image</string>
+    <string name="context_copy_image">Copy image</string>
+    <string name="context_share_image">Share image</string>
+    <string name="context_play_video">Play in Miru player</string>
+    <string name="context_download_video">Download video</string>
+    <string name="context_copy_video">Copy video address</string>
+    <string name="context_preparing_image">Preparing image…</string>
+    <string name="context_copied">Copied</string>
+    <string name="context_expired">Page changed; touch and hold again</string>
+    <string name="context_action_failed">This action is temporarily unavailable</string>
+    <string name="context_image_failed">Unable to read this image. Try again or download it.</string>
+</resources>

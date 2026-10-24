@@ -11,6 +11,11 @@ import app.miru.browser.engine.BrowserController
 import app.miru.browser.engine.LibraryHistoryDelegate
 import app.miru.data.BrowsingLibrary
 import app.miru.data.SettingsRepository
+import app.miru.data.BrowsingDataType
+import app.miru.data.BrowsingDataClearResult
+import app.miru.settings.ClearBrowsingDataController
+import app.miru.player.PlaybackData
+import kotlinx.coroutines.CancellationException
 import app.miru.downloads.DownloadCoordinator
 import app.miru.player.PlaybackRequests
 import app.miru.player.PlaybackRequest
@@ -40,6 +45,24 @@ class AppContainer(application: Application) {
     val playerPreferences = PlayerPreferencesRepository(application)
     val mediaProbe = MediaResolutionProbe(application)
     val offline = OfflineCoordinator.get(application)
+    val browsingDataClearer = ClearBrowsingDataController { request ->
+        val engineResult = browser.clearBrowsingData(request)
+        val completed = engineResult.completed.toMutableSet()
+        val failed = engineResult.failed.toMutableSet()
+        for(type in request.types - app.miru.browser.engine.BrowserDataCleaner.ENGINE_TYPES) {
+            try {
+                when(type) {
+                    BrowsingDataType.HISTORY -> library.history.clear(request.since)
+                    BrowsingDataType.PLAYBACK_PROGRESS -> PlaybackData.clearProgress(application, request.since)
+                    BrowsingDataType.PLAYBACK_CACHE -> withContext(Dispatchers.IO) { PlaybackCache.clear(application) }
+                    else -> error("UNSUPPORTED_CLEAR_TYPE")
+                }
+                completed.add(type)
+            } catch(cancelled: CancellationException) { throw cancelled }
+            catch(_: Exception) { failed.add(type) }
+        }
+        BrowsingDataClearResult(completed, failed)
+    }
     // Process-only handoff guard survives browser Activity recreation; never save private URLs.
     val automaticMediaPages = mutableMapOf<String, String>()
     suspend fun offlinePlaybackRequest(id: String): PlaybackRequest? {

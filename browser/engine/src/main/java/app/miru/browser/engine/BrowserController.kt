@@ -30,6 +30,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import mozilla.components.browser.engine.gecko.GeckoEngine
 import mozilla.components.browser.session.storage.SessionStorage
+import mozilla.components.browser.session.storage.AutoSave
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import app.miru.data.BrowsingDataClearRequest
+import app.miru.data.BrowsingDataClearResult
+import kotlinx.coroutines.withTimeout
 import mozilla.components.browser.state.action.ContentAction
 import mozilla.components.browser.state.action.EngineAction
 import mozilla.components.browser.state.action.RestoreCompleteAction
@@ -72,6 +77,8 @@ class BrowserController(
     )
     private val tabs = TabsUseCases(store)
     private val sessions = SessionUseCases(store)
+    val contextMenus = BrowserContextMenus(applicationScope, store)
+    private val dataCleaner = BrowserDataCleaner(::requireEngine, ::resetFormData)
     private val cookieBridge = CookieBridge(applicationScope, store)
     val media = cookieBridge.media.state
     val mediaHints = cookieBridge.hints
@@ -97,6 +104,9 @@ class BrowserController(
     private var runtime: GeckoRuntime? = null
     private var activeView: WeakReference<EngineView>? = null
     private var sessionStorage: SessionStorage? = null
+    private val sessionWriteLock = Any()
+    @Volatile private var resettingForms = false
+    private val viewBindings = mutableSetOf<EngineViewBinding>()
     private var initialization: Job? = null
     private var interactedBeforeRestore = false
     private var isReady = false
@@ -193,7 +203,13 @@ class BrowserController(
                 mutableState.value = snapshot(store.state)
                 // SessionStorage serializes Gecko engineSessionState, including the navigation stack,
                 // and its writer deliberately omits all private tabs.
-                storage.autoSave(store)
+                AutoSave(store, object : AutoSave.Storage {
+                    override fun save(state: BrowserState): Boolean = synchronized(sessionWriteLock) {
+                        // Read after taking the lock: a queued pre-clear snapshot must never
+                        // write form/navigation state back after an explicit deletion.
+                        if(resettingForms) true else storage.save(store.state)
+                    }
+                }, AutoSave.DEFAULT_INTERVAL_MILLISECONDS, applicationScope)
                     .whenSessionsChange(applicationScope)
                     .whenGoingToBackground()
                     .periodicallyInForeground()
@@ -290,6 +306,9 @@ class BrowserController(
     }
     fun stopLoading() = sessions.stopLoading()
     fun setDesktopMode(enabled: Boolean) = sessions.requestDesktopSite(enabled)
+    fun consumeToolbarExpansion() {
+        store.state.selectedTabId?.let { store.dispatch(ContentAction.UpdateExpandedToolbarStateAction(it, false)) }
+    }
     fun setAdblockEnabled(enabled: Boolean) { ublock.setEnabled(enabled, ::reload) }
     fun retryAdblock() = ublock.retry()
     fun openAdblockPopup(): Boolean = ublock.openPopup()
@@ -326,6 +345,102 @@ class BrowserController(
     }
 
     fun restoreWebMedia(tabId: String) = cookieBridge.restore(tabId)
+
+    suspend fun contextImagePolicy(request: BrowserContextMenu): ContextImagePolicy? = withContext(Dispatchers.Main.immediate) {
+        if(!contextMenus.isOwnerCurrent(request)) return@withContext null
+        val url = request.imageUrl ?: return@withContext null
+        val policy = cookieBridge.queryImagePolicy(request.tabId, request.pageUrl, url, request.pressedAtMillis, request.gestureStartedAtMillis)
+        policy.takeIf { contextMenus.isOwnerCurrent(request) }
+    }
+
+    suspend fun contextHeaders(request: BrowserContextMenu, url: String, imagePolicy: ContextImagePolicy? = null): Map<String, String>? = withContext(Dispatchers.Main.immediate) {
+        if(!contextMenus.isOwnerCurrent(request)) return@withContext null
+        val actualImagePolicy = if(request.imageUrl == url) imagePolicy ?: contextImagePolicy(request) ?: return@withContext null else null
+        val captured = media.value[request.tabId].orEmpty().firstOrNull { it.url == url && it.pageUrl == request.pageUrl }
+        val headers = if(captured != null) refreshMediaHeaders(request.tabId, captured.id)
+            else headersForMediaUrl(url, request.isPrivate)
+        if(!contextMenus.isOwnerCurrent(request)) return@withContext null
+        val capturedReferrer = headers.orEmpty().entries.firstOrNull { it.key.equals("Referer", true) }?.value
+        val safeReferrer = if(actualImagePolicy != null) actualImagePolicy.referrerFor(url) else contextReferrer(request.pageUrl, url, capturedReferrer)
+        buildMap {
+            headers.orEmpty().forEach { (name, value) -> if(!name.equals("Referer", true)) put(name, value) }
+            safeReferrer?.let { put("Referer", it) }
+        }
+    }
+
+    suspend fun clearBrowsingData(request: BrowsingDataClearRequest): BrowsingDataClearResult = dataCleaner.clear(request)
+
+    private suspend fun requireEngine(): GeckoEngine = withContext(Dispatchers.Main.immediate) {
+        initialize()
+        withTimeout(30_000) { state.first { it.ready || it.error != null } }
+        checkNotNull(engine.takeIf { isReady }) { "ENGINE_UNAVAILABLE" }
+    }
+
+    private suspend fun resetFormData() = withContext(Dispatchers.Main.immediate) {
+        val activeEngine = requireEngine()
+        val before = store.state
+        val expectedIdentity = formResetIdentity(before)
+        val insertionOrder = formResetInsertionOrder(before.tabs)
+        val prepared = linkedMapOf<String, EngineSession>()
+        resettingForms = true
+        try {
+            withTimeout(10_000) {
+                // A real attached replacement must exist before the last old private context
+                // closes: Gecko otherwise clears the entire private cookie jar. A native NTP
+                // without an existing engine remains native and allocates no private document.
+                before.tabs.filter { tab -> tab.content.private &&
+                    (tab.content.url != NEW_TAB_URL || tab.engineState.engineSession != null) }.forEach { tab ->
+                    prepared[tab.id] = preparePrivateFormSession(activeEngine, tab.contextId, tab.content.desktopMode)
+                }
+                // AC 158 Store.dispatch is synchronous and locks the Store. Keep validation
+                // and the complete swap under that same lock, with no native-ready await here.
+                // New tabs, navigation or selection during preparation abort before old state
+                // is removed; they must never be overwritten by the earlier captured tab list.
+                synchronized(store) {
+                    check(formResetIdentity(store.state) == expectedIdentity) { "FORM_RESET_TABS_CHANGED" }
+                    viewBindings.toList().forEach { it.suspendRendering() }
+                    val cleanTabs = store.state.tabs.map { tab -> createTab(url = tab.content.url, private = tab.content.private,
+                        id = tab.id, title = tab.content.title, desktopMode = tab.content.desktopMode,
+                        contextId = tab.contextId, source = tab.source, parentId = tab.parentId,
+                        engineSession = prepared[tab.id]) }.associateBy { it.id }
+                    store.dispatch(TabListAction.RemoveAllTabsAction(recoverable = false))
+                    check(store.state.tabs.isEmpty()) { "FORM_RESET_REMOVE_FAILED" }
+                    store.dispatch(UndoAction.ClearRecoverableTabs(store.state.undoHistory.tag))
+                    check(store.state.undoHistory.tabs.isEmpty()) { "FORM_RESET_UNDO_FAILED" }
+                    // AddMultipleTabsAction rejects engine sessions and parent IDs. Add parents
+                    // first using the supported single-tab linking path, then restore display order.
+                    insertionOrder.forEach { id ->
+                        store.dispatch(TabListAction.AddTabAction(cleanTabs.getValue(id)))
+                    }
+                    before.tabs.forEachIndexed { index, tab ->
+                        val targetId = if(index == 0) store.state.tabs.first().id else before.tabs[index - 1].id
+                        if(tab.id != targetId) store.dispatch(TabListAction.MoveTabsAction(listOf(tab.id), targetId, placeAfter = index > 0))
+                    }
+                    check(store.state.tabs.map { it.id } == before.tabs.map { it.id }) { "FORM_RESET_ORDER_FAILED" }
+                    before.selectedTabId?.let { store.dispatch(TabListAction.SelectTabAction(it)) }
+                    // AddTabAction intentionally skips loading an injected session. Replace the
+                    // inert preparation document so it cannot become a Back entry or form backup.
+                    before.tabs.forEach { tab ->
+                        if(tab.content.url != NEW_TAB_URL) prepared[tab.id]?.loadUrl(tab.content.url,
+                            flags = EngineSession.LoadUrlFlags.select(EngineSession.LoadUrlFlags.LOAD_FLAGS_REPLACE_HISTORY))
+                    }
+                }
+            }
+            thumbnails.clear()
+            automaticNewTabId = null
+            withContext(Dispatchers.IO) { synchronized(sessionWriteLock) {
+                sessionStorage?.clear()
+                check(sessionStorage?.save(store.state) == true) { "SESSION_CLEAR_FAILED" }
+            } }
+        } finally {
+            // Sessions now linked to tabs are owned by normal tab lifecycle. Close every unused
+            // prepared context on timeout, cancellation or a safe abort; never leave a PB guard.
+            prepared.values.filter { candidate -> store.state.tabs.none { it.engineState.engineSession === candidate } }
+                .forEach { runCatching { it.close() } }
+            resettingForms = false
+            viewBindings.toList().forEach { it.resumeRendering() }
+        }
+    }
 
     suspend fun headersForMediaUrl(url: String, isPrivate: Boolean): Map<String, String> = withContext(Dispatchers.Main.immediate) {
         buildMap {
@@ -402,8 +517,9 @@ class BrowserController(
 
     fun saveSession() {
         if (!isReady) return
-        val snapshot = store.state
-        applicationScope.launch(Dispatchers.IO) { sessionStorage?.save(snapshot) }
+        applicationScope.launch(Dispatchers.IO) { synchronized(sessionWriteLock) {
+            if(!resettingForms) sessionStorage?.save(store.state)
+        } }
     }
 
     fun onTrimMemory(level: Int) {
@@ -414,8 +530,15 @@ class BrowserController(
 
     fun bind(view: EngineView): EngineViewBinding {
         activeView = WeakReference(view)
-        return EngineViewBinding(SessionFeature(store, sessions.goBack, sessions.goForward, view), view)
+        lateinit var binding: EngineViewBinding
+        binding = EngineViewBinding(SessionFeature(store, sessions.goBack, sessions.goForward, view), view) { viewBindings.remove(binding) }
+        viewBindings.add(binding)
+        if(resettingForms) binding.suspendRendering()
+        return binding
     }
+
+    fun swipeRefreshFeature(layout: SwipeRefreshLayout, onRefresh: (() -> Unit)? = null): EngineRefreshBinding =
+        EngineRefreshBinding(mozilla.components.feature.session.SwipeRefreshFeature(store, sessions.reload, layout, onRefresh))
 
     private fun snapshot(state: BrowserState): BrowserSnapshot = BrowserSnapshot(
         tabs = state.tabs.map { tab ->
@@ -435,6 +558,7 @@ class BrowserController(
                 findCurrent = tab.content.findResults.lastOrNull()?.let { if (it.numberOfMatches > 0) it.activeMatchOrdinal + 1 else 0 } ?: 0,
                 findTotal = tab.content.findResults.lastOrNull()?.numberOfMatches ?: 0,
                 fullScreen = tab.content.fullScreen,
+                showToolbarAsExpanded = tab.content.showToolbarAsExpanded,
             )
         },
         selectedTabId = state.selectedTabId,

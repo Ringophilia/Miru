@@ -14,6 +14,7 @@ interface PlaybackProgressDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun put(progress: PlaybackProgress)
     @Query("DELETE FROM playback_progress WHERE `key` NOT IN (SELECT `key` FROM playback_progress ORDER BY updatedAt DESC LIMIT 1000)") suspend fun prune()
     @Query("DELETE FROM playback_progress") suspend fun clear()
+    @Query("DELETE FROM playback_progress WHERE updatedAt >= :since") suspend fun clearSince(since: Long)
 }
 
 @Database(entities = [PlaybackProgress::class], version = 1, exportSchema = true)
@@ -25,4 +26,9 @@ abstract class PlaybackHistory : RoomDatabase() {
             instance ?: Room.databaseBuilder(context.applicationContext, PlaybackHistory::class.java, "miru-playback.db").build().also { instance = it }
         }
     }
+}
+
+/** App-level clearing does not expose Room's database type across module boundaries. */
+object PlaybackData {
+    suspend fun clearProgress(context: Context, since: Long = 0L) = PlaybackHistory.get(context).progress().clearSince(since)
 }

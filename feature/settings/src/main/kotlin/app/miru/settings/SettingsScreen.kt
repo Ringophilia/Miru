@@ -34,6 +34,7 @@ fun SettingsScreen(
     onAdblock: () -> Unit = {},
     onDownloads: () -> Unit = {},
     onPlayer: () -> Unit = {},
+    onClearBrowsingData: () -> Unit = {},
 ) {
     var dialog by remember { mutableStateOf<String?>(null) }
     Scaffold(topBar = {
@@ -52,6 +53,7 @@ fun SettingsScreen(
             })
             SettingRow(stringResource(R.string.toolbar_position), positionName(settings.toolbarPosition)) { dialog = "position" }
             GroupLabel(R.string.privacy_and_downloads)
+            SettingRow(stringResource(R.string.clear_browsing_data), stringResource(R.string.clear_browsing_data_summary), onClearBrowsingData)
             SettingRow(stringResource(R.string.adblock), stringResource(R.string.adblock_detail), onAdblock)
             SettingRow(stringResource(R.string.downloads), stringResource(R.string.downloads_detail), onDownloads)
             SettingRow(stringResource(R.string.player), stringResource(R.string.player_detail), onPlayer)

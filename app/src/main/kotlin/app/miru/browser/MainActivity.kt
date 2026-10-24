@@ -112,6 +112,7 @@ import app.miru.menu.MiruMenu
 import app.miru.ntp.NewTabPage
 import app.miru.settings.AboutScreen
 import app.miru.settings.SettingsScreen
+import app.miru.settings.ClearBrowsingDataScreen
 import app.miru.tabs.TabItem
 import app.miru.tabs.TabsTray
 import app.miru.toolbar.MiruToolbar
@@ -167,7 +168,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Route { BROWSER, HISTORY, BOOKMARKS, DOWNLOADS, SETTINGS, DOWNLOAD_SETTINGS, PLAYER_SETTINGS, ADBLOCK, ABOUT }
+private enum class Route { BROWSER, HISTORY, BOOKMARKS, DOWNLOADS, SETTINGS, DOWNLOAD_SETTINGS, PLAYER_SETTINGS, CLEAR_DATA, ADBLOCK, ABOUT }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -183,6 +184,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     val adblock by controller.adblock.collectAsStateWithLifecycle()
     val adblockPopup by controller.adblockPopup.collectAsStateWithLifecycle()
     val mediaByTab by controller.media.collectAsStateWithLifecycle()
+    val contextMenu by controller.contextMenus.state.collectAsStateWithLifecycle()
     val playerOptions by container.playerPreferences.settings.collectAsStateWithLifecycle(initialValue = app.miru.player.PlayerPreferences())
     val tab = snapshot.selectedTab
     val context = LocalContext.current
@@ -463,7 +465,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
             editing -> editing = false
             finding -> finding = false
             tabsVisible -> tabsVisible = false
-            route in setOf(Route.ABOUT, Route.DOWNLOAD_SETTINGS, Route.PLAYER_SETTINGS, Route.ADBLOCK) -> route = Route.SETTINGS
+            route in setOf(Route.ABOUT, Route.DOWNLOAD_SETTINGS, Route.PLAYER_SETTINGS, Route.CLEAR_DATA, Route.ADBLOCK) -> route = Route.SETTINGS
             route != Route.BROWSER -> route = Route.BROWSER
             controller.goBack() -> Unit
             snapshot.tabs.size > 1 && tab != null -> closeTab(tab.id)
@@ -481,7 +483,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
             Box(Modifier.fillMaxSize().then(if(webFullScreen) Modifier else Modifier.safeDrawingPadding().imePadding())) {
                 // The browser stays composed under full-screen routes, so the GeckoView is not torn down and
                 // recreated whenever the address bar is edited or settings/history/bookmarks are visited.
-                Column(Modifier.fillMaxSize().then(if (route != Route.BROWSER) Modifier.clearAndSetSemantics { } else Modifier)) {
+                Box(Modifier.fillMaxSize().then(if (route != Route.BROWSER) Modifier.clearAndSetSemantics { } else Modifier)) {
                     val toolbar: @Composable () -> Unit = {
                         Box {
                             if(finding) FindBar(findQuery, tab?.findCurrent ?: 0, tab?.findTotal ?: 0, { findQuery = it }, { controller.findNext(false) }, { controller.findNext(true) }, { finding = false })
@@ -523,9 +525,14 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                             }
                         }
                     }
-                    if(!webFullScreen && (!bottomToolbar || editing)) toolbar()
-                    Box(Modifier.weight(1f).fillMaxWidth()) {
-                        if (webPage && snapshot.ready && snapshot.error == null && tab?.crashed != true) GeckoContent(controller)
+                    BrowserViewport(controller = controller,
+                        webContent = webPage && snapshot.error == null && tab?.crashed != true,
+                        toolbarAtBottom = toolbarAtBottom,
+                        toolbarVisible = !webFullScreen && (!bottomToolbar || editing || toolbarAtBottom),
+                        forceToolbarVisible = editing || finding || menuVisible || tabsVisible || route != Route.BROWSER ||
+                            siteInfo || adblockPanel || mediaPanel || contextMenu != null,
+                        refreshEnabled = !webFullScreen && route == Route.BROWSER && !tabsVisible && !editing,
+                        reducedMotion = reducedMotion, toolbar = toolbar) {
                         when {
                             tab == null || tab.url == NEW_TAB_URL -> NewTabPage(incognito = tab?.isPrivate == true, onSearch = ::editAddress, onOpenUrl = { navigate(it) }, snackbar = snackbars)
                             snapshot.error != null -> ErrorContent(stringResource(R.string.engine_error), { controller.initialize() })
@@ -547,7 +554,6 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                             onClick = { mediaPanel = true; mediaHint = false }, modifier = Modifier.align(if(webFullScreen) Alignment.TopEnd else Alignment.BottomCenter).then(if(webFullScreen) Modifier.safeDrawingPadding() else Modifier).padding(16.dp)
                         ) { Text(stringResource(app.miru.media.R.string.media_play)) }
                     }
-                    if(toolbarAtBottom && !webFullScreen) toolbar()
                 }
                 AnimatedContent(route, transitionSpec = { routeTransition(initialState, targetState, reducedMotion) }, label = "route") { current ->
                     when(current) {
@@ -558,7 +564,8 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                             offline = container.offline, onOpenOffline = ::openOffline)
                         Route.DOWNLOAD_SETTINGS -> DownloadSettingsScreen(downloads, onBack = { route = Route.SETTINGS })
                         Route.ADBLOCK -> AdblockScreen(adblockUi, { route = Route.SETTINGS }, controller::setAdblockEnabled, controller::retryAdblock, { openAdblockDashboard(true) }, { openAdblockDashboard() })
-                        Route.SETTINGS -> SettingsScreen(settings, { route = Route.BROWSER }, { scope.launch { container.settings.setTheme(it) } }, { scope.launch { container.settings.setDynamicColor(it) } }, { scope.launch { container.settings.setToolbarPosition(it) } }, { scope.launch { container.settings.setSearchEngine(it) } }, onDefaultBrowser, { route = Route.ABOUT }, { route = Route.ADBLOCK }, { route = Route.DOWNLOAD_SETTINGS }, onPlayer = { route = Route.PLAYER_SETTINGS })
+                        Route.SETTINGS -> SettingsScreen(settings, { route = Route.BROWSER }, { scope.launch { container.settings.setTheme(it) } }, { scope.launch { container.settings.setDynamicColor(it) } }, { scope.launch { container.settings.setToolbarPosition(it) } }, { scope.launch { container.settings.setSearchEngine(it) } }, onDefaultBrowser, { route = Route.ABOUT }, { route = Route.ADBLOCK }, { route = Route.DOWNLOAD_SETTINGS }, onPlayer = { route = Route.PLAYER_SETTINGS }, onClearBrowsingData = { route = Route.CLEAR_DATA })
+                        Route.CLEAR_DATA -> ClearBrowsingDataScreen(container.browsingDataClearer, onBack = { route = Route.SETTINGS })
                         Route.PLAYER_SETTINGS -> PlayerSettingsScreen(container.playerPreferences, snackbars, onBack = { route = Route.SETTINGS })
                         Route.ABOUT -> AboutScreen(BuildConfig.VERSION_NAME, { route = Route.SETTINGS }, { navigate(it, newTab = true) }, adblockVersion = adblock.version.takeIf { adblock.installed })
                     }
@@ -572,6 +579,28 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                 // Spec 6.6: floating 8 dp above a bottom toolbar, otherwise 8 dp above the screen edge.
                 val overToolbar = route == Route.BROWSER && !tabsVisible && toolbarAtBottom
                 SnackbarHost(snackbars, Modifier.align(Alignment.BottomCenter).padding(bottom = if (overToolbar) 56.dp else 0.dp).padding(8.dp))
+            }
+            if(route == Route.BROWSER && !tabsVisible && !editing) contextMenu?.let { owner ->
+                BrowserContextMenuSheet(owner, onDismiss = { controller.contextMenus.dismiss(owner.token) },
+                    onOpenTab = ::openInNewTab,
+                    onDownload = { request, url ->
+                        val media = controller.media.value[request.tabId].orEmpty().firstOrNull { it.url == url && it.pageUrl == request.pageUrl && it.playable }
+                        if(media != null) downloadMedia(media) else scope.launch {
+                            val headers = controller.contextHeaders(request, url)
+                            if(headers == null || !url.startsWith("http", true)) showMessage(downloadFailed)
+                            else requestDownload(DownloadRequest(url, headers = headers, sourcePage = request.pageUrl, isPrivate = request.isPrivate))
+                        }
+                    },
+                    onPlayVideo = { request ->
+                        val media = controller.media.value[request.tabId].orEmpty().firstOrNull { it.url == request.videoUrl && it.pageUrl == request.pageUrl && it.playable }
+                        if(media != null) playMedia(media) else scope.launch {
+                            val url = request.videoUrl.orEmpty()
+                            val headers = controller.contextHeaders(request, url)
+                            if(headers == null || !(url.startsWith("https://") || url.startsWith("http://"))) showMessage(mediaFailed)
+                            else context.startActivity(PlaybackRequests.intent(context, PlaybackRequest(url, request.title.orEmpty(), pageUrl = request.pageUrl,
+                                headers = headers, isPrivate = request.isPrivate)))
+                        }
+                    }, loadImage = { loadContextImage(controller, it) }, isCurrent = controller.contextMenus::isCurrent, onMessage = ::showMessage)
             }
             mediaAddress?.let { (url, newTab) -> AlertDialog(
                 onDismissRequest = { mediaAddress = null }, title = { Text(stringResource(R.string.media_open_question)) },

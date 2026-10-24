@@ -27,6 +27,7 @@ dependencies {
     implementation(libs.mozilla.browser.state)
     implementation(libs.mozilla.browser.session.storage)
     implementation(libs.mozilla.feature.session)
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.2.0")
     implementation(libs.mozilla.feature.tabs)
     implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)

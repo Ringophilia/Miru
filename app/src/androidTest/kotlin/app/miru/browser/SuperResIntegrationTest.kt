@@ -152,8 +152,16 @@ class SuperResIntegrationTest {
             compose.waitUntil(15_000) { failures.get() == 1 && view.state().error != null && !view.state().releasing && !view.status().active }
             val before = position(scenario)
             compose.waitUntil(8_000) { position(scenario) != before && playing(scenario) }
-            val image = copyEventually(view.surfaceView)
-            try { assertTrue("Fallback must display actual pixels", nonBlackPixels(image) > 100) } finally { image.recycle() }
+            // A successful PixelCopy may still copy the fresh Surface's clear buffer
+            // before the decoder presents its first direct-output frame. Observe actual
+            // pixels within a bounded window, independently of the playback clock.
+            var presented = false
+            compose.waitUntil(8_000) {
+                val image = copyEventually(view.surfaceView)
+                try { presented = nonBlackPixels(image) > 100 } finally { image.recycle() }
+                presented
+            }
+            assertTrue("Fallback must display actual pixels", presented)
             assertEquals("A failed renderer reports once", 1, failures.get())
             scenario.onActivity { assertSame(owner, it.playback.player) }
         } finally { scenario.onActivity { view.dispose(); (view.parent as? ViewGroup)?.removeView(view) } }
@@ -189,11 +197,19 @@ class SuperResIntegrationTest {
                         it.attachOutput(ready.get()!!, 1920, 1080)
                     }
                 }
-                compose.waitUntil(60_000) {
-                    failure.get()?.let { throw AssertionError("Actual GLSL failed for $chain: $it") }
-                    renderer!!.status().let { it.active && it.frames >= 60 && it.gpuMs > 0 }
+                try {
+                    compose.waitUntil(60_000) {
+                        failure.get()?.let { throw AssertionError("Actual GLSL failed for $chain: $it") }
+                        renderer!!.status().let { it.active && it.frames >= 60 && it.gpuMs > 0 }
+                    }
+                } catch(timeout: androidx.compose.ui.test.ComposeTimeoutException) {
+                    var playerSnapshot = ""
+                    scenario.onActivity { playerSnapshot = "state=${owner.playbackState} playing=${owner.isPlaying} position=${owner.currentPosition}" }
+                    throw AssertionError("Real chain did not render 60 valid frames: chain=$chain status=${renderer!!.status()} " +
+                        "player=$playerSnapshot", timeout)
                 }
                 val sample = renderer!!.status()
+                android.util.Log.i("MiruSuperResAcceptance", "chain=$chain status=$sample")
                 assertEquals(1920, sample.outputWidth)
                 assertEquals(1080, sample.outputHeight)
                 assertTrue("CNN chains must execute their real multiple passes", sample.passes >= if(chain.first() == "FSR_EASU") 2 else 12)

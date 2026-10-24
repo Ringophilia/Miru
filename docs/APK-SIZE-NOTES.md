@@ -71,6 +71,16 @@ unsigned ARM64 release APK
 
 ## 后续可选路径
 
+最新完整源码也已重建并通过同一串联：0.5.1/code9原AGP APK为111,075,393字节
+（SHA `7db5436c71bb90a4ee943ef15dc5fece08101118d71317626067561b1210a39a`），
+最终 `artifacts/releases/Miru-0.5.1-arm64.apk` **107,892,912字节**，SHA
+`2364c2ad74bc46bbd9d42738e2f631daca588f47e4147fa4103c13ceaaf91362`。
+本次1517 payload全部保留，SDK对齐/签名/原证书集合一致，Gecko原4079项与5项新增另验通过。
+证据为最终文件同名 `.verification-20261024-084733-8563a5f9/` 与
+`artifacts/browser-core/core-051-final-omni-verification.json`；最新源码的单ARM64体积门已通过。
+签名仍为本机Android Debug，不代表正式发布或ARM64真机运行已验收。
+
+
 2026-10-24 完整串联已在保留的旧 browser-core 原包上实际通过：最终已签 APK 为
 `artifacts/apk-size/Miru-0.5.1-pipeline-proof-arm64.apk`，**107,696,213 字节**，
 SHA-256 `ace087341183ea48abd826f199d0c6111fc86faff50f2b6eefd78fdc40467c48`。

@@ -1,0 +1,9 @@
+{
+  "manifest_version": 2,
+  "name": "Miru Data Cleaner",
+  "version": "1.0.1",
+  "browser_specific_settings": { "gecko": { "id": "data-cleaner@miru.app" } },
+  "permissions": ["browsingData", "nativeMessaging", "geckoViewAddons"],
+  "background": { "scripts": ["background.js"] },
+  "incognito": "spanning"
+}
