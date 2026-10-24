@@ -210,7 +210,7 @@ AVD `hw.gpu.enabled=no`；Windows同时存在RTX3080Ti和Intel UHD显卡。
 `relay-total-budget-device.log` **9项8通过、1失败，103.680秒**：保留连接完整预算后连续私密用例通过，
 但首次同URL双图查询仍无响应，未以旧结果冒充成功。
 
-Bridge现为0.3.7，应用0.5.2/code10：
+该轮Bridge为0.3.7，应用0.5.2/code10：
 
 - HTTP策略读取改为最终 `onResponseStarted`，避免从其他扩展尚可修改的中间响应头推断有效策略；
   导航初始化仅对main_frame/sub_frame同步返回空blocking response，不取消、重定向或修改头。
@@ -225,7 +225,65 @@ Bridge现为0.3.7，应用0.5.2/code10：
 真实生产background的协议测试 **16/16通过**（`final-policy-protocol.log`），含中间unsafe-url头不能替代最终no-referrer。
 `configured-bridge-device.log` **9/9，通过，69.839秒**，覆盖8项策略和原普通/私密菜单复制。
 包括首次普通页、连续三个私密页、真实Referer/原始PNG/敏感剪贴板及FLAG_SECURE；不增加期限或减少检查。
-仍需新进程复跑、完整78项回归和0.5.2 release/lint/包体重建；0.5.1 APK不能作为此后源码的产物证据。
+随后新进程复跑 `configured-bridge-cold-device.log` **2/2，通过，21.585秒**，
+覆盖同URL双图与普通页之后连续私密页复制。下述完整78项回归已取得终态，取代此前“待跑”的状态；
+0.5.2 release/lint/包体在本节没有新终态证据，0.5.1 APK不能作为此后源码的产物证据。
+
+`052-fresh-full-device.log`：全新应用资料的常规回归 **78项77通过、1失败，534.273秒**，
+只排除两个需要外部强停的重启类。唯一失败为
+`AdblockIntegrationTest.signedBundledExtensionBlocksDefaultRuleAndGlobalToggleIsReal`：
+已在拦截就绪前加载的页面没有保留“需要重载”警告。全部渲染专项通过，包含真实benchmark三档、
+三档Anime/FSR的60帧、实际故障回退、取消/后台释放和画质切换；这不能把本次整套记为通过，
+亦不覆盖前述0.5.1的失败记录。`052-m1-startup.log` 记录该次uBO等待从INSTALLING到READY为160ms。
+
+该警告失败存在已确认的混杂因素：测试对已有目标值再次调用 `setAdblockEnabled(true)`，
+旧实现仍排队真实重载，重载完成本身可清除页面警告。因此本次失败不能唯一归因于页面observer注册缺口。
+0.5.3保留早期页面警告断言，在同步middleware钩子记录导航，并在新会话首次load前注册观察；
+同值设置的独立故障与修复见下节。
+
+## 0.5.3 插入meta策略与同值开关修复证据
+
+当前应用为 **0.5.3 / code11**，图片/Cookie桥接扩展为 **0.3.8**。
+新增meta回归先对实际安装的0.5.2 / bridge0.3.7复现；
+`meta-repro-installed-052.json` 记录本地与安装APK的SHA-256一致。
+最初的 `meta-probe-before-device.log` 虽为1/1通过（11.269秒），但没有先证明native桥接已有可用HTTP基线，
+不可用基线可能遮住错误，不能当作旧实现安全的证据。
+
+加强前置条件后的 `meta-known-baseline-before-device.log` **1项失败，12.553秒**：
+先用真实Cookie回复证明background已响应，再重载并成功复制，确认native确实使用较宽HTTP策略；
+插入 `no-referrer` meta后同批改为 `invalid`，新的真实Gecko图片请求不带Referer，
+旧native复制却扩大了策略，触发“A native copy must never widen the actual document policy”。
+这是设备上的实际安全回归，不能由纯Node夹具或前述弱前置条件的通过取代。
+
+修复将同一mutation批次中新增meta及其子树、复用节点和属性变化关联；中间有效值不可观测时明确返回
+`meta-ambiguous`，不回退到HTTP。已观察meta的单次合法修改和当前图片的显式覆盖继续可用。
+bridge0.3.8还保证background全部监听器先注册后连接native，每个新连接发送ready；
+断连、请求和异步Cookie结果绑定各自连接，旧连接不能干扰新连接或把旧回复发往新连接。
+
+`053-meta-protocol.log` 为真实content脚本的Node检查 **21/21通过**；
+`053-policy-protocol.log` 为真实background的Node检查 **25/25通过**，包含监听器/ready顺序、
+替换连接与迟到Cookie结果、普通/私密jar及最长路径顺序。这些夹具不替代Gecko事件或服务端Referer取证。
+详见 [context-image-meta-test.md](../tools/context-image-meta-test.md)。
+
+`053-debug-build.log`：全部Android JVM、`:core:common:test`、Debug/AndroidTest构建成功（59秒）；
+本轮XML汇总 **107/107，0 failure/error/skipped**。
+`053-meta-bridge-device.log` **14/14，通过，79.341秒**：9项图片策略、3项真实Cookie桥接、
+原普通/私密菜单复制和uBO专项。包含上述已证明宽基线后的meta回归、连续私密复制、
+实际Referer/原始PNG、敏感剪贴板和FLAG_SECURE要求；不扩大超时或减少断言。
+
+随后新增同值设置断言，`idempotence-before-device.log` **1项失败，25.034秒**：
+拦截已READY时重复设置true，状态实际变为INSTALLING。
+`UblockController.setEnabled` 现先比较 `installation.desiredEnabled`，相同目标值直接返回，
+既不启动安装/重载，也不覆盖一次真实开关操作仍待完成的callback；失败重试仍使用单独Retry入口。
+`053-idempotent-build.log` Debug/AndroidTest与JVM构建成功（67秒）。
+新安装含该guard的主APK后，`053-idempotent-device.log` **1/1，通过，23.324秒**：
+保留原有拦截/禁用/重新启用/真实popup和早期警告断言，并验证连续三次同值设置仍为READY，
+随后1.5秒内真实HTML `documentLoads` 不增加、当前受保护文档不变。
+先前14项通过发生在同值guard修改之前，不能代替最终源码的全套回归。
+
+0.5.3的新资料完整 **79项**、ARM64 release/lint、最终发布包摘要/体积及外部强停重启门，
+仍须各自终态日志后补记；本节不预记成功。
 
 外部强停重启专项组合命令遭自动审批拒绝（工具仅返回blocked by policy），命令未执行。
-当前没有将500MB或离线的0.5.2强停验证记为通过，也未用其他路径绕过拒绝。
+工具没有提供更具体原因；当前没有将500MB或离线的0.5.2/0.5.3强停验证记为通过，
+也未用其他路径绕过拒绝。

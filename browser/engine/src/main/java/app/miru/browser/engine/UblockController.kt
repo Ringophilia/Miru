@@ -55,7 +55,7 @@ internal class UblockController(
     private var defaultAction: Action? = null
     private val tabActions = mutableMapOf<String, Action>()
     private val navigationObservers = mutableMapOf<String, Pair<EngineSession, EngineSession.Observer>>()
-    private val unconfirmedPages = mutableSetOf<String>()
+    private val pageWarnings = UblockPageWarnings()
     private var startup = CompletableDeferred<Unit>()
     private data class PendingInstall(val attempt: Long, val result: CompletableDeferred<WebExtension>)
     private var pendingInstall: PendingInstall? = null
@@ -71,7 +71,7 @@ internal class UblockController(
             store.stateFlow.collect { value ->
                 tabActions.keys.retainAll(value.tabs.map { it.id }.toSet())
                 val retainedIds = value.tabs.map { it.id }.toSet() + value.undoHistory.tabs.map { it.state.id }
-                unconfirmedPages.retainAll(retainedIds)
+                pageWarnings.retainTabs(retainedIds)
                 navigationObservers.keys.filter { it !in retainedIds }.forEach { id ->
                     navigationObservers.remove(id)?.let { (session, observer) -> session.unregister(observer) }
                 }
@@ -194,6 +194,9 @@ internal class UblockController(
     }
 
     fun setEnabled(enabled: Boolean, onApplied: () -> Unit = {}) {
+        // Repeating the desired value must not restart setup or reload a document.
+        // Preserve a real pending toggle's callback; failed setup has a separate Retry action.
+        if (installation.desiredEnabled == enabled) return
         installation.setDesiredEnabled(enabled)
         preferences.edit().putBoolean("enabled", enabled).apply()
         onEnabledApplied = onApplied
@@ -265,50 +268,68 @@ internal class UblockController(
             status = installation.status,
             error = installation.error,
             badgeText = badge,
-            pageNeedsReload = enabled && (badge == "!" || store.state.selectedTabId in unconfirmedPages),
+            pageNeedsReload = enabled && (badge == "!" || pageWarnings.needsReload(store.state.selectedTabId)),
             blockedCount = parseBadgeCount(badge),
             popupAvailable = currentAction() != null && installed && enabled,
         )
     }
 
     private fun attachSessionHandlers(value: BrowserState) {
-        val current = extension
         value.tabs.forEach { tab ->
             tab.engineState.engineSession?.let { session ->
-                if(navigationObservers[tab.id]?.first !== session) {
-                    navigationObservers.remove(tab.id)?.let { (previous, observer) -> previous.unregister(observer) }
-                    val id = tab.id
-                    val observer = object : EngineSession.Observer {
-                        override fun onLoadingStateChange(loading: Boolean) {
-                            if(!loading) return
-                            val url = store.state.tabs.firstOrNull { it.id == id }?.content?.url.orEmpty()
-                            if(!url.startsWith("http://") && !url.startsWith("https://")) return
-                            if(installation.desiredEnabled && mutableState.value.status != AdblockStatus.READY) unconfirmedPages += id
-                            else unconfirmedPages -= id
-                            publish()
-                        }
-                    }
-                    navigationObservers[id] = session to observer
-                    session.register(observer)
-                    if(tab.content.loading && installation.desiredEnabled && mutableState.value.status != AdblockStatus.READY) unconfirmedPages += id
-                }
-                if(current == null) return@let
-                if (!current.hasActionHandler(session)) current.registerActionHandler(session, object : ActionHandler {
-                    override fun onBrowserAction(extension: WebExtension, session: EngineSession?, action: Action) {
-                        tabActions[tab.id] = action; publish()
-                    }
-                })
-                if (!current.hasTabHandler(session)) current.registerTabHandler(session, object : TabHandler {
-                    override fun onCloseTab(webExtension: WebExtension, engineSession: EngineSession): Boolean { onCloseTab(tab.id); return true }
-                    override fun onUpdateTab(webExtension: WebExtension, engineSession: EngineSession, active: Boolean, url: String?): Boolean {
-                        if (active) onSelectTab(tab.id)
-                        url?.let { session.loadUrl(it) }
-                        return true
-                    }
-                })
+                onSessionLinked(tab.id, session, tab.content.url)
             }
         }
     }
+
+    /** Synchronous middleware hook: a later READY callback must not erase this navigation's gap. */
+    fun onLoadRequested(tabId: String, url: String) {
+        pageWarnings.loadRequested(tabId, url, protectionUnconfirmed())
+        publish()
+    }
+
+    /** Called before AC's linking middleware starts a new session's first load. */
+    fun onSessionLinked(tabId: String, session: EngineSession, initialUrl: String) {
+        if (navigationObservers[tabId]?.first !== session) {
+            navigationObservers.remove(tabId)?.let { (previous, observer) -> previous.unregister(observer) }
+            var observedUrl = initialUrl
+            val observer = object : EngineSession.Observer {
+                @Suppress("DEPRECATION")
+                override fun onLoadRequest(url: String, triggeredByRedirect: Boolean, triggeredByWebContent: Boolean) {
+                    observedUrl = url
+                    pageWarnings.loadRequest(tabId, url, triggeredByRedirect, protectionUnconfirmed())
+                    publish()
+                }
+                override fun onLoadingStateChange(loading: Boolean) {
+                    pageWarnings.loadingChanged(tabId, loading, observedUrl, protectionUnconfirmed())
+                    publish()
+                }
+                override fun onLocationChange(url: String, hasUserGesture: Boolean) {
+                    observedUrl = url
+                    pageWarnings.locationChanged(tabId, url)
+                    publish()
+                }
+            }
+            navigationObservers[tabId] = session to observer
+            session.register(observer)
+        }
+        val current = extension ?: return
+        if (!current.hasActionHandler(session)) current.registerActionHandler(session, object : ActionHandler {
+            override fun onBrowserAction(extension: WebExtension, session: EngineSession?, action: Action) {
+                tabActions[tabId] = action; publish()
+            }
+        })
+        if (!current.hasTabHandler(session)) current.registerTabHandler(session, object : TabHandler {
+            override fun onCloseTab(webExtension: WebExtension, engineSession: EngineSession): Boolean { onCloseTab(tabId); return true }
+            override fun onUpdateTab(webExtension: WebExtension, engineSession: EngineSession, active: Boolean, url: String?): Boolean {
+                if (active) onSelectTab(tabId)
+                url?.let { onLoadRequested(tabId, it); session.loadUrl(it) }
+                return true
+            }
+        })
+    }
+
+    private fun protectionUnconfirmed() = installation.desiredEnabled && installation.status != AdblockStatus.READY
 
     private val delegate = object : WebExtensionDelegate {
         override fun isInPrivateBrowsing(): Boolean = store.state.tabs.firstOrNull { it.id == store.state.selectedTabId }?.content?.private == true

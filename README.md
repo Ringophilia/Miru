@@ -8,7 +8,7 @@ Android 原生浏览器，包名 `app.miru.browser`。产品需求以 [MIRU-SPEC
 
 图标由维护者以《Ringo EXPO 08》封面为灵感，通过 AI 生成；素材的授权范围与来源见 [design/PROVENANCE.md](design/PROVENANCE.md)。Miru 与椎名林檎、相关唱片公司、Mozilla 或 Google 没有隶属或背书关系。
 
-目前推进至 **M3 与浏览器核心开发批次（0.5.2开发中）**：在 GeckoView / Compose 浏览器、uBlock Origin、断点下载与 Media3 播放器基础上，接入清晰度探测、字幕 / 音轨、HLS / DASH 视频离线、Anime4K / FSR 渲染，以及网页长按菜单、清除浏览数据和滚动工具栏。
+目前推进至 **M3 与浏览器核心开发批次（0.5.3开发中）**：在 GeckoView / Compose 浏览器、uBlock Origin、断点下载与 Media3 播放器基础上，接入清晰度探测、字幕 / 音轨、HLS / DASH 视频离线、Anime4K / FSR 渲染，以及网页长按菜单、清除浏览数据和滚动工具栏。
 
 「设置 → 播放器」可调整缓存上限、预缓冲和手势参数，清除流缓存 / 播放进度。清缓存保留下载文件，无痕播放不读写缓存和进度。
 
@@ -39,7 +39,9 @@ uBO 使用原版站点面板、过滤规则和例外列表。在扩展就绪前�
 
 设备测试需要连接模拟器或手机，测试网页由测试进程内的 loopback HTTP 服务提供；全新 uBO 安装仍可能访问 Gecko 远程设置。独立手动 fixture 可用 `node tools/m1-fixture-server.mjs` 启动。`DownloadRestartTest` 与 `OfflineRestartTest` 都必须分阶段运行并在中间强制停止进程，方法见 [M1 验证记录](docs/M1-VALIDATION.md)和[离线记录](docs/M3-OFFLINE-VALIDATION.md)；上述常规命令排除这两类，不把排除算作通过。
 
-已保留的0.5.1单ARM64开发包通过严格十进制110MB体积门：107,892,912字节。AGP原包仍超过门槛；最终包使用压缩字节复用、对齐和原证书重签链路，完整输入、检查与命令见 [打包工具](tools/apk-release-buildlogic/README.md)和[验证记录](docs/BROWSER-CORE-VALIDATION.md)。当前为本机调试签名，尚未完成正式发行和ARM64真机验收。0.5.1常规设备回归为77项75通过、2项超分渲染超时；0.5.2图片修复专项9/9通过，但完整回归与发布包尚待重验，不能称整套通过。
+已保留的0.5.1单ARM64开发包通过严格十进制110MB体积门：107,892,912字节。最终包使用压缩字节复用、对齐和原证书重签链路，完整输入、检查与命令见 [打包工具](tools/apk-release-buildlogic/README.md)和[验证记录](docs/BROWSER-CORE-VALIDATION.md)。它是历史产物，包含随后修复的图片策略问题，不能作为当前源码交付包。当前仍为本机调试签名，尚未完成正式发行和ARM64真机验收。
+
+0.5.2全新资料常规回归78项77通过、1项首次安装页面刷新警告失败；渲染专项均通过。0.5.3已修复实际Gecko复现的图片meta策略泄漏、扩展监听就绪时序及广告拦截重复启用导致的重载，107项JVM、46项JS协议、14项设备专项和重复启用专项通过。本版完整回归与发布包仍在重验，具体失败和验证边界保留在上述记录中。
 
 ## 工程结构
 

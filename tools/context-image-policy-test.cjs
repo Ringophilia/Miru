@@ -4,7 +4,8 @@
 
 // Run the shipped background scripts. Only browser event delivery and the IPC
 // peer are fixtures; policy selection, document binding and routing stay in the
-// production source. This does not simulate Gecko, DOM mutation or native ports.
+// production source. The IPC doubles do not reproduce Gecko's native lifecycle
+// or DOM mutation processing.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -22,6 +23,7 @@ function fixture() {
   const listeners = new Map();
   const registrations = [];
   const requests = [];
+  const nativePorts = [], reconnects = [];
   const state = { tabId: 1, frameId: 0, documentUrl: PAGE, senderUrl: PAGE, topUrl: PAGE, documentNonce: DOCUMENT };
   const event = name => ({ addListener(callback, filter, extra) {
     registrations.push({ name, filter, extra, callback });
@@ -32,9 +34,26 @@ function fixture() {
     const results = (listeners.get(name) || []).map(callback => callback(value, sender));
     return results.find(result => result !== undefined);
   }
-  const nativePort = { onDisconnect: event('nativeDisconnect'), onMessage: event('nativeMessage'), postMessage() {} };
+  let cookiePeer = async () => [];
+  function connectNative() {
+    const disconnectListeners = [], messageListeners = [];
+    const connection = {
+      registrationsAtConnect: registrations.map(item => item.name),
+      sent: [],
+      onDisconnect: { addListener(callback) { disconnectListeners.push(callback); } },
+      onMessage: { addListener(callback) { messageListeners.push(callback); } },
+      postMessage(message) {
+        connection.sent.push({ message, registrations: registrations.map(item => item.name) });
+      },
+      disconnect() { disconnectListeners.forEach(callback => callback()); },
+      receive(message) { return Promise.all(messageListeners.map(callback => callback(message))); },
+    };
+    nativePorts.push(connection);
+    return connection;
+  }
   const browser = {
-    runtime: { connectNative() { return nativePort; }, onMessage: event('message') },
+    runtime: { connectNative, onMessage: event('message') },
+    cookies: { getAll(query) { return cookiePeer(query); } },
     webRequest: {
       onBeforeRequest: event('before'), onBeforeSendHeaders: event('sendHeaders'), onHeadersReceived: event('headers'),
       onResponseStarted: event('responseStarted'),
@@ -55,7 +74,8 @@ function fixture() {
   let peer = message => ({ found: typeof message.headerPolicy === 'string', policy: message.headerPolicy,
     documentNonce: message.documentNonce, pressNonce: message.pressNonce, documentUrl: state.documentUrl,
     stage: 'baseline-unavailable' });
-  const sandbox = { browser, URL, Map, Set, Promise, setTimeout };
+  const sandbox = { browser, URL, Map, Set, Promise,
+    setTimeout(callback, delay) { reconnects.push({ callback, delay }); } };
   vm.createContext(sandbox);
   for (const file of ['media-classifier.js', 'background.js']) {
     vm.runInContext(fs.readFileSync(path.join(assets, file), 'utf8'), sandbox, { filename: file });
@@ -63,8 +83,14 @@ function fixture() {
   const sender = () => ({ tab: { id: state.tabId, url: state.topUrl }, frameId: state.frameId, url: state.senderUrl });
   const message = data => emit('message', data, sender());
   return {
-    state, requests, registrations, emit, message,
+    state, requests, registrations, emit, message, nativePorts, reconnects,
     setPeer(callback) { peer = callback; },
+    setCookiePeer(callback) { cookiePeer = callback; },
+    reconnect() {
+      const task = reconnects.shift(); assert.ok(task, 'Expected a scheduled native reconnect');
+      assert.equal(task.delay, 500); task.callback();
+      return nativePorts.at(-1);
+    },
     before(requestId, type = state.frameId === 0 ? 'main_frame' : 'sub_frame') {
       emit('before', { tabId: state.tabId, frameId: state.frameId, type, requestId });
     },
@@ -239,3 +265,89 @@ test('an expired press, wrong URL, cleared press or closed tab cannot be resolve
   assert.equal((await f.query(beforeClose)).found, false);
   assert.equal(f.requests.length, 0);
 });
+
+test('initial native connection and ready follow all background listener registrations', () => {
+  const f = fixture(), connection = f.nativePorts[0];
+  const expected = f.registrations.map(item => item.name);
+  for (const required of ['before', 'responseStarted', 'message']) assert.ok(expected.includes(required));
+  assert.equal(f.nativePorts.length, 1);
+  assert.deepEqual(connection.registrationsAtConnect, expected);
+  assert.equal(connection.sent.length, 1);
+  assert.deepEqual(connection.sent[0].registrations, expected);
+  assert.equal(connection.sent[0].message.kind, 'bridge-ready');
+  assert.deepEqual(Object.keys(connection.sent[0].message), ['kind'], 'Readiness carries no document or credentials');
+});
+
+test('every new native connection announces ready without registering duplicate web listeners', () => {
+  const f = fixture(), initial = f.nativePorts[0], registrationCount = f.registrations.length;
+  initial.disconnect();
+  const replacement = f.reconnect();
+  assert.notEqual(initial, replacement);
+  assert.equal(f.nativePorts.length, 2);
+  assert.equal(f.registrations.length, registrationCount);
+  assert.equal(replacement.sent.length, 1);
+  assert.equal(replacement.sent[0].message.kind, 'bridge-ready');
+});
+
+test('a stale disconnect or native request cannot disturb the replacement connection', async () => {
+  const f = fixture(), initial = f.nativePorts[0];
+  initial.disconnect(); const replacement = f.reconnect();
+  initial.disconnect();
+  assert.equal(f.reconnects.length, 0, 'The old disconnect must not schedule another connection');
+  let calls = 0; f.setCookiePeer(async () => { calls++; return []; });
+  await initial.receive({ kind: 'cookies', id: 'old-request', url: PAGE });
+  assert.equal(calls, 0);
+  await replacement.receive({ kind: 'cookies', id: 'new-request', url: PAGE });
+  assert.equal(calls, 1);
+  assert.equal(replacement.sent.at(-1).message.id, 'new-request');
+});
+
+for (const outcome of ['resolve', 'reject']) {
+  test(`an old asynchronous Cookie ${outcome} never replies through a replacement native connection`, async () => {
+    const f = fixture(), initial = f.nativePorts[0];
+    let settle;
+    f.setCookiePeer(() => new Promise((resolve, reject) => {
+      settle = outcome === 'resolve' ? () => resolve([{ name: 'old', value: 'private', path: '/' }]) : () => reject(new Error('unavailable'));
+    }));
+    const pending = initial.receive({ kind: 'cookies', id: 'old-request', url: PAGE, private: true });
+    initial.disconnect(); const replacement = f.reconnect();
+    settle(); await pending;
+    assert.equal(initial.sent.length, 1, 'The disconnected connection receives no Cookie result');
+    assert.equal(replacement.sent.length, 1, 'The new connection receives only its own ready signal');
+    assert.equal(replacement.sent[0].message.kind, 'bridge-ready');
+  });
+}
+
+test('an unsupported Cookie URL produces only an unavailable reply', async () => {
+  const f = fixture(), connection = f.nativePorts[0];
+  let called = false; f.setCookiePeer(async () => { called = true; return []; });
+  await connection.receive({ kind: 'cookies', id: 'unsupported', url: 'data:text/plain,private' });
+  assert.equal(called, false);
+  assert.equal(connection.sent.at(-1).message.kind, 'cookies');
+  assert.equal(connection.sent.at(-1).message.id, 'unsupported');
+  assert.equal(connection.sent.at(-1).message.error, true);
+  assert.equal(Object.hasOwn(connection.sent.at(-1).message, 'cookie'), false);
+});
+
+test('a Cookie API failure remains unavailable on the originating connection', async () => {
+  const f = fixture(), connection = f.nativePorts[0];
+  f.setCookiePeer(async () => { throw new Error('unavailable'); });
+  await connection.receive({ kind: 'cookies', id: 'failed', url: PAGE });
+  assert.equal(connection.sent.at(-1).message.id, 'failed');
+  assert.equal(connection.sent.at(-1).message.error, true);
+  assert.equal(Object.hasOwn(connection.sent.at(-1).message, 'cookie'), false);
+});
+
+for (const isPrivate of [false, true]) {
+  test(`Cookie replies preserve the ${isPrivate ? 'private' : 'ordinary'} jar and longest-path order`, async () => {
+    const f = fixture(), connection = f.nativePorts[0];
+    f.setCookiePeer(async query => {
+      assert.equal(query.storeId, isPrivate ? 'firefox-private' : 'firefox-default');
+      assert.equal(query.url, PAGE);
+      return [{ name: 'root', value: 'one', path: '/' }, { name: 'path', value: 'two', path: '/document' }];
+    });
+    await connection.receive({ kind: 'cookies', id: 'current', url: PAGE, private: isPrivate });
+    assert.equal(connection.sent.at(-1).message.id, 'current');
+    assert.equal(connection.sent.at(-1).message.cookie, 'path=two; root=one');
+  });
+}

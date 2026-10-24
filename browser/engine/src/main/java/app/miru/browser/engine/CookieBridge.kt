@@ -40,6 +40,11 @@ internal class CookieBridge(private val scope: CoroutineScope, private val store
     private var port: Port? = null
     private var connected = CompletableDeferred<Unit>()
     private var configured = CompletableDeferred<Unit>()
+    private class StartupAttempt(val generation: Long) {
+        val configured = CompletableDeferred<Unit>()
+        val ready = CompletableDeferred<Unit>()
+    }
+    private var startup = StartupAttempt(0)
     private val pending = mutableMapOf<String, CompletableDeferred<String?>>()
     private class ImageRelay(val tabId: String, val session: EngineSession, val pageUrl: String,
         val documentUrl: String, val documentNonce: String, val relayNonce: String, val port: Port, val sequence: Long)
@@ -71,31 +76,53 @@ internal class CookieBridge(private val scope: CoroutineScope, private val store
     } } }
 
     fun start(engine: GeckoEngine) {
+        val attempt = StartupAttempt(startup.generation + 1)
+        startup = attempt
+        port = null
+        connected = CompletableDeferred()
+        pending.values.forEach { it.complete(null) }; pending.clear()
         fun bindConfigured(value: WebExtension) {
+            if(startup !== attempt) return
             extension = value
             sessions.clear()
             value.registerBackgroundMessageHandler("miru", object : MessageHandler {
-                override fun onPortConnected(port: Port) { this@CookieBridge.port = port; connected.complete(Unit) }
+                private fun current() = startup === attempt && extension === value
+                override fun onPortConnected(port: Port) {
+                    if(!current()) return
+                    this@CookieBridge.port = port
+                    connected.complete(Unit)
+                }
                 override fun onPortDisconnected(port: Port) {
+                    if(!current()) return
                     this@CookieBridge.port = null
                     connected = CompletableDeferred()
                     pending.values.forEach { it.complete(null) }; pending.clear()
                 }
                 override fun onPortMessage(message: Any, port: Port) {
+                    if(!current()) return
                     val data = message as? JSONObject ?: return
+                    if(data.optString("kind") == "bridge-ready") { attempt.ready.complete(Unit); return }
                     if (data.optString("kind") != "cookies") return
                     pending.remove(data.optString("id"))?.complete(if(data.optBoolean("error")) null else data.optString("cookie"))
                 }
             })
             attach()
             configured.complete(Unit)
+            attempt.configured.complete(Unit)
         }
         engine.installBuiltInWebExtension("bridge@miru.app", "resource://android/assets/extensions/miru-bridge/", onSuccess = { value ->
+            if(startup !== attempt) return@installBuiltInWebExtension
             // AC returns a replacement WebExtension after private-permission changes.
             // Both background and content delegates must belong to that final instance.
             if(value.isAllowedInPrivateBrowsing()) bindConfigured(value)
             else engine.setAllowedInPrivateBrowsing(value, true, onSuccess = ::bindConfigured, onError = { bindConfigured(value) })
         })
+    }
+
+    /** The current startup keeps running after this bounded page-loading gate opens. */
+    suspend fun awaitStartup() {
+        val attempt = startup
+        withTimeoutOrNull(1_500) { attempt.configured.await(); attempt.ready.await() }
     }
 
     /** Main-dispatcher delivery; configuration and port bookkeeping never contain persistent credentials. */

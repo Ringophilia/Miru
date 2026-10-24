@@ -22,15 +22,21 @@
     else if (Object.hasOwn(legacy, value)) { metaPolicy = legacy[value]; processedMetas.add(node); }
   }
   function records(changes) {
-    const changedMetas = new Map();
+    const changedMetas = new Map(), insertedMetas = new WeakSet();
+    for (const change of changes) if (change.type === 'childList') {
+      for (const node of change.addedNodes) {
+        if (node instanceof HTMLMetaElement) insertedMetas.add(node);
+        node.querySelectorAll?.('meta').forEach(meta => insertedMetas.add(meta));
+      }
+    }
     for (const change of changes) if (change.type === 'attributes' && change.target instanceof HTMLMetaElement) {
       if (change.target.name.toLowerCase() !== 'referrer' && !processedMetas.has(change.target) &&
           !(change.attributeName === 'name' && change.oldValue?.toLowerCase() === 'referrer')) continue;
       const count = (changedMetas.get(change.target) || 0) + 1;
       changedMetas.set(change.target, count);
-      // Native meta processing is synchronous. Two same-task writes can hide
-      // a valid intermediate policy (e.g. no-referrer, then an invalid token).
-      if (count > 1 || !change.target.isConnected || change.target.name.toLowerCase() !== 'referrer') metaEvidenceLost = true;
+      // Two same-task writes, or insertion followed by one write, can hide a
+      // valid intermediate policy. The final node cannot prove its earlier value.
+      if (count > 1 || insertedMetas.has(change.target) || !change.target.isConnected || change.target.name.toLowerCase() !== 'referrer') metaEvidenceLost = true;
     }
     for (const change of changes) {
       if (change.type === 'attributes') readMeta(change.target);

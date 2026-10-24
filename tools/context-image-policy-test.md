@@ -19,9 +19,27 @@ headers from an old navigation, and completing the current unknown baseline.
 Additional checks cover a previous native gesture being rejected even for the same URL,
 HTTP policy lists, trusted iframe routing, explicit image
 overrides, response identity, changing press identity, expiration and cleanup.
-There are now 16 checks, including synchronous, non-modifying navigation setup
+The original 16 checks include synchronous, non-modifying navigation setup
 limited to documents and rejecting an intermediate wider header until the final
 `onResponseStarted` policy is observed.
+
+The suite now has **25 checks**. Nine additional checks load the same production
+background and exercise its native connection protocol: the first connection and
+`bridge-ready` follow every listener registration; reconnect sends ready without
+duplicating web listeners; stale disconnects and requests cannot affect the new
+connection; an old asynchronous Cookie success or failure cannot reply through
+the replacement connection; invalid URLs and Cookie API failures remain
+unavailable; ordinary/private jar selection and longest-path ordering remain
+intact. Connection events and retry timers are fixture controlled, without real
+timeouts or native ports. On 2026-10-24 all **25/25 passed** after the startup
+handshake change; the separate meta protocol suite also passed **21/21**.
+
+The Kotlin host uses a separate startup attempt for every `start()`. Its final
+extension handler accepts ready only for that current attempt, and one 1.5-second
+deadline covers both private-permission configuration and ready. Disconnects do
+not replace the startup latch. This is the host's implementation contract, not
+something the JavaScript test can execute or prove; Kotlin compilation and actual
+Gecko startup timing still require separate validation.
 
 These are background protocol checks. They do not prove Gecko event ordering,
 DOM/meta behavior, native Port lifecycle, image bytes, URI grants or actual

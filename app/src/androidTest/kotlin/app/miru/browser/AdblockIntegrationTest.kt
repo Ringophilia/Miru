@@ -50,6 +50,9 @@ class AdblockIntegrationTest {
             val early = server.page("early")
             val earlyTab = openPage(early, 30_000)
             val earlyPageWasAllowed = selectedPage(earlyTab, early, early.allowedTitle)
+            val earlyLoads = server.pageRequests(early)
+            Log.i("MiruM1Acceptance", "earlyAllowed=$earlyPageWasAllowed nativeStatus=${browser.adblock.value.status} " +
+                "needsReload=${browser.adblock.value.pageNeedsReload} documentLoads=$earlyLoads")
             compose.runOnIdle { browser.setAdblockEnabled(true) }
             // Gecko may await its remote add-on blocklist on a clean profile even for a local signed XPI.
             // This bounds test setup only; it does not extend the browser's 1.5-second page-loading gate.
@@ -63,6 +66,9 @@ class AdblockIntegrationTest {
             assertTrue(installed.installed)
             assertTrue("The signed extension must be allowed in private sessions", installed.privateAllowed)
             assertFalse(installed.version.isNullOrBlank())
+            Log.i("MiruM1Acceptance", "afterReady earlyStillSelected=${browser.state.value.selectedTabId == earlyTab} " +
+                "earlyStillAllowed=${selectedPage(earlyTab, early, early.allowedTitle)} documentLoads=${server.pageRequests(early)} " +
+                "initialDocumentLoads=$earlyLoads needsReload=${installed.pageNeedsReload}")
             if(earlyPageWasAllowed) assertTrue("A page loaded before blocking was ready must retain its reload warning", installed.pageNeedsReload)
 
             val protectedPage = server.page("protected-first")
@@ -91,6 +97,22 @@ class AdblockIntegrationTest {
             } else assertEquals("Blocked script must not reach its own case origin", beforeProtectedPage, server.adRequests(protectedPage))
             try { compose.waitUntil(10_000) { selectedPage(protectedTab, protectedPage, protectedPage.blockedTitle) && browser.adblock.value.blockedCount > 0 } }
             catch (failure: Throwable) { throw AssertionError("Page blocked the script but badge did not arrive: ${browser.adblock.value}", failure) }
+
+            compose.waitUntil(10_000) { browser.state.value.selectedTab?.loading == false }
+            val stableDocumentLoads = server.pageRequests(protectedPage)
+            compose.runOnIdle {
+                repeat(3) { browser.setAdblockEnabled(true) }
+                assertEquals("An unchanged desired setting must not restart extension setup", AdblockStatus.READY, browser.adblock.value.status)
+            }
+            // Ads are already blocked, so adRequests alone would miss an unwanted reload.
+            // Observe actual HTML requests through the native callback's completion window.
+            val unchangedUntil = SystemClock.elapsedRealtime() + 1_500
+            while(SystemClock.elapsedRealtime() < unchangedUntil) {
+                assertEquals("Setting an already enabled blocker must not reload the document", stableDocumentLoads, server.pageRequests(protectedPage))
+                assertTrue("A no-op setting must preserve the selected document", selectedPage(protectedTab, protectedPage, protectedPage.blockedTitle))
+                assertEquals(AdblockStatus.READY, browser.adblock.value.status)
+                SystemClock.sleep(50)
+            }
 
             compose.runOnIdle { browser.setAdblockEnabled(false) }
             compose.waitUntil(15_000) { browser.adblock.value.status == AdblockStatus.DISABLED }
@@ -156,13 +178,16 @@ private class AdblockTestServer : Closeable {
     private val server = ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"))
     private val open = AtomicBoolean(true)
     private val requests = ConcurrentHashMap<String, AtomicInteger>()
+    private val documents = ConcurrentHashMap<String, AtomicInteger>()
     val origin = "http://127.0.0.1:${server.localPort}"
     fun page(phase: String): AdblockTestPage {
         val token = "$phase-${UUID.randomUUID()}"
         requests[token] = AtomicInteger()
+        documents[token] = AtomicInteger()
         return AdblockTestPage(token, "$origin/page?case=$token")
     }
     fun adRequests(page: AdblockTestPage): Int = requests.getValue(page.token).get()
+    fun pageRequests(page: AdblockTestPage): Int = documents.getValue(page.token).get()
     init {
         thread(isDaemon = true,name = "miru-adblock-test-origin") {
             while(open.get()) runCatching {
@@ -176,6 +201,7 @@ private class AdblockTestServer : Closeable {
                         ?.takeIf { it.matches(Regex("[A-Za-z0-9-]+")) }.orEmpty()
                     while(!reader.readLine().isNullOrEmpty()) { }
                     val isAd=path=="/ads/custom_ads.js"
+                    if(path == "/page") documents.computeIfAbsent(token) { AtomicInteger() }.incrementAndGet()
                     if(isAd) requests.computeIfAbsent(token) { AtomicInteger() }.incrementAndGet()
                     val body=if(isAd) "window.miruAdAllowedToken='$token';" else """
                         <!doctype html><meta name="viewport" content="width=device-width"><title>Miru fixture loading $token</title>

@@ -187,6 +187,64 @@ class ContextImagePolicyIntegrationTest {
         }
     }
 
+    @Test fun anInsertedMetaWithAnUnobservedValidValueCannotWidenTheActualGeckoPolicy() {
+        PolicyOrigin().use { origin ->
+            origin.referrerPolicy = "unsafe-url"
+            val cookieName = "miru_meta_probe_${System.nanoTime()}"
+            val content = "<script>document.cookie='$cookieName=ready; Path=/; SameSite=Lax'</script><img src='${origin.url}/image.png'>" +
+                "<button style='display:block;height:90px' onclick=\"const m=document.createElement('meta');" +
+                "m.name='referrer';m.content='no-referrer';document.head.append(m);m.content='invalid';" +
+                "const probe=new Image();probe.onload=()=>{document.title='Policy inserted observed'};" +
+                "probe.src='${origin.url}/image.png?after-insert=1';document.body.append(probe)\">Change policy</button>"
+            origin.document = { "<title>Policy inserted meta</title>$content" }
+            val pageUrl = "${origin.url}/document?must=remain-private"
+            open(pageUrl, "Policy inserted meta")
+            awaitImage(45f)
+            assertEquals("The initial Gecko request must establish the wider HTTP baseline", pageUrl, origin.images.first().referrer)
+            // Establish a real working bridge, then a new HTTP document it can observe.
+            // Otherwise an unavailable startup baseline could hide this meta regression.
+            val headers = kotlinx.coroutines.runBlocking { browser.headersForMediaUrl(origin.url, false) }
+            assertTrue("The background must actually answer with the synthetic Gecko cookie",
+                headers.entries.any { it.key.equals("Cookie", true) && it.value.contains("$cookieName=ready") })
+            val beforeReload = origin.images.size
+            origin.document = { "<title>Policy baseline observed</title>$content" }
+            compose.runOnIdle { browser.reload() }
+            compose.waitUntil(20_000) { origin.images.size > beforeReload && browser.state.value.selectedTab?.let {
+                it.title == "Policy baseline observed" && !it.loading
+            } == true }
+            copy(origin, 45f)
+            assertEquals("A successful native copy proves the wider policy is available before mutation", pageUrl, origin.images.last().referrer)
+            val beforeChange = origin.images.size
+            touch(145f, 60)
+            compose.waitUntil(8_000) { origin.images.size > beforeChange && browser.state.value.selectedTab?.title == "Policy inserted observed" }
+            assertNull("A fresh actual Gecko image proves the inserted no-referrer survived the invalid write", origin.images.last().referrer)
+
+            val clipboard = context.getSystemService(ClipboardManager::class.java)
+            var previous = ""
+            compose.runOnIdle { previous = clipboard.primaryClip?.getItemAt(0)?.uri?.toString().orEmpty() }
+            val beforeCopy = origin.images.size
+            longPress(45f)
+            compose.waitUntil(8_000) { browser.contextMenus.state.value?.imageUrl == "${origin.url}/image.png" }
+            compose.onNodeWithTag("context_copy_image").performScrollTo().performClick()
+            val unavailable = context.getString(R.string.context_image_failed)
+            compose.waitUntil(20_000) {
+                origin.images.size > beforeCopy || compose.onAllNodesWithText(unavailable).fetchSemanticsNodes().isNotEmpty()
+            }
+            if(origin.images.size == beforeCopy) {
+                compose.onNodeWithText(unavailable).assertIsDisplayed()
+            } else {
+                assertTrue("A native copy must never widen the actual document policy", origin.images.drop(beforeCopy).all { it.referrer == null })
+                compose.waitUntil(8_000) {
+                    var copied = false
+                    compose.runOnIdle { val uri = clipboard.primaryClip?.getItemAt(0)?.uri
+                        copied = uri?.authority == "${context.packageName}.context-images" && uri.toString() != previous }
+                    copied
+                }
+                assertArrayEquals(origin.image, context.contentResolver.openInputStream(clipboard.primaryClip!!.getItemAt(0).uri)!!.use { it.readBytes() })
+            }
+        }
+    }
+
     private fun open(url: String, title: String, private: Boolean = false) {
         var id = ""
         compose.runOnIdle { id = browser.newTab(url, private) }

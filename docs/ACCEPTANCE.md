@@ -26,7 +26,7 @@ P0 是首个可用版本门，P1 是第二轮功能，P2 在规范中为“有�
 | E5 | [M3-SUPERRES-VALIDATION.md](M3-SUPERRES-VALIDATION.md)、`artifacts/m3-quality/commit-superres-device.log`；1432d83 | 超分10项JVM、API35三项真实GL专项通过（98.099秒），含60帧/故障回退/暂停画面与旋转。不是物理GPU性能成绩或完整播放器回归。 |
 | E6 | [OFFLINE-NOTIFICATION-VALIDATION.md](OFFLINE-NOTIFICATION-VALIDATION.md)、`artifacts/m3-quality/notification-cleanup-device.log`；35ad373 | 2项socket JVM、3项API35真实通知专项通过（27.387秒），含挂读暂停、完成UUID停源全片播放、哈希碰撞隔离。不是厂商后台或权限拒绝矩阵。 |
 | E7 | [M1-BLOCKLIST-VALIDATION.md](M1-BLOCKLIST-VALIDATION.md)、`artifacts/m1-blocklist/` | 固定官方blocklist资源、36项归档检查、最终APK原4079项与5项新增的逐项完整性；API35 fresh-profile离线/在线各1项签名安装与受控拦截通过。未证明多轮真机稳定性、MLBF读取追踪或在线更新。 |
-| E8 | [BROWSER-CORE-VALIDATION.md](BROWSER-CORE-VALIDATION.md)、`artifacts/browser-core/` | 0.5.1：93项JVM、20项核心/图片/私密表单设备专项通过，手势更新后13项通过；真实Cookie时间边界/表单清理保留私密jar、顶底工具栏/APZ刷新、实际HTTP/meta/frame来源策略、内存图片URI。全新资料常规77项75通过、2项超分渲染超时，不能写全绿或扩大为全部B10/B11/B20验收。 |
+| E8 | [BROWSER-CORE-VALIDATION.md](BROWSER-CORE-VALIDATION.md)、`artifacts/browser-core/` | 真实Cookie时间边界/表单清理保留私密jar、顶底工具栏/APZ刷新、实际HTTP/meta/frame来源策略、内存图片URI。0.5.1常规77项75通过、2项渲染超时；0.5.2新资料78项77通过、1项首装刷新警告失败（渲染均通过）。0.5.3：107项JVM、46项JS协议、14项设备专项和同值设置专项通过；本版完整回归/发布包待重验，不能扩大为全部B10/B11/B20验收。 |
 | SRC | 当前模块源码、Gradle、manifest、资源和 `design/tokens.json` | 证明存在代码 / 配置。单独不能证明运行正确、无泄漏、无掉帧或兼容所有站点。 |
 | LEGAL | [OPEN-SOURCE-REVIEW.md](OPEN-SOURCE-REVIEW.md)、[third_party/README.md](../third_party/README.md) | M0 源码公开范围的检查和后续依赖说明；不是含 uBO / 嵌套依赖的完整二进制分发审查。 |
 
@@ -273,7 +273,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | PERF05 良好网络HLS起播<1.5s | pending | 真实首画 / 首音时间，不是ready布尔值；受控网络和release真机。 |
 | PERF06 判定后倍速<100ms | pending | 手势判定时间→实际PlaybackParameters事件；并与P2按下400ms要求分开计。 |
 | PERF07 10标签内存 / Gecko回收 | pending | 10个实际内容标签、后台回收 / 恢复 / 峰值内存，应用不额外限标签。 |
-| PERF08 ARM64 APK<110MB | verified（仅体积/打包） | 0.5.1最新源码最终APK **107,892,912字节**，SHA `2364c2ad…af91362`；1517 payload逐项保留、SDK对齐/原证书一致、仅17个ARM64库，E8。旧0.4.0为111,123,172字节不达标。当前仍为Android Debug签名，正式签名/ARM64真机与完整发行门另列，不能扩大此行证据。 |
+| PERF08 ARM64 APK<110MB | verified（仅0.5.1体积/打包） | 历史0.5.1最终APK **107,892,912字节**，SHA `2364c2ad…af91362`；1517 payload逐项保留、SDK对齐/原证书一致、仅17个ARM64库，E8。包含随后修复的图片策略问题，不能视为当前源码产物；0.5.3需重新验证。当前仍为Android Debug签名，正式签名/ARM64真机与完整发行门另列。 |
 | PERF09 超分均衡<12ms | pending | 指定8Gen2级设备、540P动画→1080P、稳定统计含保护；与设置benchmark<16ms推荐门分别验。 |
 | PRIV01 无账号 / Glean / Sync / FxA / 上传 | implemented | E0静态图与源码有证据；完整实际依赖、崩溃上传配置、抓包 / 日志取证、关于本机日志导出待补。 |
 | PRIV02 Cookie / Authorization不落盘 | implemented | 普通下载 / playback / media models内存、分区摘要；需最终Room / prefs / savedstate / files / logs取证和重启恢复认证测试。 |

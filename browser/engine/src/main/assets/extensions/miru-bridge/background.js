@@ -3,10 +3,20 @@
 // Only native code can send commands on this port. Credentials never enter extension storage.
 let port;
 function connect() {
-  port = browser.runtime.connectNative('miru');
-  port.onDisconnect.addListener(() => setTimeout(connect, 500));
-  port.onMessage.addListener(async message => {
-    if (message.kind !== 'cookies' || typeof message.id !== 'string') return;
+  if (port) return;
+  const connection = browser.runtime.connectNative('miru');
+  port = connection;
+  const reply = message => {
+    if (port !== connection) return;
+    try { connection.postMessage(message); } catch (_) {}
+  };
+  connection.onDisconnect.addListener(() => {
+    if (port !== connection) return;
+    port = null;
+    setTimeout(connect, 500);
+  });
+  connection.onMessage.addListener(async message => {
+    if (port !== connection || message.kind !== 'cookies' || typeof message.id !== 'string') return;
     try {
       const url = new URL(message.url);
       if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Unsupported URL');
@@ -14,13 +24,13 @@ function connect() {
       const cookies = await browser.cookies.getAll({ url: url.href, storeId });
       // RFC 6265: longest matching path first; do not log or persist the resulting header.
       cookies.sort((a, b) => b.path.length - a.path.length);
-      port.postMessage({ kind: 'cookies', id: message.id, cookie: cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ') });
+      reply({ kind: 'cookies', id: message.id, cookie: cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ') });
     } catch (_) {
-      port.postMessage({ kind: 'cookies', id: message.id, error: true });
+      reply({ kind: 'cookies', id: message.id, error: true });
     }
   });
+  reply({ kind: 'bridge-ready' });
 }
-connect();
 
 // Bounded process memory only. Native content ports provide the trusted EngineSession association.
 const mediaTabs = new Map();
@@ -156,3 +166,5 @@ browser.runtime.onMessage.addListener((message, sender) => {
   if (message.kind !== 'miru-media-query' || !sender.tab) return;
   return Promise.resolve({ frameId: sender.frameId, pageUrl: sender.tab.url, suppressed: [...(suppressedTabs.get(sender.tab.id) || [])], items: [...(mediaTabs.get(sender.tab.id)?.values() || [])].filter(item => item.frameId === sender.frameId) });
 });
+// Initial and reconnect ready signals only follow registration of every listener.
+connect();

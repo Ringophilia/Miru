@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
@@ -197,8 +198,17 @@ class BrowserController(
                 }
                 store.dispatch(RestoreCompleteAction)
                 // NTP stays interactive while restoring. Page commands remain queued until ready, at most 1.5 s.
-                ublock.awaitStartup()
-                deferredEngine.connect(EngineMiddleware.create(createdEngine, applicationScope), store)
+                coroutineScope {
+                    // Both capabilities share the existing bounded startup window.
+                    // The bridge's listener-ready signal does not imply uBO is ready.
+                    launch { cookieBridge.awaitStartup() }
+                    ublock.awaitStartup()
+                }
+                deferredEngine.connect(
+                    listOf(UblockNavigationMiddleware(ublock::onLoadRequested, ublock::onSessionLinked)) +
+                        EngineMiddleware.create(createdEngine, applicationScope),
+                    store,
+                )
                 isReady = true
                 mutableState.value = snapshot(store.state)
                 // SessionStorage serializes Gecko engineSessionState, including the navigation stack,
