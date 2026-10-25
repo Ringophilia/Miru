@@ -1,4 +1,4 @@
-# B13 网页提示首批（0.5.5 开发中）
+# B13 网页提示首批（0.5.5 已提交；完整矩阵未验收）
 
 本批从固定Android Components 158.0.2的PromptRequest与BrowserStore契约接入网页提示，
 不是整个B13验收记录。前一权限批次和0.5.4产物见B13-PERMISSIONS-VALIDATION.md；
@@ -115,5 +115,27 @@ omni SHA仍为`2a8da1a2c185d24f11e385e794b18b5d169a4e5afa64ce7f8882f8af33b14cb1`
 已按构建开始UTC `2026-10-25T12:08:14.9817471Z`重新执行全部检查，正式摘要中的最低时间已核对。
 本批没有运行最终ARM64 APK；普通/私密11项运行的是固定x86_64 Debug包，不能扩大为ARM64运行或正式发行验收。
 
-仍待完成：普通导航及整体回归；
-私密、iframe来源、复杂提示更新、系统文件选择及完整站点矩阵继续在全量验收中保留。
+## 固定0.5.5 APK的系统与常规回归
+
+只读软件渲染API35/x86_64新实例5594，启动记录`emulator-055-fresh-launch.json`，
+`055-fresh-precondition.json`记录安装前无Miru包及固定APK hash；
+`055-runtime-raw-permissions.txt`确认摄像头、麦克风、coarse/fine定位均未授予。
+旧5592的关闭仅为换新系统权限夹具，没有作为下载/离线强停重启证据。
+`055-runtime-device.log`**3/3通过，21.844秒**，实际系统拒绝、分别允许及近似定位均通过，
+没有pm grant/预授权/合成系统callback。网站权限清理后，同一固定APK另起常规整套。
+
+`055-full-input.json`记录production源码2048cec、测试源码81b2f8d和完整命令；
+`055-full-device.log`终态**98/98通过，595.555秒**，`055-full-result.json`核对98个通过终态、0失败。
+范围包括新增9项普通/2项私密prompt、站点权限及实际媒体撤销、普通导航、下载/离线、
+三档benchmark和四条60帧GL链等已有常规用例。
+排除DownloadRestartTest、OfflineRestartTest和独立运行的RuntimeSitePermissionIntegrationTest；
+前两个重启门仍待，不把排除计为通过。
+
+`055-full-runtime.log`只收集既有窄标签：混合下载点击撤销后pending在259ms清空，
+benchmark FAST/BALANCED/QUALITY为212.6/286.6/494.6ms/frame（synchronized render）；
+四链各60帧、1920×1080、13/21/23/2 passes，平均192.8/264.0/465.8/113.1ms。
+没有并行Gradle/R8/录屏，没有放宽原期限、帧数或像素断言；
+软件模拟器功能通过不证明16ms或物理GPU性能门，也不单凭后续通过认定0.5.3时序失败根因已修复。
+
+私密其余矩阵、iframe来源、复杂提示更新、系统文件选择及完整站点矩阵继续在全量验收中保留。
+98项常规回归与独立3项系统通过不等于完整B13、ARM64运行或正式发行。

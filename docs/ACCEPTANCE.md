@@ -28,7 +28,7 @@ P0 是首个可用版本门，P1 是第二轮功能，P2 在规范中为“有�
 | E7 | [M1-BLOCKLIST-VALIDATION.md](M1-BLOCKLIST-VALIDATION.md)、`artifacts/m1-blocklist/` | 固定官方blocklist资源、36项归档检查、最终APK原4079项与5项新增的逐项完整性；API35 fresh-profile离线/在线各1项签名安装与受控拦截通过。未证明多轮真机稳定性、MLBF读取追踪或在线更新。 |
 | E8 | [BROWSER-CORE-VALIDATION.md](BROWSER-CORE-VALIDATION.md)、`artifacts/browser-core/` | 真实Cookie时间边界/私密表单、APZ/工具栏、HTTP/meta/frame来源策略、内存图片URI。0.5.1常规75/77；0.5.2为77/78。0.5.3：107项JVM、46项JS、14项设备专项、同值设置及fresh首装通过；全套79项77通过2失败（混合下载撤销、QUALITY benchmark），四条60帧GL通过。107,897,008字节发布打包已验证，不能扩大为全部B10/B11/B20或后续B13验收。 |
 | E9 | [B13-PERMISSIONS-VALIDATION.md](B13-PERMISSIONS-VALIDATION.md)、`artifacts/browser-core/054-*` | 0.5.4首批已提交97d8be1（overlay f3117fb、相邻删除诊断d593ee2）：固定Observer提前reject根因与只读前后对照；neutral2/2（21.221秒）、早期站点7/7（61.002秒）、最终源码非trace站点/混合下载7/7（46.626秒）、fresh5590真实系统权限3/3（21.741秒）；全部旧失败保留。release构建/1517 payload/对齐/同证书/17个ARM64库/4078+1+5 Gecko资源和107,966,640字节打包验证通过。固定0.5.4 APK常规回归87/87通过（641.35秒），另排除两个强停重启类及独立系统权限类；没有完整B13、正式签名或ARM64运行通过声明。 |
-| E10 | [B13-PROMPTS-VALIDATION.md](B13-PROMPTS-VALIDATION.md)、[B13-PROMPTS-TEST.md](B13-PROMPTS-TEST.md)、`artifacts/browser-core/055-prompts-*` | 0.5.5页面提示首批：真实alert/confirm/text、beforeunload、POST重发、HTTP401、Activity重建和旧token；原生callback身份修复后7/7（33.102秒），最新连续提示抑制及真实蒙层专项整类9/9（57.245秒），所有旧失败保留。普通/私密合跑11/11（49.725秒），保留FLAG_SECURE；Debug构建/JVM111项及最终lint0错误/22警告通过。2048cec的ARM64开发包107,987,120字节、1517 payload/签名/对齐/17个库/4078+1+5资源验证通过；常规全套及正式发行仍待，不代表整个B13。 |
+| E10 | [B13-PROMPTS-VALIDATION.md](B13-PROMPTS-VALIDATION.md)、[B13-PROMPTS-TEST.md](B13-PROMPTS-TEST.md)、`artifacts/browser-core/055-prompts-*` | 0.5.5页面提示首批：真实alert/confirm/text、beforeunload、POST重发、HTTP401、Activity重建和旧token；原生callback身份修复后7/7（33.102秒），最新连续提示抑制及真实蒙层专项整类9/9（57.245秒），所有旧失败保留。普通/私密合跑11/11（49.725秒），保留FLAG_SECURE；Debug构建/JVM111项及最终lint0错误/22警告通过。2048cec的ARM64开发包107,987,120字节、1517 payload/签名/对齐/17个库/4078+1+5资源验证通过；固定APK常规98/98通过（595.555秒），fresh系统权限独立3/3（21.844秒），强停重启两类仍排除；正式发行及完整B13仍待。 |
 | SRC | 当前模块源码、Gradle、manifest、资源和 `design/tokens.json` | 证明存在代码 / 配置。单独不能证明运行正确、无泄漏、无掉帧或兼容所有站点。 |
 | LEGAL | [OPEN-SOURCE-REVIEW.md](OPEN-SOURCE-REVIEW.md)、[third_party/README.md](../third_party/README.md) | M0 源码公开范围的检查和后续依赖说明；不是含 uBO / 嵌套依赖的完整二进制分发审查。 |
 
@@ -279,12 +279,12 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | PERF09 超分均衡<12ms | pending | 指定8Gen2级设备、540P动画→1080P、稳定统计含保护；与设置benchmark<16ms推荐门分别验。 |
 | PRIV01 无账号 / Glean / Sync / FxA / 上传 | implemented | E0静态图与源码有证据；完整实际依赖、崩溃上传配置、抓包 / 日志取证、关于本机日志导出待补。 |
 | PRIV02 Cookie / Authorization不落盘 | implemented | 普通下载 / playback / media models内存、分区摘要；需最终Room / prefs / savedstate / files / logs取证和重启恢复认证测试。 |
-| PRIV03 私密全生命周期 | implemented | E0–E3局部历史 / Cookiejar / 缓存 / 进度 / 截图有证据；关标签 / process death / no残留全范围未证。 |
+| PRIV03 私密全生命周期 | implemented | E0–E3局部历史 / Cookiejar / 缓存 / 进度 / 截图有证据；E10另补私密真实文本、关闭最后私密tab及旧token隔离两项；native context销毁 / process death / no残留全范围仍未证。 |
 | ACC01 TalkBack完整任务 | pending | 打开网页→切换标签→下载→播放暂停→调倍速的实机读屏路径；仅contentDescription存在不够。 |
 | ACC02 所有图标名称 / 48dp / 等价手势控件 | implemented | 部分按钮 / slider语义已有测试；完整树、锁 / 双击跳转 / 缩放等所有等价动作需审。 |
 | VIS01 深浅×地址栏顶底×字体1.3x | pending | 按§15.2各组合真实截图，检查遮挡 / 截断 / 点击区；初始中文英文截图不替代。 |
 | VIS02 移除动画全流程 | pending | 运行系统scale=0的全操作链，静态循环 / 跟手 / 无输入阻塞。 |
-| DEV01 模拟器+真机仪器测试 | implemented | API35多批受控测试；完整0.5.3为77/79。0.5.4站点/混合下载7/7、真实系统3/3、生命周期2/2、JVM111项及lint0错误/22警告；固定APK的87项常规回归全部通过（641.35秒）；两个强停重启类仍排除，系统权限类独立3/3。release构建/打包另见PERF08；API26–28 / 当前系统 / ARM64物理机仍缺。 |
+| DEV01 模拟器+真机仪器测试 | implemented | API35多批受控测试；完整0.5.3为77/79。0.5.4站点/混合下载7/7、真实系统3/3、生命周期2/2、JVM111项及lint0错误/22警告；固定APK的87项常规回归全部通过（641.35秒）；两个强停重启类仍排除，系统权限类独立3/3。0.5.5/E10常规98/98（595.555秒）、fresh系统3/3（21.844秒）、普通/私密prompt11/11；强停重启两类仍待。release构建/打包另见PERF08；API26–28 / 当前系统 / ARM64物理机仍缺。 |
 | SITE01 第11所有真实网站 / 登录 | pending | B1六站及R4媒体站点的兼容矩阵；需要真实账户时由人提供可用会话 / 完成认证，不猜测通过。 |
 | REL01 发布构建 / AAB或按ABI拆分 | implemented | 0.5.5/2048cec的arm64 release启R8 / shrink，构建成功（4分31秒），最终APK一致性/体积验证通过（E10/PERF08）；AAB分发、正式签名和ARM64 release运行验收未完。 |
 | REL02 正式签名 | pending | 基线无keystore.properties，现包Android Debug证书；需维护者提供安全签名配置，不在源码 / 日志中存秘密。 |
