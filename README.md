@@ -1,83 +1,236 @@
+<div align="center">
+
+<img src="design/miru-icon.svg" width="112" alt="Miru 图标">
+
 # Miru
 
-Android 原生浏览器，包名 `app.miru.browser`。产品需求以 [MIRU-SPEC.md](MIRU-SPEC.md) 为准。
+**見る — 像 Chrome 一样干净的浏览器，自带开箱即用的广告拦截，<br>网页里的视频一键交给好用的原生播放器。**
 
-由 [Ringophilia](https://github.com/Ringophilia) 与 xiaomao 共同开发。源码：[Ringophilia/Miru](https://github.com/Ringophilia/Miru)。开发者署名见 [AUTHORS.md](AUTHORS.md)。
+[![Platform](https://img.shields.io/badge/Android-8.0%2B-BE1625?style=flat-square&logo=android&logoColor=white)](#-构建)
+[![Engine](https://img.shields.io/badge/GeckoView-158-321E19?style=flat-square&logo=firefoxbrowser&logoColor=white)](docs/UPSTREAM.md)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.4-775650?style=flat-square&logo=kotlin&logoColor=white)](gradle/libs.versions.toml)
+[![uBlock Origin](https://img.shields.io/badge/uBlock%20Origin-1.75.0-47643B?style=flat-square)](third_party/ublock/NOTICE.md)
+[![License](https://img.shields.io/badge/License-MPL--2.0-BE1625?style=flat-square)](LICENSE)
 
-项目自有代码采用 [Mozilla Public License 2.0（MPL-2.0）](LICENSE)。第三方组件保留各自许可证和署名，详见 [第三方说明](third_party/README.md)与[开源检查记录](docs/OPEN-SOURCE-REVIEW.md)。当前依赖链包含受 Google 专有条款约束的 Play services FIDO 组件，不能据此宣称整个构建产物的依赖均为自由开源软件。
+[特性](#-特性) · [当前进展](#-当前进展) · [构建](#-构建) · [测试](#-测试) · [工程结构](#-工程结构) · [文档](#-文档索引) · [许可](#-许可与致谢)
 
-图标由维护者以《Ringo EXPO 08》封面为灵感，通过 AI 生成；素材的授权范围与来源见 [design/PROVENANCE.md](design/PROVENANCE.md)。Miru 与椎名林檎、相关唱片公司、Mozilla 或 Google 没有隶属或背书关系。
+</div>
 
-目前推进至 **M3 与浏览器核心开发批次（0.5.4 权限首批已提交）**：在 GeckoView / Compose 浏览器、uBlock Origin、断点下载与 Media3 播放器基础上，接入清晰度探测、字幕 / 音轨、HLS / DASH 视频离线、Anime4K / FSR 渲染，以及网页长按菜单、清除浏览数据、滚动工具栏和首批站点权限。B13 完整权限/提示矩阵与最终发行仍未完成。
+---
 
-「设置 → 播放器」可调整缓存上限、预缓冲和手势参数，清除流缓存 / 播放进度。清缓存保留下载文件，无痕播放不读写缓存和进度。
+## ✦ 设计原则
 
-0.3.1 补上网页视频长按倍速、可选自动接管、网页全屏返回和播放器竖屏详情；实际 DASH 与认证恢复专项见 [补齐验证记录](docs/M2-031-VALIDATION.md)。
+Miru 的取舍遵循产品规范 [MIRU-SPEC.md](MIRU-SPEC.md)（唯一需求来源），冲突时按顺序让步：
 
-「本页视频」面板会读取有界的清单 / 媒体头部来显示清晰度，关闭面板时取消探测。播放器「字幕与音轨」可以切换内嵌字幕和音轨，或通过系统文件选择器加载 SRT / VTT / ASS（ASS 以纯文本显示），并调整字幕字号、底边距与背景透明度。字幕内容仅保留在当前播放会话的内存中。实现与验证边界见 [M3 首批记录](docs/M3-VALIDATION.md)。
+1. **少即是多** — 主界面只有地址栏、标签数、菜单；新标签页只有 Logo、搜索框、快捷方式。没有信息流，没有运营位。
+2. **默认就对** — 广告拦截无需注册、无需配置；普通用户永远不必打开设置。
+3. **视频是一等公民** — 检测到视频时出现轻量入口；播放器手势与主流视频 App 一致。
+4. **一切操作可撤销** — 关标签、删下载、清记录都用 Snackbar「撤销」，而不是确认弹窗。
+5. **动效服务于空间关系** — 动画只说明东西从哪来、到哪去，并尊重系统「移除动画」设置。
 
-媒体面板的下载按钮可选择 HLS / DASH 清晰度，关联音轨和字幕一起保存。离线视频与普通文件共用下载页，在「视频」分类中管理；离线缓存与普通播放缓存分开，清除播放缓存保留离线视频。无痕离线需明确确认保留内容。实现、断源完整播放和两阶段进程重启验证见 [离线记录](docs/M3-OFFLINE-VALIDATION.md)。
+## ✦ 特性
 
-uBO 使用原版站点面板、过滤规则和例外列表。在扩展就绪前加载的页面，以及扩展以 `!` 标记的页面，工具栏会显示刷新警告。首次安装有历史超时记录，固定官方 blocklist 资源后已有受控 fresh-profile 结果，多轮真机与在线更新仍需验证。超分渲染与实际本机测试界面已有受控设备证据，物理 GPU 性能尚未验收；缩略图预览和 P2 离线导出 MP4 尚未实现。完整需求与待验收门见 [全量矩阵](docs/ACCEPTANCE.md)。
+<table>
+<tr>
+<td width="50%" valign="top">
 
-## 构建
+### 🌐 浏览器
 
-需要 JDK 21、Android SDK Platform 37.0、Build Tools 37.0.0。依赖固定在 `gradle/libs.versions.toml`；工程使用 Gradle Wrapper，不需要全局安装 Gradle。
+- **GeckoView 内核** + Mozilla Android Components，`BrowserStore` 为唯一标签状态源
+- 普通 / 无痕标签组，会话与导航栈恢复；无痕不落盘并启用 `FLAG_SECURE`
+- Compose 地址栏：地址 / 搜索判断，历史、书签、已打开标签建议
+- 原生新标签页，Gecko 就绪前即可显示
+- 本地历史与书签（SQLite，无同步、无遥测）
+- 页内查找、桌面站点、长按菜单、跟手隐藏工具栏、清除浏览数据
+- 摄像头 / 麦克风 / 定位的站点权限，网站许可与系统许可分离
 
-1. 用 Android Studio 打开本目录，并将 Gradle JDK 设为 JDK 21。
-2. 在 SDK Manager 安装 Android 17 / API 37.0，或运行 `sdkmanager "platforms;android-37.0" "build-tools;37.0.0"`。
-3. 在未提交的 `local.properties` 设置 `sdk.dir=你的SDK绝对路径`，或使用 `ANDROID_HOME`。
-4. 运行：
+</td>
+<td width="50%" valign="top">
+
+### 🛡️ 广告拦截
+
+- 内置**未修改、官方签名**的 uBlock Origin，无需注册与配置
+- 使用 uBO 原版站点面板、过滤规则与例外列表
+- 工具栏盾牌显示真实拦截计数
+- 扩展未就绪时加载的页面会给出刷新提示，而不是假装已拦截
+
+### ⬇️ 下载
+
+- OkHttp 分段下载 + Room 断点，进程被杀后自动续传
+- 暂停 / 继续 / 重试，分组通知，MediaStore / SAF 落盘
+- 分类、搜索、多选与离页后仍有效的撤销
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 🎬 视频嗅探与播放器
+
+- 「本页视频」面板：有界读取清单 / 媒体头，显示真实清晰度
+- Media3 播放器：长按倍速、双击快进、横滑拖动、PiP、媒体会话
+- 内嵌字幕与音轨切换；本地 SRT / VTT / ASS 仅保存在内存
+- 可调缓存上限与预缓冲；无痕播放不读写缓存与进度
+
+</td>
+<td width="50%" valign="top">
+
+### ✨ 离线与超分
+
+- HLS / DASH 离线：选择清晰度，关联音轨与字幕一起保存
+- 离线缓存与播放缓存分区，清缓存不会误删离线视频
+- 实时超分：**Anime4K**（CNN，动画线条）与 **AMD FSR 1.0**（通用）
+- 自动模式按片源与设备负载保护：HDR、受保护内容、高倍速、PiP 直通
+
+</td>
+</tr>
+</table>
+
+## ✦ 当前进展
+
+> [!IMPORTANT]
+> Miru 仍在开发中，**尚无正式发行版**。下表中的「已接入」表示代码已合入并有专项证据，**不等于该里程碑完成验收**。逐条需求与证据边界见 [全量验收矩阵](docs/ACCEPTANCE.md)。
+
+| 里程碑 | 内容 | 状态 |
+| :-- | :-- | :-- |
+| **M0** | 浏览器外壳、标签、会话、地址栏、历史书签、设置 | 🟢 已接入 · 真机性能 / 无障碍待验收 |
+| **M1** | uBlock Origin 集成、断点下载 | 🟢 已接入 · 首装稳定性 / 自动更新待补 |
+| **M2** | 视频嗅探、Media3 播放器与接管 | 🟢 已接入 · 详见 [M2 记录](docs/M2-VALIDATION.md) |
+| **M3** | 清晰度探测、字幕音轨、离线、超分 | 🟡 主体已接入 · 缩略图与完整矩阵推进中 |
+| **B13** | 站点权限与网页提示 | 🟡 权限首批已提交（0.5.4）· 网页提示开发中（0.5.5） |
+| **M4** | 动效、网站矩阵、真机性能、完整验收 | ⚪ 未开始 |
+| **iOS** | 按规范在 Android M4 之后启动 | ⚪ 未开始 |
+
+<details>
+<summary><b>最近一次已验证打包：0.5.4（ARM64 开发包）</b></summary>
+
+<br>
+
+| 项目 | 值 |
+| :-- | :-- |
+| 本地产物 | `artifacts/releases/Miru-0.5.4-arm64.apk`（不纳入版本库） |
+| 对应源码 | `97d8be1` |
+| 体积 | 107,966,640 字节（严格十进制 110 MB 体积门内） |
+| SHA-256 | `215e07625fa086328433f3d0cebc6391179706ac3c4741a3755a0e8ed52c753a` |
+| 打包检查 | 压缩字节复用、SDK 对齐、同证书重签；1517 项载荷逐项保留，17 个原生库均为 ARM64 |
+| Gecko 资源 | 4078 项原 payload 保持 · 1 项定位策略修改 · 5 项官方 blocklist 新增 |
+| 专项结果 | 站点 / 混合下载 7/7，全新模拟器真实系统权限 3/3 |
+
+仍为本机 Android Debug 签名；**没有 ARM64 实机运行、全套回归或正式发行验收**。打包工具见 [apk-release-buildlogic](tools/apk-release-buildlogic/README.md)，验证记录见 [B13 权限记录](docs/B13-PERMISSIONS-VALIDATION.md)。历史版本的回归结果（含失败项）保留在 [验收矩阵](docs/ACCEPTANCE.md) 的证据索引中。
+
+</details>
+
+## ✦ 构建
+
+**环境要求**：JDK 21 · Android SDK Platform 37.0 · Build Tools 37.0.0。依赖版本固定在 [`gradle/libs.versions.toml`](gradle/libs.versions.toml)，工程自带 Gradle Wrapper，无需全局安装 Gradle。
+
+1. 用 Android Studio 打开本目录，将 Gradle JDK 设为 **JDK 21**。
+2. 在 SDK Manager 安装 Android 17 / API 37.0，或运行：
+
+   ```bash
+   sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
+   ```
+
+3. 在未提交的 `local.properties` 中写入 `sdk.dir=<SDK 绝对路径>`，或设置 `ANDROID_HOME`。
+4. 构建调试包：
+
+   ```powershell
+   .\gradlew.bat :app:assembleDebug
+   ```
+
+产物位于 `app/build/outputs/apk/debug/app-debug.apk`。
+
+| | Debug | Release |
+| :-- | :-- | :-- |
+| 最低系统 | Android 8.0（API 26） | Android 8.0（API 26） |
+| ABI | `arm64-v8a` + `x86_64`（模拟器） | 仅 `arm64-v8a` |
+| 签名 | 调试密钥 | 读取未提交的 `keystore.properties`；未配置时回退调试密钥，仅供开发安装 |
+
+## ✦ 测试
 
 ```powershell
-.\gradlew.bat :app:assembleDebug
+# JVM 单元测试与 Lint
 .\gradlew.bat testDebugUnitTest :core:common:test :app:lintDebug
+
+# 设备测试（需连接模拟器或手机）
 .\gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.notClass=app.miru.browser.DownloadRestartTest,app.miru.browser.OfflineRestartTest,app.miru.browser.RuntimeSitePermissionIntegrationTest"
 ```
 
-调试 APK：`app/build/outputs/apk/debug/app-debug.apk`。Android 8.0 及以上；调试版包含 `arm64-v8a` 与模拟器 `x86_64`，当前 release 配置仅包含 `arm64-v8a`。发布签名从未提交的 `keystore.properties` 读取；未配置时使用调试密钥，仅供开发安装。
+设备测试的网页由测试进程内的 loopback HTTP 服务提供；全新安装 uBO 时仍可能访问 Gecko 远程设置。独立的手动 fixture 可通过 `node tools/m1-fixture-server.mjs` 启动。
 
-设备测试需要连接模拟器或手机，测试网页由测试进程内的 loopback HTTP 服务提供；全新 uBO 安装仍可能访问 Gecko 远程设置。独立手动 fixture 可用 `node tools/m1-fixture-server.mjs` 启动。`DownloadRestartTest` 与 `OfflineRestartTest` 都必须分阶段运行并在中间强制停止进程，方法见 [M1 验证记录](docs/M1-VALIDATION.md)和[离线记录](docs/M3-OFFLINE-VALIDATION.md)；上述常规命令排除这两类，不把排除算作通过。
+> [!NOTE]
+> 上面的常规命令**排除了三类需要单独运行的专项**，排除不计为通过：
+>
+> - **`DownloadRestartTest` / `OfflineRestartTest`** — 分阶段运行，中间强制停止进程。方法见 [M1 记录](docs/M1-VALIDATION.md) 与 [离线记录](docs/M3-OFFLINE-VALIDATION.md)。
+> - **`RuntimeSitePermissionIntegrationTest`** — 在四项系统权限均未授权的 API 35 实例上顺序运行，实际点击 Android 权限弹窗。见 [运行方法](docs/B13-RUNTIME-PERMISSIONS-TEST.md)。它与使用预授权的站点权限用例验证范围不同，不能相互替代。
+>
+> 模拟器结果不能代替规范要求的真机性能、兼容性和无障碍验收。
 
-`RuntimeSitePermissionIntegrationTest`单独在四项系统权限尚未授权的API35实例顺序运行，实际点击Android权限弹窗；普通回归将其排除，不把排除记通过，见[运行方法](docs/B13-RUNTIME-PERMISSIONS-TEST.md)。站点权限用例的Android预授权与系统弹窗用例具有不同验证范围，不能相互替代。
-
-最新已验证打包的开发包为 [Miru-0.5.4-arm64.apk](artifacts/releases/Miru-0.5.4-arm64.apk)，对应源码 `97d8be1`，**107,966,640字节**，通过严格十进制110MB体积门。SHA-256：`215e07625fa086328433f3d0cebc6391179706ac3c4741a3755a0e8ed52c753a`。release构建成功；最终包压缩字节复用、SDK对齐及同证书重签验证通过，1517项载荷逐项保留，17个原生库均为ARM64。Gecko为4078项原payload保持、1项精确定位策略修改、5项官方blocklist新增，完整检查见[打包工具](tools/apk-release-buildlogic/README.md)与[B13记录](docs/B13-PERMISSIONS-VALIDATION.md)。当前仍为本机Android Debug签名，没有ARM64运行或正式发行验收；旧版APK继续保留。
-
-0.5.4权限首批修复了旁听观察者提前拒绝：最终源码的站点/混合下载专项7/7、全新模拟器真实系统权限专项3/3通过，覆盖摄像头/麦克风live轨道、网站与系统许可分离、临时定位同源新文档重新询问及近似定位。完整生命周期、全部B13功能、全套回归、正式签名与真机门继续保留，详见[专项记录](docs/B13-PERMISSIONS-VALIDATION.md)。
-
-0.5.2全新资料常规回归78项77通过、1项首次安装页面刷新警告失败；渲染专项均通过。0.5.3已修复实际Gecko复现的图片meta策略泄漏、扩展监听就绪时序及广告拦截重复启用导致的重载，107项JVM、46项JS协议、14项设备专项、重复启用和全新安装专项通过；release/lint成功，lint为0错误、22警告。完整回归首次中断后，新实例复跑79项为77通过、2失败（混合下载撤销等待、QUALITY benchmark有效帧超时），不能称整套通过。其107,897,008字节APK及全部失败记录保留；这套历史结果不代表0.5.4完整回归。
-
-## 工程结构
+## ✦ 工程结构
 
 ```text
-app                 Application / AppContainer / Activity / 导航
-core/common         地址判断、搜索引擎定义及 JVM 测试
-core/data           DataStore 设置、本地历史记录与书签（SQLite）
-core/design         主题、设计与动效 token、矢量字标
-browser/engine      GeckoRuntime / BrowserStore / SessionStorage
-browser/toolbar     Compose 地址栏
-feature/ntp         原生新标签页与快捷方式
-feature/tabs        普通 / 无痕标签切换器
-feature/menu        主菜单
-feature/history     历史记录（日期分组、搜索、删除 / 清除可撤销）
-feature/bookmarks   书签（星标、列表、编辑）
-feature/adblock     uBO 状态、站点面板、全局开关与设置入口
-feature/downloads   Room 分段断点、OkHttp 下载、通知、MediaStore / SAF、下载管理
-feature/media-detect 媒体模型、按标签隔离的内存索引、清晰度探测、本页视频面板
-feature/player      Media3 播放器、手势、缓存、进度、字幕 / 音轨、媒体会话与 PiP
-feature/offline     HLS / DASH 下载、独立离线缓存、清晰度选择、前台服务与持久索引
-feature/settings    基本设置与关于
-design              跨平台 token JSON 与可编辑 SVG 图标
+Miru
+├── app                    Application / AppContainer / Activity / 导航
+├── core
+│   ├── common             地址判断、搜索引擎定义（纯 JVM）
+│   ├── data               DataStore 设置，本地历史与书签（SQLite）
+│   └── design             主题、设计与动效 token、矢量字标
+├── browser
+│   ├── engine             GeckoRuntime / BrowserStore / SessionStorage / 权限与提示协调
+│   └── toolbar            Compose 地址栏
+├── feature
+│   ├── ntp                原生新标签页与快捷方式
+│   ├── tabs               普通 / 无痕标签切换器
+│   ├── menu               主菜单
+│   ├── history            历史记录：日期分组、搜索、可撤销删除
+│   ├── bookmarks          书签：星标、列表、编辑
+│   ├── adblock            uBO 状态、站点面板、全局开关
+│   ├── downloads          分段断点下载、通知、MediaStore / SAF、下载管理
+│   ├── media-detect       媒体模型、按标签隔离的内存索引、清晰度探测
+│   ├── player             Media3 播放器、手势、缓存、字幕音轨、PiP
+│   ├── offline            HLS / DASH 离线、独立缓存、前台服务、持久索引
+│   ├── superres           Anime4K / FSR 渲染链、设备保护与性能测试
+│   └── settings           设置与关于
+├── design                 跨平台 token JSON 与可编辑 SVG 图标
+├── third_party            第三方许可、来源与固定资源说明
+├── tools                  fixture 服务器、打包与 blocklist 构建逻辑
+└── docs                   进度、验收矩阵与各批次验证记录
 ```
 
-浏览器标签与导航状态只来自 Android Components 的 `BrowserStore`。Compose 读取不可变快照，不维护第二套标签模型。原生新标签页在 Gecko 准备好前即可展示，Gecko 本身按其 API 要求在主线程初始化，会话 I/O 在后台执行。普通标签用原生会话序列化保存导航栈，无痕标签不写入会话文件。
+### 架构要点
 
-当前借鉴了 reference-browser 的核心组件装配方式，未带入其账号、同步、遥测应用层。上游固定版本、来源、许可证与工具链验证见 [docs/UPSTREAM.md](docs/UPSTREAM.md)。运行时验收见 [M0 记录](docs/M0-VALIDATION.md)和 [M1 记录](docs/M1-VALIDATION.md)，uBO 接口与限制见 [M1-ADBLOCK.md](docs/M1-ADBLOCK.md)。
+- **单一状态源** — 标签与导航状态只来自 Android Components 的 `BrowserStore`；Compose 读取不可变快照，不维护第二套标签模型。
+- **启动不等内核** — 原生新标签页在 Gecko 就绪前即可展示；Gecko 按其 API 要求在主线程初始化，会话 I/O 在后台执行。
+- **无痕即不留痕** — 普通标签用原生会话序列化保存导航栈；无痕标签不写入会话文件、不截缩略图、不读写播放缓存。
+- **克制的上游借鉴** — 参考 reference-browser 的核心组件装配，不带入其账号、同步与遥测应用层。因 Places 存储会引入遥测与同步依赖，历史书签改用本地 SQLite，偏差说明见 [PROGRESS.md](docs/PROGRESS.md)。
 
-## 后续
+## ✦ 文档索引
 
-- M0 剩余验收与细节见 [docs/PROGRESS.md](docs/PROGRESS.md)。模拟器结果不能代替规范中的真机性能、兼容性和无障碍验收。
-- M1 已通过 500 MB 进程终止后自动续传及本地默认规则的冷启动恢复测试；首装稳定性、扩展自动更新、额外 Cookie 提示规则与完整真机验收仍待补齐，详见进度文档。
-- M2：核心播放链路已接入；具体结果与未完成项见 [M2 验证记录](docs/M2-VALIDATION.md)。
-- M3：清晰度探测、字幕 / 音轨、视频离线与 Ringo-Cove 超分渲染已接入；缩略图、完整硬件 / 站点 / 生命周期矩阵继续推进，见 [首批记录](docs/M3-VALIDATION.md)、[离线记录](docs/M3-OFFLINE-VALIDATION.md)与[超分记录](docs/M3-SUPERRES-VALIDATION.md)。
-- M4：动效、网站矩阵、真机性能与完整验收。
+| 主题 | 文档 |
+| :-- | :-- |
+| 产品与实现规范 | [MIRU-SPEC.md](MIRU-SPEC.md) |
+| 实现进度 · 全量验收矩阵 | [PROGRESS.md](docs/PROGRESS.md) · [ACCEPTANCE.md](docs/ACCEPTANCE.md) |
+| 上游版本与工具链 | [UPSTREAM.md](docs/UPSTREAM.md) |
+| 浏览器外壳 | [M0](docs/M0-VALIDATION.md) · [浏览器核心](docs/BROWSER-CORE-VALIDATION.md) |
+| 广告拦截与下载 | [uBO 接口与限制](docs/M1-ADBLOCK.md) · [blocklist](docs/M1-BLOCKLIST-VALIDATION.md) · [M1 记录](docs/M1-VALIDATION.md) |
+| 播放器 | [M2](docs/M2-VALIDATION.md) · [0.3.1 补齐](docs/M2-031-VALIDATION.md) |
+| 媒体增强 | [M3 首批](docs/M3-VALIDATION.md) · [离线](docs/M3-OFFLINE-VALIDATION.md) · [超分](docs/M3-SUPERRES-VALIDATION.md) |
+| 权限与网页提示 | [B13 权限](docs/B13-PERMISSIONS-VALIDATION.md) · [网页提示](docs/B13-PROMPTS-VALIDATION.md) |
+| 开源合规 | [开源检查](docs/OPEN-SOURCE-REVIEW.md) · [第三方说明](third_party/README.md) |
+
+## ✦ 许可与致谢
+
+Miru 由 [**Ringophilia**](https://github.com/Ringophilia) 与 **xiaomao** 共同开发，署名见 [AUTHORS.md](AUTHORS.md)。
+
+- 项目自有代码、构建脚本与文档采用 [**Mozilla Public License 2.0**](LICENSE)，范围见 [NOTICE](NOTICE)。
+- 第三方组件保留各自的许可证与署名：GeckoView 与 Android Components（MPL-2.0）、uBlock Origin（GPL-3.0，原样内置）、Media3 / OkHttp / AndroidX（Apache-2.0）、Anime4K 与 AMD FSR（MIT）等，详见 [第三方说明](third_party/README.md)。
+- 当前依赖链包含受 Google 专有条款约束的 Play services FIDO 组件，**不能据此宣称整个构建产物的依赖均为自由开源软件**。
+
+图标由维护者以《Ringo EXPO 08》封面为灵感、通过 AI 生成，素材授权范围与来源见 [design/PROVENANCE.md](design/PROVENANCE.md)。
+
+<sub>Miru 与椎名林檎、相关唱片公司、Mozilla 或 Google 均无隶属或背书关系。</sub>
+
+<div align="center">
+<br>
+<img src="design/miru-wordmark.svg" height="28" alt="Miru">
+</div>
