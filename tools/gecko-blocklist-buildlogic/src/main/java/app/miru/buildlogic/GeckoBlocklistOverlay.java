@@ -29,7 +29,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
-/** Adds pinned Mozilla blocklists and exactly one reviewed geolocation persistence policy patch. */
+/** Adds pinned blocklists and exactly two reviewed permission/navigation module patches. */
 public final class GeckoBlocklistOverlay {
     public static final String GECKO_ARTIFACT_VERSION = "158.0.20261021001945";
     public static final String GECKO_AAR_SHA256 = "a3af9d5ffb1f898df5b8782d083b69c4274c4f3275e31f3dac33d0d2aa16c692";
@@ -37,7 +37,7 @@ public final class GeckoBlocklistOverlay {
     public static final String GECKO_OMNI_SHA256 = "b6dca3074e505b3d475504c864ba517138e383d6d9f23c6db94de34403c254b5";
     public static final String GECKO_REVISION = "e4ce606692cd81e6898547e2edd7c552fefcbb04";
     public static final int ORIGINAL_ENTRY_COUNT = 4079;
-    public static final int UNCHANGED_ENTRY_COUNT = ORIGINAL_ENTRY_COUNT - 1;
+    public static final int UNCHANGED_ENTRY_COUNT = ORIGINAL_ENTRY_COUNT - 2;
     static final String INDEX = "defaults/settings/last_modified.json";
     static final String SNAPSHOT = "blocklists/addons-bloomfilters.json";
     static final String HARD = "blocklists/addons-bloomfilters/addons-mlbf.bin";
@@ -84,7 +84,8 @@ public final class GeckoBlocklistOverlay {
                 require(constants.contains("MOZ_APP_VERSION: \"158.0.2\""), "Gecko application version mismatch");
                 require(constants.contains("/rev/" + GECKO_REVISION), "Gecko source revision mismatch");
                 byte[] permissionPolicy = GeckoPermissionPolicyPatch.apply(readEntry(source, GeckoPermissionPolicyPatch.RESOURCE));
-                writeOverlay(source, entries, additions, permissionPolicy, staged);
+                byte[] documentLocation = GeckoDocumentLocationPatch.apply(readEntry(source, GeckoDocumentLocationPatch.RESOURCE));
+                writeOverlay(source, entries, additions, permissionPolicy, documentLocation, staged);
                 verifyOverlay(source, entries, additions, staged);
             }
             Files.createDirectories(output.toAbsolutePath().getParent());
@@ -242,7 +243,7 @@ public final class GeckoBlocklistOverlay {
         }
     }
 
-    private static void writeOverlay(ZipFile source, Map<String, Entry> entries, Map<String, byte[]> additions, byte[] permissionPolicy, Path target) throws IOException {
+    private static void writeOverlay(ZipFile source, Map<String, Entry> entries, Map<String, byte[]> additions, byte[] permissionPolicy, byte[] documentLocation, Path target) throws IOException {
         List<String> names = new ArrayList<>(entries.keySet());
         names.addAll(additions.keySet());
         Collections.sort(names);
@@ -252,6 +253,7 @@ public final class GeckoBlocklistOverlay {
                 byte[] added = additions.get(name);
                 Entry original = entries.get(name);
                 byte[] bytes = name.equals(GeckoPermissionPolicyPatch.RESOURCE) ? permissionPolicy
+                    : name.equals(GeckoDocumentLocationPatch.RESOURCE) ? documentLocation
                     : added == null ? readEntry(source, name) : added;
                 ZipEntry entry = new ZipEntry(name);
                 entry.setTimeLocal(ZIP_TIME);
@@ -275,13 +277,17 @@ public final class GeckoBlocklistOverlay {
             Set<String> expectedNames = new HashSet<>(originals.keySet());
             expectedNames.addAll(additions.keySet());
             require(actual.keySet().equals(expectedNames) && actual.size() == originals.size() + PINS.size(), "Overlay changed the Gecko resource set");
-            int unchanged = 0, permissionPatches = 0;
+            int unchanged = 0, permissionPatches = 0, navigationPatches = 0;
             for (var original : originals.entrySet()) {
                 Entry copy = actual.get(original.getKey());
                 if (original.getKey().equals(GeckoPermissionPolicyPatch.RESOURCE)) {
                     byte[] expected = GeckoPermissionPolicyPatch.apply(readEntry(source, original.getKey()));
                     require(java.util.Arrays.equals(expected, readEntry(result, original.getKey())), "Overlay differs from the exact geolocation policy patch");
                     permissionPatches++;
+                } else if (original.getKey().equals(GeckoDocumentLocationPatch.RESOURCE)) {
+                    byte[] expected = GeckoDocumentLocationPatch.apply(readEntry(source, original.getKey()));
+                    require(java.util.Arrays.equals(expected, readEntry(result, original.getKey())), "Overlay differs from the exact document location patch");
+                    navigationPatches++;
                 } else {
                     require(copy.sha256().equals(original.getValue().sha256()), "Overlay modified original Gecko bytes: " + original.getKey());
                     require(copy.length() == original.getValue().length(), "Overlay changed original Gecko resource length");
@@ -289,7 +295,8 @@ public final class GeckoBlocklistOverlay {
                 }
                 require(copy.method() == original.getValue().method(), "Overlay changed original Gecko compression method");
             }
-            require(unchanged == UNCHANGED_ENTRY_COUNT && permissionPatches == 1, "Overlay must preserve 4078 resources and patch exactly one permission module");
+            require(unchanged == UNCHANGED_ENTRY_COUNT && permissionPatches == 1 && navigationPatches == 1,
+                "Overlay must preserve 4077 resources and apply exactly the permission and navigation patches");
             for (var addition : additions.entrySet()) require(sha256(addition.getValue()).equals(actual.get(addition.getKey()).sha256()), "Overlay changed blocklist bytes");
             require(java.util.Arrays.equals(readEntry(source, INDEX), readEntry(result, INDEX)), "Overlay changed the original last_modified index");
         }

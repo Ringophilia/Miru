@@ -1,8 +1,8 @@
-# Pinned Gecko geolocation permission policy adaptation
+# Pinned Gecko permission policy and document-location adaptations
 
-This directory contains the exact original and modified source of one MPL-2.0
-GeckoView module. Miru changes only the native persistence of a geolocation
-decision. Its application coordinator owns document-limited choices, ordinary
+This directory contains the exact original and modified source of two MPL-2.0
+GeckoView modules. Miru changes geolocation decision persistence in the permission
+module and adds a top-level document-boundary notification in the navigation module. Its application coordinator owns document-limited choices, ordinary
 saved site choices, and private in-memory choices. An unchecked “remember” choice
 must not become Gecko's permanent origin grant or denial.
 
@@ -44,8 +44,8 @@ other permission types remain unchanged.
 The Java patcher accepts only the exact original length/digest and exactly one
 matching persistence block, then verifies the exact resulting length/digest.
 It supplies no general resource replacement option. The final overlay contains
-4,078 byte-identical original resources, this one exact modified module, and the
-five pinned, unchanged Mozilla blocklist additions. No original path is removed.
+4,077 byte-identical original resources, the two exact modified modules, and the
+five pinned, unchanged Mozilla blocklist additions (4,084 entries in total). No original path is removed.
 
 This patch does not remove permissions cached by older Miru builds. Application
 startup must enumerate all native permissions, reset only geolocation entries,
@@ -58,3 +58,60 @@ stubbed Gecko services to compare outcomes and writes. Archive checks verify the
 packaged bytes. Neither establishes native C++ permission-cache behavior, upgrade
 migration, document navigation behavior, or private browsing on a device; those
 remain separate acceptance work.
+
+## Navigation module corresponding source and exact event contract
+
+- Same official AAR, original omni digest, Gecko 158.0.2 application version and
+  `e4ce606692cd81e6898547e2edd7c552fefcbb04` revision recorded above.
+- Packaged resource: `modules/GeckoViewNavigation.sys.mjs`; upstream source
+  [`mobile/android/modules/geckoview/GeckoViewNavigation.sys.mjs`](https://hg.mozilla.org/releases/mozilla-release/file/e4ce606692cd81e6898547e2edd7c552fefcbb04/mobile/android/modules/geckoview/GeckoViewNavigation.sys.mjs).
+- [Original packaged source](upstream/GeckoViewNavigation.sys.mjs): 22,791 bytes,
+  SHA-256 `fb5926acbf81a405929309b39076f1ef86c4e407795f8903963d3f15158f208c`.
+- [Miru corresponding source](GeckoViewNavigation.sys.mjs): 23,179 bytes,
+  SHA-256 `a5e17b2c1b6253dd531aa69a9f9319f4f090831b2c5b9f9a4c814fdd9b5cb598`.
+- Original MPL notice remains byte-identical, and the added block attributes
+  Miru's modification. The same [MPL-2.0 license](MPL-2.0.txt) applies.
+
+The fixed original `onLocationChange` names only three callback arguments. The
+patch adds the fourth argument `aFlags`, then inserts one guarded send directly
+before the unchanged `GeckoView:LocationChange` send. Only top-level progress
+emits `Miru:DocumentLocation`; its only payload field is Boolean `sameDocument`,
+derived from `Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT`.
+Subframe progress emits no Miru document notification. The original location
+payload, initial about:blank filtering, translation callback, permission handling
+and navigation remain unchanged. Same-URL reload is not inferred to be the same
+document, and fragment/history changes are not inferred to be new documents.
+
+The sender uses the fixed `modules/Messaging.sys.mjs` signature
+`sendRequest(aType, aMsg, aCallback)`, which forwards to `dispatch` synchronously.
+Accordingly the call is `sendRequest("Miru:DocumentLocation", { sameDocument })`;
+there is no additional `type`, URL, title, file name or document content in the
+payload. Source call ordering alone is not proof of native listener delivery or
+thread ordering; the session adapter and real navigation tests must verify that
+separately.
+
+`GeckoDocumentLocationPatch` rejects any upstream byte/hash drift, missing or
+duplicate signature/sender anchor, and any result differing from this exact
+corresponding source. Java archive verification preserves all 4,079 original
+paths/compression methods and the original index; the APK verifier requires
+4,077 unchanged payloads, one exact permission patch, one exact navigation patch,
+and five pinned additions. No replacement wildcard is introduced.
+
+The 2026-10-26 standalone run passed 59 Java/archive checks, 22 actual permission
+module scenarios and 54 actual navigation module scenarios with local stubs.
+Evidence and the exact command are in
+`artifacts/b13-upload-lifecycle/gecko-navigation-20261026-011500/retry-1/`;
+the generated omni is 16,459,282 bytes, SHA-256
+`f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`.
+Both complete builds were byte-identical; independent archive audits verified
+4,077 unchanged payloads, the two exact patches, five additions, all original
+compression methods and the unchanged index. The first run's overly broad
+exposure-error test stub was corrected and its failed JS log retained separately.
+
+Actual-module local-stub tests cover top/subframe flag combinations, reload at an
+unchanged URL, initial blank filtering and unchanged original messages/side
+effects. Neither those tests nor packaging establishes native runtime consumption,
+same-document handling or upload-lease cleanup on a device. No Gradle, APK or
+device test was run for this record. The previous one-module overlay's
+digest/results remain historical only; fresh APK and device evidence is still
+required for this two-module overlay.

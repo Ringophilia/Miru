@@ -28,3 +28,5 @@ Add-Content -LiteralPath $compileLog -Encoding utf8 -Value 'Compilation succeede
 if ($LASTEXITCODE -ne 0) { throw 'Standalone Java tests failed' }
 & $NodePath (Join-Path $PSScriptRoot 'test-permission-policy.mjs') (Join-Path $projectDirectory 'third_party/mozilla-permission-policy') 2>&1 | Tee-Object -FilePath (Join-Path $evidenceDirectory 'permission-policy-js-tests.log')
 if ($LASTEXITCODE -ne 0) { throw 'Permission module JavaScript policy scenarios failed' }
+& $NodePath (Join-Path $PSScriptRoot 'test-document-location.mjs') (Join-Path $projectDirectory 'third_party/mozilla-permission-policy') 2>&1 | Tee-Object -FilePath (Join-Path $evidenceDirectory 'document-location-js-tests.log')
+if ($LASTEXITCODE -ne 0) { throw 'Navigation module JavaScript document-location scenarios failed' }

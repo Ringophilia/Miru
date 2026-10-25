@@ -29,7 +29,7 @@ function Get-EntrySha256([IO.Compression.ZipArchiveEntry]$Entry) {
 
 $summary = [ordered]@{
     status = 'FAILED'
-    scope = 'APK packaging / 4078 unchanged payloads, one exact geolocation policy patch, five pinned additions; runtime consumption not tested'
+    scope = 'APK packaging / 4077 unchanged payloads, two exact permission/navigation patches, five pinned additions; runtime consumption not tested'
     apk = [IO.Path]::GetFullPath($Apk)
     verifiedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
     expectedOmniSha256 = $ExpectedOmniSha256.ToLowerInvariant()
@@ -37,6 +37,7 @@ $summary = [ordered]@{
     snapshotDirectory = [IO.Path]::GetFullPath($SnapshotDirectory)
     originalsVerified = 0
     permissionPatchesVerified = 0
+    navigationPatchesVerified = 0
     additionsVerified = 0
 }
 $outer = $null
@@ -100,7 +101,11 @@ try {
     $permissionModule = 'modules/GeckoViewPermission.sys.mjs'
     $originalPermissionSha256 = '44199b91bf3e62a54b19c2dcf9c57f18141635c99f58dc8236b69fd5d0c2d35b'
     $patchedPermissionSha256 = 'ba77185def5e1bee64300abc9fd065470cf6758eaaf461ff947c6e8b50db0489'
+    $navigationModule = 'modules/GeckoViewNavigation.sys.mjs'
+    $originalNavigationSha256 = 'fb5926acbf81a405929309b39076f1ef86c4e407795f8903963d3f15158f208c'
+    $patchedNavigationSha256 = 'a5e17b2c1b6253dd531aa69a9f9319f4f090831b2c5b9f9a4c814fdd9b5cb598'
     Assert-Condition ($originals.ContainsKey($permissionModule)) 'Manifest omits the reviewed permission module.'
+    Assert-Condition ($originals.ContainsKey($navigationModule)) 'Manifest omits the reviewed navigation module.'
     foreach ($name in $originals.Keys) {
         Assert-Condition ($entries.ContainsKey($name)) "Missing original Gecko resource: $name"
         $entry = $entries[$name]
@@ -111,13 +116,19 @@ try {
             Assert-Condition ((Get-EntrySha256 $entry) -ceq $patchedPermissionSha256) 'Patched permission module differs from the exact reviewed geolocation policy.'
             $summary.permissionPatch = [ordered]@{ path = $name; originalSha256 = $originalPermissionSha256; patchedSha256 = $patchedPermissionSha256; bytes = 8000 }
             $summary.permissionPatchesVerified++
+        } elseif ($name -ceq $navigationModule) {
+            Assert-Condition ([long]$row.bytes -eq 22791 -and $row.sha256 -ceq $originalNavigationSha256) 'Original navigation module manifest differs from the fixed official source.'
+            Assert-Condition ($entry.Length -eq 23179) 'Patched navigation module length differs from the reviewed corresponding source.'
+            Assert-Condition ((Get-EntrySha256 $entry) -ceq $patchedNavigationSha256) 'Patched navigation module differs from the exact reviewed document notification.'
+            $summary.navigationPatch = [ordered]@{ path = $name; originalSha256 = $originalNavigationSha256; patchedSha256 = $patchedNavigationSha256; bytes = 23179 }
+            $summary.navigationPatchesVerified++
         } else {
             Assert-Condition ($entry.Length -eq [long]$row.bytes) "Changed original resource length: $name"
             Assert-Condition ((Get-EntrySha256 $entry) -ceq $row.sha256) "Changed original resource payload: $name"
             $summary.originalsVerified++
         }
     }
-    Assert-Condition ($summary.originalsVerified -eq 4078 -and $summary.permissionPatchesVerified -eq 1) 'Exactly 4078 original payloads and one reviewed permission patch must be verified.'
+    Assert-Condition ($summary.originalsVerified -eq 4077 -and $summary.permissionPatchesVerified -eq 1 -and $summary.navigationPatchesVerified -eq 1) 'Exactly 4077 original payloads and the two reviewed permission/navigation patches must be verified.'
     Assert-Condition ($originals.ContainsKey('defaults/settings/last_modified.json')) 'Manifest omits the original last_modified index.'
     $additionNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     $summary.additions = @()

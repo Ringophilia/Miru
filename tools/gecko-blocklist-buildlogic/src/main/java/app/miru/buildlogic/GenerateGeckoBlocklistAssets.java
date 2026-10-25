@@ -49,6 +49,6 @@ public abstract class GenerateGeckoBlocklistAssets extends DefaultTask {
             outputDirectory.resolve("omni.ja"),
             getTemporaryDir().toPath()
         );
-        getLogger().lifecycle("Generated pinned Gecko overlay: {} original resources preserved, 1 exact geolocation policy patch, 5 official blocklist resources added", GeckoBlocklistOverlay.UNCHANGED_ENTRY_COUNT);
+        getLogger().lifecycle("Generated pinned Gecko overlay: {} original resources preserved, 2 exact permission/navigation module patches, 5 official blocklist resources added", GeckoBlocklistOverlay.UNCHANGED_ENTRY_COUNT);
     }
 }

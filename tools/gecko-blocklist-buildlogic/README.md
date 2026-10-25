@@ -1,11 +1,11 @@
-# Gecko blocklist and geolocation policy asset overlay build logic
+# Gecko blocklist and exact permission/navigation asset overlay build logic
 
 This build-time Java code takes one pinned official GeckoView AAR and the five
 unmodified resources documented in
 [`third_party/mozilla-blocklist/README.md`](../../third_party/mozilla-blocklist/README.md).
 It writes a generated `omni.ja` without altering the dependency cache. Exactly
-4,078 original payloads remain unchanged; the only changed original resource is
-the pinned geolocation policy module documented in
+4,077 original payloads remain unchanged; exactly two original modules receive
+the pinned geolocation policy and top-level document notification changes documented in
 [`third_party/mozilla-permission-policy/README.md`](../../third_party/mozilla-permission-policy/README.md).
 The sources are kept in this directory and
 compiled by `buildSrc` through its Java source directory configuration. Running
@@ -18,8 +18,8 @@ device.
 or SHA-256, extracted omni digest, source revision/version, original entry count,
 snapshot file set/digests, collection/index timestamp, and mismatched attachment
 metadata. It limits archive input sizes, rejects duplicate/unsafe names, and
-checks entry CRCs. It verifies 4,078 original resources' uncompressed hashes and
-lengths, all 4,079 original compression methods, and the one exact patched module
+checks entry CRCs. It verifies 4,077 original resources' uncompressed hashes and
+lengths, all 4,079 original compression methods, and the two exact patched modules
 after writing, then atomically replaces the output
 when the filesystem supports that operation. An existing output survives input
 validation failure.
@@ -38,13 +38,25 @@ Every original path must be absent from this addition set; overriding even an
 existing blocklist resource fails. In particular, the original
 `defaults/settings/last_modified.json` remains byte-identical.
 
-Only `modules/GeckoViewPermission.sys.mjs` may change. The separate
+Only `modules/GeckoViewPermission.sys.mjs` and `modules/GeckoViewNavigation.sys.mjs` may change. The separate
 `GeckoPermissionPolicyPatch` checks the original 7,785-byte SHA-256, replaces one
 exact persistence block, and checks the resulting 8,000-byte SHA-256. It wraps
 only the native permission write in `if (perm.type !== "geolocation")`; other
 permission behavior and the original MPL notice remain unchanged. There is no
 wildcard or caller-configurable replacement mechanism. Application startup must
 separately clear and verify old native geolocation decisions before sessions load.
+
+`GeckoDocumentLocationPatch` checks the original 22,791-byte navigation module
+SHA-256, adds the fourth web-progress callback argument `aFlags`, and sends a
+`Miru:DocumentLocation` notification only when `aWebProgress.isTopLevel` is true,
+immediately before the original `GeckoView:LocationChange` sender. The payload
+contains only Boolean `sameDocument`, derived from Gecko's
+`LOCATION_CHANGE_SAME_DOCUMENT` flag; URL equality is not used. The fixed
+`Messaging.sys.mjs` API is `sendRequest(type, payload)`, so the event name is its
+first argument rather than a `type` field in the payload. The original location
+message, translations, navigation and permission logic remain byte-identical.
+The resulting 23,179-byte module has its own exact SHA-256 pin. No subframe
+notification is emitted. See the corresponding source/provenance above.
 
 The archive is rebuilt as an ordinary ZIP with sorted paths and fixed entry
 timestamps. Two runs on the same ZIP writer must match byte-for-byte. Repacking
@@ -78,8 +90,8 @@ An installed Node.js runs the actual original and patched modules against local
 stubs; use `-NodePath` when Node is not on PATH.
 
 - Two complete builds produce identical output.
-- An independent `ZipFile`/digest audit compares 4,078 original payloads and all
-  original compression methods, verifies the exact single module patch and the
+- An independent `ZipFile`/digest audit compares 4,077 original payloads and all
+  original compression methods, verifies the exact two module patches and the
   unchanged original index, and checks exactly five additions against raw files.
 - Pure Java patch checks reject upstream tampering, changed length, an already
   patched module, missing/duplicate/drifted anchors, and compare the generated
@@ -87,6 +99,12 @@ stubs; use `-NodePath` when Node is not on PATH.
 - Twenty-two actual-module JavaScript scenarios compare allow/cancel outcomes,
   content/Android permission requests, and unchanged non-geolocation writes;
   geolocation grant, denial, PROMPT, and Android denial produce no native write.
+- Actual original/patched navigation modules run against local stubs for top-level
+  and subframe progress, same-document flag combinations, reload to the same URL,
+  initial about:blank filtering, gesture/private variants, and permission lookup
+  failure. Tests require the new Boolean-only notification before the unchanged
+  original message and no subframe notifications. These are source/module tests,
+  not native Gecko/device acceptance.
 - Different version, wrong-length/same-length corrupt AAR, missing/extra/tampered
   snapshot files, invalid JSON, inconsistent timestamps/records, invalid attachment
   hashes/sizes/types/key formats/locations, and unsafe archive paths are rejected.
@@ -94,10 +112,37 @@ stubs; use `-NodePath` when Node is not on PATH.
   cleaned.
 
 Evidence is written to `artifacts/b13-policy-overlay/standalone-compile.log`,
-`standalone-tests.log`, `permission-policy-js-tests.log`, and
+`standalone-tests.log`, `permission-policy-js-tests.log`,
+`document-location-js-tests.log`, and
 `standalone-work/original-resource-sha256.tsv`.
-The permission-policy JDK 21.0.12 Microsoft / Gradle 9.3.1 jar-only Windows run
-on 2026-10-25 passed:
+The two-module standalone run on 2026-10-26 (Asia/Shanghai) passed with JDK
+21.0.12.1 Microsoft, installed Gradle 9.3.1 API jars and Node.js 24.19.0:
+
+```text
+PASS: 59 checks
+overlayBytes=16459282
+overlaySha256=f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8
+PASS: 22 actual-module permission policy scenarios with local stubs; native runtime not tested
+PASS: 54 actual-module document-location scenarios with local stubs; native runtime not tested
+```
+
+Fresh evidence is under
+`artifacts/b13-upload-lifecycle/gecko-navigation-20261026-011500/retry-1/`:
+`command.txt`, compile/test logs, JVM/Node versions, the original-resource TSV,
+both deterministic archive builds and `verification-summary.json`. The latter
+records the original AAR/omni pins, 4,077 unchanged resources, both exact patches,
+five additions, preserved compression methods and the unchanged index SHA-256.
+The first attempt's archive/Java checks passed but its navigation JS exposure-error
+stub also threw during permission URI serialization. Only that stub was narrowed
+to the location URI; the entire suite was rerun successfully. First-attempt logs
+remain in the parent directory. No Gradle or device was used; APK verification
+and native listener/lifecycle acceptance remain separate.
+
+No historical digest below is valid as the new expected output.
+
+The historical one-module permission-policy JDK 21.0.12 Microsoft / Gradle 9.3.1
+jar-only Windows run on 2026-10-25 passed (4,078 unchanged + one exact module +
+five additions). It does not verify the new navigation patch:
 
 ```text
 PASS: 46 checks
@@ -145,8 +190,8 @@ The current `app/build.gradle.kts` wiring works as follows:
 
 `verify-apk.ps1` independently verifies the actual merged asset. It requires
 exactly one `assets/omni.ja`, checks the supplied freshly verified generated
-digest, compares 4,078 original payload hashes/lengths against the standalone
-manifest, verifies exactly one pinned geolocation policy patch, and checks
+digest, compares 4,077 original payload hashes/lengths against the standalone
+manifest, verifies exactly the pinned permission and navigation module patches, and checks
 exactly five pinned additions against the raw snapshot files:
 
 ```powershell
@@ -161,7 +206,8 @@ there is no stale blocklist-only default. If the writer changes, repeat the
 standalone integrity/determinism checks. The JSON summary is written to
 `artifacts/b13-policy-overlay/verify-apk-summary.json`. Deliberately wrong expected
 digests and stale APK cutoffs were confirmed to fail in the earlier blocklist-only
-verification; repeat those checks for the permission-policy build.
+verification; repeat those checks for the new two-module build. Old one-module APKs must fail
+the new navigation-module pin even when their original resource manifest is valid.
 
 Fresh-profile runtime acceptance remains separate: prove signed uBO installation
 and actual blocking under unchanged signature, TLS, blocklist, and update
