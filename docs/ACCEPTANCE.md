@@ -27,7 +27,7 @@ P0 是首个可用版本门，P1 是第二轮功能，P2 在规范中为“有�
 | E6 | [OFFLINE-NOTIFICATION-VALIDATION.md](OFFLINE-NOTIFICATION-VALIDATION.md)、`artifacts/m3-quality/notification-cleanup-device.log`；35ad373 | 2项socket JVM、3项API35真实通知专项通过（27.387秒），含挂读暂停、完成UUID停源全片播放、哈希碰撞隔离。不是厂商后台或权限拒绝矩阵。 |
 | E7 | [M1-BLOCKLIST-VALIDATION.md](M1-BLOCKLIST-VALIDATION.md)、`artifacts/m1-blocklist/` | 固定官方blocklist资源、36项归档检查、最终APK原4079项与5项新增的逐项完整性；API35 fresh-profile离线/在线各1项签名安装与受控拦截通过。未证明多轮真机稳定性、MLBF读取追踪或在线更新。 |
 | E8 | [BROWSER-CORE-VALIDATION.md](BROWSER-CORE-VALIDATION.md)、`artifacts/browser-core/` | 真实Cookie时间边界/私密表单、APZ/工具栏、HTTP/meta/frame来源策略、内存图片URI。0.5.1常规75/77；0.5.2为77/78。0.5.3：107项JVM、46项JS、14项设备专项、同值设置及fresh首装通过；全套79项77通过2失败（混合下载撤销、QUALITY benchmark），四条60帧GL通过。107,897,008字节发布打包已验证，不能扩大为全部B10/B11/B20或后续B13验收。 |
-| E9 | [B13-PERMISSIONS-VALIDATION.md](B13-PERMISSIONS-VALIDATION.md)、`artifacts/browser-core/054-*` | 0.5.4首批：固定Observer默认reject根因与只读回调状态前后对照；neutral专项2/2（21.221秒）、无trace站点/混合下载7/7（61.002秒），含实际live音视频及临时GEO新文档再问。保留media-details5/7及fresh5588失败；早拒绝/归属修复后fresh5590真实系统专项3/3（21.741秒），无预授权，实际拒绝/摄像头麦克风允许/网站BLOCK/仅近似定位通过；最终production源码非trace站点复跑7/7（46.626秒）。overlay已提交f3117fb，不代表应用权限批次或完整B13验收。 |
+| E9 | [B13-PERMISSIONS-VALIDATION.md](B13-PERMISSIONS-VALIDATION.md)、`artifacts/browser-core/054-*` | 0.5.4首批已提交97d8be1（overlay f3117fb、相邻删除诊断d593ee2）：固定Observer提前reject根因与只读前后对照；neutral2/2（21.221秒）、早期站点7/7（61.002秒）、最终源码非trace站点/混合下载7/7（46.626秒）、fresh5590真实系统权限3/3（21.741秒）；全部旧失败保留。release构建/1517 payload/对齐/同证书/17个ARM64库/4078+1+5 Gecko资源和107,966,640字节打包验证通过。没有完整B13、全套回归、正式签名或ARM64运行通过声明。 |
 | SRC | 当前模块源码、Gradle、manifest、资源和 `design/tokens.json` | 证明存在代码 / 配置。单独不能证明运行正确、无泄漏、无掉帧或兼容所有站点。 |
 | LEGAL | [OPEN-SOURCE-REVIEW.md](OPEN-SOURCE-REVIEW.md)、[third_party/README.md](../third_party/README.md) | M0 源码公开范围的检查和后续依赖说明；不是含 uBO / 嵌套依赖的完整二进制分发审查。 |
 
@@ -51,7 +51,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | B10 P0 下拉刷新 / 隐藏栏 | implemented | E8：真实Gecko compositor滚动、APZ允许接管、SwipeRefreshFeature+M3指示、DynamicToolbar负裁剪；顶底栏滚动/页顶刷新通过。 | 网站既有手势/嵌套滚动、固定底部元素、键盘/焦点/旋转/字体完整真机矩阵。 |
 | B11 P0 上下文菜单 | implemented | E8：真实Engine hit链接/图片/视频菜单；链接文字、HTTP图片原字节/私密敏感剪贴板、新无痕标签、SVG只读URI通过。 | blob原文档图片完整动作、实际跨应用分享、视频原生播放/下载及各项菜单入口全部专项；站点已有手势兼容。 |
 | B12 P0 页内查找 | verified | `BrowserUiTest` 通过真实 Gecko 查找；聚焦键盘、计数 / 上下 / 关闭已有。 | 保留全站 / 长页回归。 |
-| B13 P0 权限 / 站点设置 | pending | E9：已接入三项权限面板、普通/私密选择与B20联动；旁听Observer修复后真实音视频live、临时GEO新文档再问。Media早拒绝/原pending归属等最终production源码非trace站点/混合下载7/7（46.626秒），fresh5590真实系统专项3/3（21.741秒），含拒绝、各自允许、网站BLOCK及仅近似定位；应用权限批次尚未整批提交/验收。 | 系统永久拒绝、旋转/取消/迟到结果与完整生命周期/持久化/私密隔离、活动流停止仍需证据。通知、弹窗、自动播放、文件/页面提示、证书与站点数据管理仍未闭合。 |
+| B13 P0 权限 / 站点设置 | pending | E9/97d8be1：三项权限面板、普通/私密选择与B20联动；真实音视频live、临时GEO新文档再问。站点/混合下载7/7、真实系统3/3；生命周期2/2（16.548秒）证明Activity重建保留请求、CAMERA撤销后实际native录制停止且MIC选择保留。 | 系统永久拒绝、系统弹窗中的旋转/取消/迟到结果、完整持久化/私密隔离及多页活动流撤销矩阵仍需证据。通知、弹窗、自动播放、文件/页面提示、证书与站点数据管理仍未闭合。 |
 | B14 P0 默认浏览器 / Intent | implemented | RoleManager、http(s)、SEND 文字 / URL、WEB_SEARCH；播放器独立 VIEW filter。 | 首启可跳过引导、系统默认浏览器实际选择、外部返回来源 App、协议拉起确认及文件类型矩阵。 |
 | B15 P1 地址栏顶 / 底 | implemented | DataStore 即时生效、键盘避让，E0 截图。 | 完整无重启 / 主题 / 字体 / 旋转 / 表单设备矩阵和二选一卡片示意 UI。 |
 | B16 P1 横滑工具栏 | pending | 无接入。 | 相邻标签截图跟手、阈值、速度 spring 与无标签边界。 |
@@ -274,7 +274,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | PERF05 良好网络HLS起播<1.5s | pending | 真实首画 / 首音时间，不是ready布尔值；受控网络和release真机。 |
 | PERF06 判定后倍速<100ms | pending | 手势判定时间→实际PlaybackParameters事件；并与P2按下400ms要求分开计。 |
 | PERF07 10标签内存 / Gecko回收 | pending | 10个实际内容标签、后台回收 / 恢复 / 峰值内存，应用不额外限标签。 |
-| PERF08 ARM64 APK<110MB | verified（仅0.5.3体积/打包） | 源码7521c04最终APK **107,897,008字节**，SHA `aca04bda…baf8956`；1517 payload逐项保留、SDK对齐/原证书一致、仅17个ARM64库，原4079 Gecko资源+5官方blocklist保持，E8。当前仍为Android Debug签名，正式签名/ARM64真机与完整发行门另列；不覆盖后续B13源码。 |
+| PERF08 ARM64 APK<110MB | verified（仅0.5.4体积/打包） | E9/97d8be1最终APK **107,966,640字节**，SHA `215e07625fa086328433f3d0cebc6391179706ac3c4741a3755a0e8ed52c753a`；1517 payload逐项保持、SDK对齐/原证书一致、17个ELF64/AArch64库，4078项Gecko原payload+1精确GEO修改+5官方新增验证通过。仍为Android Debug签名，正式签名/ARM64运行及完整发行门另列；E8的0.5.3打包与失败历史保留。 |
 | PERF09 超分均衡<12ms | pending | 指定8Gen2级设备、540P动画→1080P、稳定统计含保护；与设置benchmark<16ms推荐门分别验。 |
 | PRIV01 无账号 / Glean / Sync / FxA / 上传 | implemented | E0静态图与源码有证据；完整实际依赖、崩溃上传配置、抓包 / 日志取证、关于本机日志导出待补。 |
 | PRIV02 Cookie / Authorization不落盘 | implemented | 普通下载 / playback / media models内存、分区摘要；需最终Room / prefs / savedstate / files / logs取证和重启恢复认证测试。 |
@@ -283,9 +283,9 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | ACC02 所有图标名称 / 48dp / 等价手势控件 | implemented | 部分按钮 / slider语义已有测试；完整树、锁 / 双击跳转 / 缩放等所有等价动作需审。 |
 | VIS01 深浅×地址栏顶底×字体1.3x | pending | 按§15.2各组合真实截图，检查遮挡 / 截断 / 点击区；初始中文英文截图不替代。 |
 | VIS02 移除动画全流程 | pending | 运行系统scale=0的全操作链，静态循环 / 跟手 / 无输入阻塞。 |
-| DEV01 模拟器+真机仪器测试 | implemented | API35多批受控测试；最新完整0.5.3为77/79。0.5.4最终production源码无trace站点/混合下载7/7（46.626秒），fresh5590真实系统专项3/3（21.741秒）；保留全部早期失败，没有0.5.4完整回归或release通过证据。API26–28 / 当前系统 / ARM64物理机仍缺。 |
+| DEV01 模拟器+真机仪器测试 | implemented | API35多批受控测试；完整0.5.3为77/79。0.5.4站点/混合下载7/7、真实系统3/3、生命周期2/2、JVM111项及lint0错误/22警告；新版87项常规回归进行中，不能预记全绿。release构建/打包另见PERF08；API26–28 / 当前系统 / ARM64物理机仍缺。 |
 | SITE01 第11所有真实网站 / 登录 | pending | B1六站及R4媒体站点的兼容矩阵；需要真实账户时由人提供可用会话 / 完成认证，不猜测通过。 |
-| REL01 发布构建 / AAB或按ABI拆分 | implemented | arm64 release启R8 / shrink、APK已构建；AAB分发验证、实际签名和release运行验收未完。 |
+| REL01 发布构建 / AAB或按ABI拆分 | implemented | 0.5.4/97d8be1的arm64 release启R8 / shrink，构建成功（3分6秒），最终APK一致性/体积验证通过（E9/PERF08）；AAB分发、正式签名和ARM64 release运行验收未完。 |
 | REL02 正式签名 | pending | 基线无keystore.properties，现包Android Debug证书；需维护者提供安全签名配置，不在源码 / 日志中存秘密。 |
 | REL03 完整第三方告知 / 对应源码 | pending | LEGAL仅旧快照；uBO GPL、过滤列表、Gecko嵌套依赖、Media3和将来shader真实产物须重新审查；关于需可取到全部许可和准确源码。 |
 | REL04 图标 / 素材来源 | implemented | 原画、trace脚本、PROVENANCE与项目许可排除说明已有；发布时维护者权利 / 服务条款确认仍保留，不因AI生成推定全授权。 |
@@ -325,7 +325,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | R5 鉴权 / 签名 | implemented | 401 / 403刷新一次、失败回网页、释放期间不重建已测；真实站点登录Cookie / token轮换需补。 |
 | R6 Transformer离线导出 | pending | P2实现前先验证支持；失败再用TS+Muxer，不预承诺能无重编码导出。 |
 | R7 GL SurfaceView同步 / HDR | implemented | E5实际同帧比较、暂停重绘/旋转/故障回退；HDR策略存在，真实HDR/驱动矩阵仍待补。 |
-| R8 ABI体积 | verified（仅0.5.3打包） | PERF08：源码7521c04最终107,897,008字节<110,000,000，只有17个ARM64库；仍需正式签名/真机与后续版本重验。 |
+| R8 ABI体积 | verified（仅0.5.4打包） | PERF08/E9：源码97d8be1最终107,966,640字节<110,000,000，独立ZIP/ELF检查只有17个ARM64库；仍需正式签名/ARM64运行及后续版本重验，0.5.3历史证据保留。 |
 | R9 uBO / Gecko分发许可 | pending | 全部第三方 / 列表 / 嵌套库实际产物审查与人工确认；旧M0开源检查不能覆盖含uBO发行。 |
 | R10 Google Play视频下载政策 | pending（条件项） | 仅在决定上架Play时需当时政策与站点限制核对；当前本地构建没有商店发布证据。保留此门，不主动上架。 |
 

@@ -1,6 +1,6 @@
 # B13 权限首批：开发与验证记录
 
-应用0.5.4/code12开发中，设备为API35/x86_64只读模拟器；真实系统权限在全新实例5588失败，修复后5590通过。
+应用0.5.4/code12权限首批已提交为`97d8be1`，设备为API35/x86_64只读模拟器；真实系统权限在全新实例5588失败，修复后5590通过。
 旁听监听器修复后的站点专项、后续真实系统权限及最终源码站点复跑各有通过终态。本文只覆盖摄像头、麦克风、
 定位及对应本站权限/清理能力，**不是整个B13或最终验收通过**。文件选择、页面prompts、
 通知展示、弹窗、外部协议、完整证书/站点数据面板等继续在全量矩阵中保留。
@@ -27,7 +27,7 @@
 原件、修改源码、精确摘要和MPL保留在third_party/mozilla-permission-policy/。
 启动在创建/恢复session前枚举旧native GEO记录、设为PROMPT并回读；失败保持加载门关闭。
 应用自身的站点写入也不重新设置native ALLOW/DENY。
-该构建overlay批次已提交为`f3117fb`；应用权限协调器、旁听监听器及后续运行时修复尚未整批提交。
+构建overlay批次已提交为`f3117fb`，安全删除诊断为`d593ee2`；应用权限协调器、旁听监听器及运行时修复首批已提交为`97d8be1`。
 
 归档现为4078项原payload保持、1项固定模块精确修改、5项官方blocklist新增，
 不能沿用0.5.3“4079全部保持”的产物声明。
@@ -120,10 +120,51 @@ NativeGate同时持有原pending，启动前重新核对归属；迟到结果只
 覆盖同一6项站点权限和混合下载撤销/播放，补齐最新修复之后的专项回归；
 此前61.002秒的7/7和全部失败记录仍保留，不能据此扩大为全量回归或release验收。
 
+## 0.5.4 ARM64开发包：已验证打包
+
+源码`97d8be1b269937895e92ae0f68c073b25ff11e44`的`054-release-build.log`成功（3分6秒）。
+`054-release-input.json`记录Gradle原包111,117,433字节，SHA-256为
+`28793185f9ff29f134728002d73ed62bd0db9b666231b9d45c8428a8a1e9a878`。
+压缩字节复用/对齐/重签后的开发包为`artifacts/releases/Miru-0.5.4-arm64.apk`，
+**107,966,640字节 < 110,000,000字节**，SHA-256为
+`215e07625fa086328433f3d0cebc6391179706ac3c4741a3755a0e8ed52c753a`。
+
+`artifacts/releases/Miru-0.5.4-arm64.apk.verification-20261025-084856-fced7a14/pipeline.json`
+记录八步全部exitCode=0，1517项非签名payload的路径、长度、CRC32、SHA-256及压缩方法逐项保留；
+SDK对齐与最终v2/v3签名验证通过，签名证书与Gradle原包相同，仍为`CN=Android Debug`。
+证书SHA-256为`5aa1a00e59b8638298dbddcc5a61053ca245249136edb67199e0c9a3e4cb1f84`，不是正式发布签名。
+独立只读ZIP/ELF检查`054-final-abi.json`确认只有17个`arm64-v8a`原生库，全部为ELF64/AArch64。
+`054-final-omni-verification.json`确认4078项原payload保持、1项精确GEO修改及5项官方blocklist新增，
+omni SHA-256仍为`2a8da1a2c185d24f11e385e794b18b5d169a4e5afa64ce7f8882f8af33b14cb1`。
+
+这些证据只覆盖构建、体积和打包一致性，没有运行最终ARM64 APK。
+`054-lifecycle-lint-build.log`随后终态成功（148秒）：JVM XML **111项0失败/错误/跳过**，
+Debug lint **0 error、22 warning**，新增测试包构建成功。
+
+## 请求重建与实际媒体撤销
+
+`054-permission-lifecycle-device.log`初轮2项1通过、1失败：重建后的请求归属通过，
+活动流用例在“修改CAMERA必须保留记住的MICROPHONE”处失败。
+首轮点击的是记住文字的父节点，没有先证明checkbox确实选中；不能因此直接断言持久库丢数据。
+只调整测试为直接点击真实toggle并新增assertIsOn，未改生产持久化、期限或活动媒体断言。
+`054-lifecycle-checkbox-build.log`测试包构建成功（28秒）；
+`054-lifecycle-checkbox-device.log` **2/2通过，16.548秒**。
+
+第一项实际重建Activity，原标签、原文档请求数、prompt token/origin保持；拒绝回复到原网页，
+未勾记住的选择在下一文档恢复ASK。第二项取得真实audio/video live轨道和持续心跳、
+Gecko两类设备RECORDING事件后，从站点面板将CAMERA改为BLOCK；
+旧文档真实pagehide beacon、新文档代次以及后续原生idle事件共同证明停止采集。
+随后再请求被拒绝，MICROPHONE仍为已记住的ALLOW，Android权限保持授予。
+夹具持有stream且没有调用track.stop，不用页面重载事实单独代替原生停止证据。
+
+新版87项常规回归使用`054-binaries/`固定主/测试APK，在新实例5592运行，
+日志`054-full-device.log`、输入`054-full-precondition.json`；终态待补。
+真实系统权限类单独已有3/3；两个强停重启类仍排除，不计通过。
+
 ## 仍需证据
 
-系统永久拒绝、旋转/取消/迟到结果及完整生命周期矩阵；
+系统永久拒绝、系统弹窗中的旋转/取消/迟到结果及完整生命周期矩阵；
 旧native GEO迁移和跨进程普通选择保持；
-私密完整origin隔离与最后私密context关闭；设置变更后的真实活动媒体停止；
-新版release/lint/体积与常规回归。最终源码站点/混合下载7项和真实系统权限3项通过不等于首批全部完成，
-0.5.3的77/79与107,897,008字节打包证据不能当作本版回归或发布证据。
+私密完整origin隔离与最后私密context关闭；多标签/iframe/私密活动媒体撤销矩阵；
+新版常规回归和ARM64运行/正式签名。最终源码站点/混合下载7项、系统权限3项与生命周期2项通过不等于首批全部完成，
+本版体积/打包通过不等于正式发行；0.5.3的77/79与107,897,008字节历史证据继续保留。
