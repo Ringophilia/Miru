@@ -176,3 +176,95 @@ Folder第一次回调结束后仍需保存该文档的tree grant，直到后续�
 **完成标准：** 对声明支持的每种选择方式，用户能在真实系统界面选中，网页收到正确File/目录内容，
 实际网络上传正确字节，同时取消、重建、迟到结果和私密清理门通过。
 仅显示UI、出现StateFlow或执行安全取消，都不满足该标准。
+
+## 2026-10-25 补充静态审查：线程与 native bridge
+
+本节仅记录固定依赖源码的后续方案审查。文件上传仍未实现，本轮没有为这些候选方案修改生产代码、
+编译验证或运行设备测试。已有页面 prompts 的构建、专项与回归结果不构成文件上传验收。
+前文的小范围 SDK 源补丁是备选，尚不能据此断言文件上传必须修改 SDK；应先评估下述 native adapter
+与版本锁定的兼容层，并分别保留它们的边界与验证证据。
+
+### 回调的线程约定
+
+下列路径仍相对于前述 `miru-ac-158` 缓存；support-ktx 行号对应官方 **158.0.2** sources jar。
+
+| 证据位置 | 已核实结论 |
+| --- | --- |
+| `concept-engine/.../prompt/PromptRequest.kt:328`、`:329` | File 的 single/multiple 字段只是函数类型，没有赋予实现跨线程调用的许可。 |
+| `browser-engine-gecko/.../prompt/GeckoPromptDelegate.kt:586`、`:598` | 回调在调用线程同步执行 `toFileUri`，随后直接执行 native `prompt.confirm`，没有自动切换 dispatcher。 |
+| `geckoview/.../GeckoSession.java:6261`、`:6275` | FilePrompt 的两个 `confirm(Context, ...)` 重载均标注 `@UiThread`。 |
+| 同文件 `:5040`、`:5102` | BasePrompt.confirm 与 isComplete 也标注 `@UiThread`；完成状态和结果不是由 GeckoResult 的锁保护。 |
+| `geckoview/.../PromptController.java:53`、`:66` | native prompt 完成会同步从 PromptStorage 的 HashMap 移除请求。 |
+| `geckoview/.../GeckoResult.java:181`、`:893` | GeckoResult 本身为 `@AnyThread`，complete 是 synchronized；这不放宽 FilePrompt 的 UI 线程约定。 |
+
+上述 FilePrompt 完成调用链没有 `ThreadUtils.assertOnUiThread()` 硬断言，但缺少断言不等于线程契约允许。
+不能把整个 AC 文件选择回调放到 IO dispatcher，再以“运行时没有抛线程异常”作为安全证据。
+可取消的 provider 读取、预算控制和暂存校验应在 IO 完成，native prompt 的核验、confirm/dismiss 与完成一次
+状态应回 Main 串行处理。
+
+### 动态 cacheDir 可以隔离路径，但不能替代复制方案
+
+固定 support-ktx `Uri.kt:143` 每次 `toFileUri` 只读取一次 `context.cacheDir`；后续使用已构造的目录和目标 File，
+不再次读取 cacheDir。multiple 回调逐 URI 调用该 helper。因此，若 ContextWrapper 每次 getter 返回不同的、
+已存在的随机子目录，固定实现可以隔离同一 multiple 内的同名文件，也保留其经过现有 sanitize 处理的 basename。
+这比“每请求返回同一个隔离目录”多解决了同批同名碰撞。
+
+native `GeckoSession.java:6315` 对转换后的 file URI 只取 `uri.getPath()`，不会再次访问 cacheDir、比较 Context 身份，
+也不会把 Context 留作后续文件读取依据。该路径隔离技巧在固定源码上成立，但回调仍会同步复制、吞掉复制异常后
+返回目标 URI，且 native confirm 已可能把文件交给网页；事后检查暂存成功不能撤回已经交付的结果。
+因此它不能单独满足主线程复制、可取消 IO、失败不交付和私密租约的验收门。
+
+### 公开 render adapter：可覆盖前台交互，仍有首次 render 前的窗口
+
+`GeckoEngineSession.kt:118` 的 native `geckoSession` 属性是 Kotlin `internal`，没有可直接使用的公开 Kotlin getter。
+但 native `GeckoSession.java:3682`、`:3692` 的 promptDelegate setter/getter 是公开 API；EngineSession 也公开实现
+Observable，可调用 `notifyObservers`。取得真实 native session 后，可以用 `GeckoSession.PromptDelegate by original`
+保留原 AC delegate，仅覆盖 `onFilePrompt`，构造一次共享的 AC File 请求，在应用 IO 暂存校验完成后回 Main
+直接调用 native FilePrompt.confirm，避免再进入 AC 的同步 `toFileUri`。
+
+公开 view 路径需要准确描述：`EngineView.asView()` 只是把实现转为 View；固定 GeckoEngineView 是 FrameLayout，
+其子 View 才是 NestedGeckoView。可以在受控的 `render(actual EngineSession)` 返回后，通过公开 ViewGroup API
+遍历唯一的 GeckoView，再调用公开的 `GeckoView.getSession()`，以实际 EngineSession 身份建立配对。
+不能根据当前 URL、selectedTabId 或猜测的 native session 来配对。该过程需要包装所有实际 render 路径，
+包括直接 render 的扩展 popup；桥接器不能持有 Activity 或 View 的强引用。
+
+固定 AC 只在 `GeckoEngineSession.kt:1777` 的初始化流程中，于 `:1803` 设置原 promptDelegate；正常 render 和
+Activity 重建不会重设它。安装应幂等，并按 engine/native session 身份保留到 session 生命周期结束。
+自有 native PromptInstanceDelegate 应把系统 dismiss 转发为对应共享 AC 请求的 `onPromptDismissed`；其余 prompt
+方法保留原 delegate。当前 native update 文档描述的是 Choice 更新，不能据此宣称 File 具有已验证的更新协议。
+
+这一方案可覆盖已 render 的普通、私密及扩展创建页面中的用户交互，却不能证明首次 render 前不会产生合法请求。
+Gecko 的文件入口检查用户激活和 BrowsingContext，没有给 Android embedder 提供“必定已 render”的保证。
+没有用户激活的普通 onload click 会被 native 阻止，但不能据此排除所有提前或特权调用。
+未桥接请求若只能取消，必须作为范围边界记录；不能把它扩大为所有早期请求都已支持，也不能为追求容易测试
+而默认缩减产品原定范围。
+
+### 未 attach 的 probe：存在副作用，不能未经动态验证直接上生产
+
+另一个候选是在 Link 中、首次 load 前，用从未 attach 的独立 EngineView 同步 render 新 session，取得 native
+引用并安装 adapter，随后立即在 finally 中 release，再让真实 view 接管。固定源码未显示必须先 attach 的限制：
+`GeckoView.java:596` 只在 attached 时取得 display；全新 probe 没有有效 surface，正常情况下不会使 session
+active/focused，`releaseSession` 也不关闭 session。未 open 的 session 由 `defaultColor():488` 的分支处理。
+
+它仍然会设置 session owner，并触及 IME、accessibility、magnifier、haptic、autofill、print、overscroll、
+first-paint callback 和 clearColor。release 清理 probe 的引用，不等于恢复所有旧的自定义值。
+尤其 `GeckoSession.java:3450` 的 setOwner 会主动释放已有 owner；“不在 bridge map”不证明该 session 从未显示。
+若继续评估，只能在证明是尚未被真实 view 持有的新 session 时执行，覆盖所有 view 的 render 身份登记，
+整个流程不得 attach、requestFocus、调用 view 的 onStart/onResume 或中途 yield。
+这些静态条件不足以把 probe 作为默认生产方案；其输入、显示、delegate 与旧 owner 副作用仍须动态验证。
+
+### 版本锁定的 internal ABI 兼容层也是待评估选项
+
+还可评估版本锁定的 SDK internal bridge。若后续选择通过 Java 直接调用
+编译产物中 Kotlin internal 属性生成的 mangled getter，应明确标为 **固定版本的 internal ABI 兼容层**，
+不能称为官方 public API，也不能仅凭源码属性名猜测实际 accessor 的 module 后缀。
+
+采用前须检查实际解析 AAR 的 getter 名称、签名与可见性，完成真正的编译验证；在运行中核验实际 EngineSession
+类型、native 配对、原默认 delegate 的存在及身份，覆盖普通、私密、window.open、WebExtension 新 session、
+重复 Link、session 替换和 Activity 重建。必须回归所有现有 prompt 类型与其取消/生命周期行为，不能只证明
+File 单次成功。依赖升级需重新审查该兼容层，不能静默落回错误 native session 或原 AC 同步复制回调。
+本轮没有实现、编译或运行验证这一 ABI 方案。
+
+若上述集成路线最终仍不能满足范围和验收门，再评估小范围 MPL 源补丁。固定 AC 的最小候选点是
+`GeckoPromptDelegate.kt:1083` 的 URI 转换 helper：仅让已由应用在 IO 完成验证、位于受控 app-private 暂存根内的
+file URI 直达 native，避免再次复制；不能无条件放行任意 file URI。该备选同样尚未实现或验收。
