@@ -5,7 +5,8 @@ param(
     [Parameter(Mandatory)][string]$GeckoAar,
     [Parameter(Mandatory)][string]$GradleHome,
     [Parameter(Mandatory)][string]$JdkHome,
-    [string]$ArtifactsDirectory = (Join-Path $PSScriptRoot '../../artifacts/m1-blocklist')
+    [string]$NodePath = 'node',
+    [string]$ArtifactsDirectory = (Join-Path $PSScriptRoot '../../artifacts/b13-policy-overlay')
 )
 $ErrorActionPreference = 'Stop'
 $projectDirectory = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -25,3 +26,5 @@ Add-Content -LiteralPath $compileLog -Encoding utf8 -Value 'Compilation succeede
 & (Join-Path $JdkHome 'bin/java.exe') -Xmx768m -cp "$classesDirectory;$dependencyClasspath" app.miru.buildlogic.GeckoBlocklistOverlayTest `
     ([IO.Path]::GetFullPath($GeckoAar)) (Join-Path $projectDirectory 'third_party/mozilla-blocklist/snapshot') (Join-Path $evidenceDirectory 'standalone-work') 2>&1 | Tee-Object -FilePath (Join-Path $evidenceDirectory 'standalone-tests.log')
 if ($LASTEXITCODE -ne 0) { throw 'Standalone Java tests failed' }
+& $NodePath (Join-Path $PSScriptRoot 'test-permission-policy.mjs') (Join-Path $projectDirectory 'third_party/mozilla-permission-policy') 2>&1 | Tee-Object -FilePath (Join-Path $evidenceDirectory 'permission-policy-js-tests.log')
+if ($LASTEXITCODE -ne 0) { throw 'Permission module JavaScript policy scenarios failed' }

@@ -40,6 +40,7 @@ public final class GeckoBlocklistOverlayTest {
         GeckoBlocklistOverlay.build(aar, GeckoBlocklistOverlay.GECKO_ARTIFACT_VERSION, snapshots, output, work.resolve("tmp"));
         GeckoBlocklistOverlay.build(aar, GeckoBlocklistOverlay.GECKO_ARTIFACT_VERSION, snapshots, second, work.resolve("tmp"));
         outputHash = digest(Files.readAllBytes(output));
+        passed += GeckoPermissionPolicyPatchTest.run(snapshots.getParent().getParent().resolve("mozilla-permission-policy"));
         check(Files.mismatch(output, second) == -1, "Two full builds produce identical bytes");
         independentArchiveAudit(output);
 
@@ -107,17 +108,29 @@ public final class GeckoBlocklistOverlayTest {
         manifest.add("path\tsha256\tbytes\tcompressionMethod");
         try (ZipFile upstream = new ZipFile(original.toFile()); ZipFile overlay = new ZipFile(built.toFile())) {
             Map<String, ZipEntry> sources = entries(upstream), result = entries(overlay);
-            check(sources.size() == 4079 && result.size() == 4084, "Original 4079 entries plus exactly five snapshots");
+            check(sources.size() == 4079 && result.size() == 4084, "4078 unchanged resources, one reviewed permission patch, exactly five additions");
+            int unchanged = 0, permissionPatches = 0;
             for (var source : sources.entrySet()) {
                 ZipEntry target = result.remove(source.getKey());
                 if (target == null) throw new AssertionError("Lost entry: " + source.getKey());
                 byte[] before = read(upstream, source.getValue()), after = read(overlay, target);
-                if (!Arrays.equals(before, after) || source.getValue().getMethod() != target.getMethod()) {
+                if (source.getKey().equals(GeckoPermissionPolicyPatch.RESOURCE)) {
+                    if (!digest(before).equals(GeckoPermissionPolicyPatch.ORIGINAL_SHA256) ||
+                        !digest(after).equals(GeckoPermissionPolicyPatch.PATCHED_SHA256) ||
+                        !Arrays.equals(after, Files.readAllBytes(snapshots.getParent().getParent().resolve("mozilla-permission-policy/GeckoViewPermission.sys.mjs")))) {
+                        throw new AssertionError("Changed permission policy is not the reviewed exact source");
+                    }
+                    permissionPatches++;
+                } else if (!Arrays.equals(before, after)) {
                     throw new AssertionError("Changed original entry: " + source.getKey());
+                } else {
+                    unchanged++;
                 }
+                if (source.getValue().getMethod() != target.getMethod()) throw new AssertionError("Changed compression method: " + source.getKey());
                 manifest.add(source.getKey() + "\t" + digest(before) + "\t" + before.length + "\t" + target.getMethod());
             }
-            check(manifest.size() == 4080, "All 4079 original uncompressed payloads and compression methods match");
+            check(manifest.size() == 4080 && unchanged == 4078 && permissionPatches == 1,
+                "4078 original payloads and all compression methods match; one exact permission module patch");
             check(Arrays.equals(read(upstream, upstream.getEntry(GeckoBlocklistOverlay.INDEX)), read(overlay, overlay.getEntry(GeckoBlocklistOverlay.INDEX))), "Original last_modified.json remains byte-identical");
             Map<String, byte[]> expected = new TreeMap<>();
             try (var paths = Files.walk(snapshots)) {

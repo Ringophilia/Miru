@@ -7,6 +7,7 @@
 | Mozilla Reference Browser 参考代码 | `61267efe132591f6f1dfd58185ebd8dbff6aa816` | MPL-2.0；保留 `BrowserController.kt` 文件头，来源见 [UPSTREAM.md](../docs/UPSTREAM.md) |
 | Mozilla Android Components | `158.0.2` | MPL-2.0；[许可原文](mozilla/MPL-2.0.txt) |
 | GeckoView | `158.0.20261021001945` | POM 声明 MPL-2.0；内部第三方代码仍保留各自许可 |
+| Miru Gecko 定位策略修改 | 0.5.4开发批次，固定上述Gecko模块 | MPL-2.0；只移除定位结果的原生持久化写入，网站决策由Miru管理；[原件、修改后源码与精确摘要](mozilla-permission-policy/README.md)。不能套用0.5.3原4079项全保留的记录，运行时与完整发行审查另验。 |
 | Mozilla application-services | `158.0.1` | MPL-2.0 及内部 Rust/C/C++ 第三方条款；[源码](https://github.com/mozilla/application-services)，POM 的子组件条款在下方清单中保留 |
 | AndroidX / Compose / Kotlin / kotlinx.coroutines | 实际解析版本见清单 | 主要为 Apache-2.0；个别 POM 缺少许可字段，不能仅据此认定完整合规 |
 | JNA | `5.18.1` | [Apache-2.0 或 LGPL-2.1-or-later 双许可](https://github.com/java-native-access/jna/blob/5.18.1/LICENSE)；本项目选择 Apache-2.0 选项，须保留其原有第三方声明 |

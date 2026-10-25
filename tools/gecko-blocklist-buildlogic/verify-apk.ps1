@@ -3,11 +3,11 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Apk,
-    [string]$OriginalManifest = (Join-Path $PSScriptRoot '../../artifacts/m1-blocklist/standalone-work/original-resource-sha256.tsv'),
+    [string]$OriginalManifest = (Join-Path $PSScriptRoot '../../artifacts/b13-policy-overlay/standalone-work/original-resource-sha256.tsv'),
     [string]$SnapshotDirectory = (Join-Path $PSScriptRoot '../../third_party/mozilla-blocklist/snapshot'),
-    [string]$ExpectedOmniSha256 = '65becbcb9be64a1d50f84248e7a6d95531a15dfab25514dff631dcce3e358939',
+    [Parameter(Mandatory)][string]$ExpectedOmniSha256,
     [Nullable[DateTimeOffset]]$MinimumApkWriteTimeUtc,
-    [string]$SummaryLog = (Join-Path $PSScriptRoot '../../artifacts/m1-blocklist/verify-apk-summary.json')
+    [string]$SummaryLog = (Join-Path $PSScriptRoot '../../artifacts/b13-policy-overlay/verify-apk-summary.json')
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression
@@ -29,13 +29,14 @@ function Get-EntrySha256([IO.Compression.ZipArchiveEntry]$Entry) {
 
 $summary = [ordered]@{
     status = 'FAILED'
-    scope = 'APK packaging / original payload integrity; runtime consumption not tested'
+    scope = 'APK packaging / 4078 unchanged payloads, one exact geolocation policy patch, five pinned additions; runtime consumption not tested'
     apk = [IO.Path]::GetFullPath($Apk)
     verifiedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
     expectedOmniSha256 = $ExpectedOmniSha256.ToLowerInvariant()
     originalManifest = [IO.Path]::GetFullPath($OriginalManifest)
     snapshotDirectory = [IO.Path]::GetFullPath($SnapshotDirectory)
     originalsVerified = 0
+    permissionPatchesVerified = 0
     additionsVerified = 0
 }
 $outer = $null
@@ -96,14 +97,27 @@ try {
     }
     $summary.omniEntryCount = $entries.Count
     Assert-Condition ($entries.Count -eq 4084) 'Packaged omni must contain exactly 4084 resources.'
+    $permissionModule = 'modules/GeckoViewPermission.sys.mjs'
+    $originalPermissionSha256 = '44199b91bf3e62a54b19c2dcf9c57f18141635c99f58dc8236b69fd5d0c2d35b'
+    $patchedPermissionSha256 = 'ba77185def5e1bee64300abc9fd065470cf6758eaaf461ff947c6e8b50db0489'
+    Assert-Condition ($originals.ContainsKey($permissionModule)) 'Manifest omits the reviewed permission module.'
     foreach ($name in $originals.Keys) {
         Assert-Condition ($entries.ContainsKey($name)) "Missing original Gecko resource: $name"
         $entry = $entries[$name]
         $row = $originals[$name]
-        Assert-Condition ($entry.Length -eq [long]$row.bytes) "Changed original resource length: $name"
-        Assert-Condition ((Get-EntrySha256 $entry) -ceq $row.sha256) "Changed original resource payload: $name"
-        $summary.originalsVerified++
+        if ($name -ceq $permissionModule) {
+            Assert-Condition ([long]$row.bytes -eq 7785 -and $row.sha256 -ceq $originalPermissionSha256) 'Original permission module manifest differs from the fixed official source.'
+            Assert-Condition ($entry.Length -eq 8000) 'Patched permission module length differs from the reviewed corresponding source.'
+            Assert-Condition ((Get-EntrySha256 $entry) -ceq $patchedPermissionSha256) 'Patched permission module differs from the exact reviewed geolocation policy.'
+            $summary.permissionPatch = [ordered]@{ path = $name; originalSha256 = $originalPermissionSha256; patchedSha256 = $patchedPermissionSha256; bytes = 8000 }
+            $summary.permissionPatchesVerified++
+        } else {
+            Assert-Condition ($entry.Length -eq [long]$row.bytes) "Changed original resource length: $name"
+            Assert-Condition ((Get-EntrySha256 $entry) -ceq $row.sha256) "Changed original resource payload: $name"
+            $summary.originalsVerified++
+        }
     }
+    Assert-Condition ($summary.originalsVerified -eq 4078 -and $summary.permissionPatchesVerified -eq 1) 'Exactly 4078 original payloads and one reviewed permission patch must be verified.'
     Assert-Condition ($originals.ContainsKey('defaults/settings/last_modified.json')) 'Manifest omits the original last_modified index.'
     $additionNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     $summary.additions = @()

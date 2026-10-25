@@ -1,5 +1,12 @@
 # Pinned Mozilla add-on blocklist resources
 
+Version boundary: through Miru 0.5.3, the generated overlay preserved all 4,079
+original payloads. Starting with the 0.5.4 development batch, the same generator
+also applies one separately reviewed [geolocation policy patch](../mozilla-permission-policy/README.md).
+The five blocklist resources remain unmodified; the combined output now preserves
+4,078 originals and changes exactly that one pinned module. The historical
+4,079-preserved results do not describe the new combined output.
+
 These five files are unmodified Mozilla Remote Settings dump resources from the
 same release source revision as Miru's GeckoView dependency. They are licensed
 under the Mozilla Public License 2.0; the complete license is retained in

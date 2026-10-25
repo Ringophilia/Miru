@@ -1,10 +1,13 @@
-# Gecko blocklist asset overlay build logic
+# Gecko blocklist and geolocation policy asset overlay build logic
 
 This build-time Java code takes one pinned official GeckoView AAR and the five
 unmodified resources documented in
 [`third_party/mozilla-blocklist/README.md`](../../third_party/mozilla-blocklist/README.md).
-It writes a generated `omni.ja` without altering the dependency cache or any of
-the original 4,079 resource payloads. The sources are kept in this directory and
+It writes a generated `omni.ja` without altering the dependency cache. Exactly
+4,078 original payloads remain unchanged; the only changed original resource is
+the pinned geolocation policy module documented in
+[`third_party/mozilla-permission-policy/README.md`](../../third_party/mozilla-permission-policy/README.md).
+The sources are kept in this directory and
 compiled by `buildSrc` through its Java source directory configuration. Running
 the standalone tests does not configure/build the Miru Android project or use a
 device.
@@ -15,8 +18,9 @@ device.
 or SHA-256, extracted omni digest, source revision/version, original entry count,
 snapshot file set/digests, collection/index timestamp, and mismatched attachment
 metadata. It limits archive input sizes, rejects duplicate/unsafe names, and
-checks entry CRCs. It verifies every original resource's uncompressed hash,
-length, and compression method after writing, then atomically replaces the output
+checks entry CRCs. It verifies 4,078 original resources' uncompressed hashes and
+lengths, all 4,079 original compression methods, and the one exact patched module
+after writing, then atomically replaces the output
 when the filesystem supports that operation. An existing output survives input
 validation failure.
 
@@ -33,6 +37,14 @@ defaults/settings/blocklists/addons-bloomfilters/softblocks-addons-mlbf.bin.meta
 Every original path must be absent from this addition set; overriding even an
 existing blocklist resource fails. In particular, the original
 `defaults/settings/last_modified.json` remains byte-identical.
+
+Only `modules/GeckoViewPermission.sys.mjs` may change. The separate
+`GeckoPermissionPolicyPatch` checks the original 7,785-byte SHA-256, replaces one
+exact persistence block, and checks the resulting 8,000-byte SHA-256. It wraps
+only the native permission write in `if (perm.type !== "geolocation")`; other
+permission behavior and the original MPL notice remain unchanged. There is no
+wildcard or caller-configurable replacement mechanism. Application startup must
+separately clear and verify old native geolocation decisions before sessions load.
 
 The archive is rebuilt as an ordinary ZIP with sorted paths and fixed entry
 timestamps. Two runs on the same ZIP writer must match byte-for-byte. Repacking
@@ -60,22 +72,43 @@ JARs are used). Pass the official cached AAR path explicitly:
   -JdkHome '<installed JDK 21 directory>'
 ```
 
-The runner compiles both production classes (including the Gradle task) and the
-standalone test harness with `javac`. It then runs 36 checks:
+The runner compiles all production classes (including the Gradle task) and the
+standalone test harness with `javac`, then runs the archive and pure patch checks.
+An installed Node.js runs the actual original and patched modules against local
+stubs; use `-NodePath` when Node is not on PATH.
 
 - Two complete builds produce identical output.
-- An independent `ZipFile`/digest audit compares all 4,079 original payloads and
-  compression methods, verifies the unchanged original index, and checks exactly
-  five additions against their original raw files.
+- An independent `ZipFile`/digest audit compares 4,078 original payloads and all
+  original compression methods, verifies the exact single module patch and the
+  unchanged original index, and checks exactly five additions against raw files.
+- Pure Java patch checks reject upstream tampering, changed length, an already
+  patched module, missing/duplicate/drifted anchors, and compare the generated
+  patch with the published corresponding source while retaining the MPL notice.
+- Twenty-two actual-module JavaScript scenarios compare allow/cancel outcomes,
+  content/Android permission requests, and unchanged non-geolocation writes;
+  geolocation grant, denial, PROMPT, and Android denial produce no native write.
 - Different version, wrong-length/same-length corrupt AAR, missing/extra/tampered
   snapshot files, invalid JSON, inconsistent timestamps/records, invalid attachment
   hashes/sizes/types/key formats/locations, and unsafe archive paths are rejected.
 - Invalid input preserves the previous output and temporary extraction files are
   cleaned.
 
-Evidence is written to `artifacts/m1-blocklist/standalone-compile.log`,
-`standalone-tests.log`, and `standalone-work/original-resource-sha256.tsv`.
-The verified JDK 21.0.12 Microsoft / Gradle 9.3.1 Windows run produced:
+Evidence is written to `artifacts/b13-policy-overlay/standalone-compile.log`,
+`standalone-tests.log`, `permission-policy-js-tests.log`, and
+`standalone-work/original-resource-sha256.tsv`.
+The permission-policy JDK 21.0.12 Microsoft / Gradle 9.3.1 jar-only Windows run
+on 2026-10-25 passed:
+
+```text
+PASS: 46 checks
+overlayBytes=16459125
+overlaySha256=2a8da1a2c185d24f11e385e794b18b5d169a4e5afa64ce7f8882f8af33b14cb1
+PASS: 22 actual-module permission policy scenarios with local stubs; native runtime not tested
+```
+
+The earlier blocklist-only JDK 21.0.12 Microsoft / Gradle 9.3.1 Windows run
+produced the following historical result. It does not verify this permission
+patch or identify the new generated archive:
 
 ```text
 PASS: 36 checks
@@ -110,25 +143,25 @@ The current `app/build.gradle.kts` wiring works as follows:
    precedence over the library's resource. APK ZIP resource options do not
    perform Android assets merging.
 
-The current debug APK's actual merged asset has been verified with
-`verify-apk.ps1`, independently of the production archive verifier. It finds
-exactly one `assets/omni.ja`, checks its expected generated digest, compares all
-4,079 original payload hashes/lengths against the standalone manifest, and
-checks exactly five pinned additions against the raw snapshot files:
+`verify-apk.ps1` independently verifies the actual merged asset. It requires
+exactly one `assets/omni.ja`, checks the supplied freshly verified generated
+digest, compares 4,078 original payload hashes/lengths against the standalone
+manifest, verifies exactly one pinned geolocation policy patch, and checks
+exactly five pinned additions against the raw snapshot files:
 
 ```powershell
 ./tools/gecko-blocklist-buildlogic/verify-apk.ps1 `
   -Apk app/build/outputs/apk/debug/app-debug.apk `
-  -MinimumApkWriteTimeUtc '2026-10-23T13:06:08Z'
+  -MinimumApkWriteTimeUtc '<completed build cutoff in UTC>' `
+  -ExpectedOmniSha256 '<digest from the new verified standalone archive>'
 ```
 
-The cutoff above identifies the verified development build; supply the cutoff
-for a later completed build when repeating the check. The default expected omni
-digest identifies the verified JDK writer. If the writer legitimately changes,
-pass `-ExpectedOmniSha256` from a newly verified generated archive and repeat
-the standalone integrity/determinism checks. The JSON summary is written to
-`artifacts/m1-blocklist/verify-apk-summary.json`. Deliberately wrong expected
-digests and stale APK cutoffs were also confirmed to fail.
+Supply the cutoff for a completed build. `-ExpectedOmniSha256` is mandatory;
+there is no stale blocklist-only default. If the writer changes, repeat the
+standalone integrity/determinism checks. The JSON summary is written to
+`artifacts/b13-policy-overlay/verify-apk-summary.json`. Deliberately wrong expected
+digests and stale APK cutoffs were confirmed to fail in the earlier blocklist-only
+verification; repeat those checks for the permission-policy build.
 
 Fresh-profile runtime acceptance remains separate: prove signed uBO installation
 and actual blocking under unchanged signature, TLS, blocklist, and update

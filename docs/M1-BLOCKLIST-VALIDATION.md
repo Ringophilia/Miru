@@ -2,6 +2,10 @@
 
 日期：2026-10-23。**本批已完成来源、确定性生成和最终 debug APK 资源完整性验证；尚未证明修复 uBO 首装超时。** 新 profile 的离线首装、在线首装／更新、冷启动拦截仍待 root 执行运行时验收。本报告的包级通过不能替代这些结果。
 
+版本边界：本文“4079项原资源全部保持、未修改可执行JS”描述原blocklist批次及随后0.5.3的产物。
+0.5.4开发批次新增独立的[Gecko定位策略修改](../third_party/mozilla-permission-policy/README.md)，
+组合生成器明确验证4078项保持、1项精确修改、5项官方新增；旧报告的包摘要与完整性结果不能覆盖新产物。
+
 ## 问题证据链与归因范围
 
 1. 历史设备整套回归有签名 uBO 首装超过 240 秒的失败，见 [M1-VALIDATION.md](M1-VALIDATION.md)、[M2-VALIDATION.md](M2-VALIDATION.md)。历史超时后 genuine `onReady` 的生命周期问题另见 [M1-STARTUP-LIFECYCLE.md](M1-STARTUP-LIFECYCLE.md)，不由本批资源测试覆盖。

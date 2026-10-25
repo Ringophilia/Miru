@@ -1,3 +1,5 @@
 # Preserve reviewed upstream bytes: the build checks exact snapshot digests.
 third_party/mozilla-blocklist/snapshot/** -text
+third_party/mozilla-permission-policy/*.mjs -text
+third_party/mozilla-permission-policy/upstream/*.mjs -text
 feature/superres/src/main/assets/anime4k/** -text
