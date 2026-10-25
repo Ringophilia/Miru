@@ -79,7 +79,20 @@ class BrowserController(
     private val tabs = TabsUseCases(store)
     private val sessions = SessionUseCases(store)
     val contextMenus = BrowserContextMenus(applicationScope, store)
-    private val dataCleaner = BrowserDataCleaner(::requireEngine, ::resetFormData)
+    val permissions = BrowserPermissions(applicationContext, applicationScope, store, runtime = { runtime },
+        onSiteChanged = { origin, isPrivate, contextId ->
+            store.state.tabs.filter { tab ->
+                tab.content.private == isPrivate && tab.contextId == contextId &&
+                    siteOrigin(tab.content.url) == origin && tab.engineState.engineSession != null
+            }.map { it.id }.forEach { store.dispatch(EngineAction.ReloadAction(it)) }
+        },
+        onAllSiteSettingsCleared = {
+            store.state.tabs.filter { it.engineState.engineSession != null && siteOrigin(it.content.url) != null }
+                .map { it.id }.forEach { store.dispatch(EngineAction.ReloadAction(it)) }
+        },
+        inspectGrantFocus = ::inspectPermissionGrantFocus,
+    )
+    private val dataCleaner = BrowserDataCleaner(::requireEngine, ::resetFormData, permissions::clearAllSiteSettings)
     private val cookieBridge = CookieBridge(applicationScope, store)
     val media = cookieBridge.media.state
     val mediaHints = cookieBridge.hints
@@ -113,6 +126,17 @@ class BrowserController(
     private var isReady = false
     private var initializationError: String? = null
     private var automaticNewTabId: String? = null
+
+    private fun inspectPermissionGrantFocus() {
+        val root = activeView?.get()?.asView()
+        fun gecko(view: android.view.View): org.mozilla.geckoview.GeckoView? = when(view) {
+            is org.mozilla.geckoview.GeckoView -> view
+            is android.view.ViewGroup -> (0 until view.childCount).firstNotNullOfOrNull { gecko(view.getChildAt(it)) }
+            else -> null
+        }
+        val nativeView = root?.let(::gecko)
+        Log.d("MiruPermissions", "grant-view rootHasFocus=${root?.hasFocus()} nativeFocused=${nativeView?.isFocused} windowFocused=${nativeView?.hasWindowFocus()} shown=${nativeView?.isShown}")
+    }
 
     init {
         applicationScope.launch(Dispatchers.Main.immediate) {
@@ -156,6 +180,9 @@ class BrowserController(
                     .crashHandler(null)
                     .build()
                 val existingRuntime = runtime ?: GeckoRuntime.create(applicationContext, runtimeSettings).also { runtime = it }
+                // Legacy native geolocation grants would bypass Miru's per-document
+                // policy. Verify their removal before restoring or opening sessions.
+                permissions.prepareRuntime()
                 val createdEngine = engine ?: GeckoEngine(
                     applicationContext,
                     defaultSettings = DefaultSettings(
@@ -205,7 +232,7 @@ class BrowserController(
                     ublock.awaitStartup()
                 }
                 deferredEngine.connect(
-                    listOf(UblockNavigationMiddleware(ublock::onLoadRequested, ublock::onSessionLinked)) +
+                    listOf(PermissionOwnerMiddleware(permissions), UblockNavigationMiddleware(ublock::onLoadRequested, ublock::onSessionLinked)) +
                         EngineMiddleware.create(createdEngine, applicationScope),
                     store,
                 )

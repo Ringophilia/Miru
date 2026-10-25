@@ -102,7 +102,7 @@ class BrowserContextMenus(scope: CoroutineScope, private val store: BrowserStore
 
     fun close() { watching.cancel() }
 
-    private fun observer(tabId: String, binding: Binding) = object : EngineSession.Observer {
+    private fun observer(tabId: String, binding: Binding) = object : PermissionNeutralObserver() {
         private fun invalidate() {
             binding.generation++
             if(mutable.value?.tabId == tabId) mutable.value = null

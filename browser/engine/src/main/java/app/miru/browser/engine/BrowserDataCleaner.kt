@@ -27,6 +27,7 @@ import kotlin.coroutines.resumeWithException
 class BrowserDataCleaner(
     private val requireEngine: suspend () -> GeckoEngine,
     private val resetFormData: suspend () -> Unit,
+    private val clearSitePermissions: suspend (suspend () -> Unit) -> Unit,
 ) {
     private val mutex = Mutex()
     private var extension: WebExtension? = null
@@ -61,7 +62,6 @@ class BrowserDataCleaner(
             val flags = selected.mapNotNull { type -> when(type) {
                 BrowsingDataType.SITE_DATA -> type to Engine.BrowsingData.DOM_STORAGES
                 BrowsingDataType.WEB_CACHE -> type to Engine.BrowsingData.ALL_CACHES
-                BrowsingDataType.SITE_SETTINGS -> type to Engine.BrowsingData.ALL_SITE_SETTINGS
                 BrowsingDataType.AUTH_SESSIONS -> type to Engine.BrowsingData.AUTH_SESSIONS
                 else -> null
             } }.toMap()
@@ -73,6 +73,18 @@ class BrowserDataCleaner(
                     }, onError = {
                         if(continuation.isActive) continuation.resumeWithException(IllegalStateException("ENGINE_CLEAR_FAILED"))
                     })
+                }
+            }
+            if(BrowsingDataType.SITE_SETTINGS in selected) run(setOf(BrowsingDataType.SITE_SETTINGS)) {
+                val engine = requireEngine()
+                clearSitePermissions {
+                    suspendCancellableCoroutine<Unit> { continuation ->
+                        engine.clearData(Engine.BrowsingData.select(Engine.BrowsingData.ALL_SITE_SETTINGS), onSuccess = {
+                            if(continuation.isActive) continuation.resume(Unit)
+                        }, onError = {
+                            if(continuation.isActive) continuation.resumeWithException(IllegalStateException("SITE_SETTINGS_CLEAR_FAILED"))
+                        })
+                    }
                 }
             }
             if(BrowsingDataType.FORM_DATA in selected) run(setOf(BrowsingDataType.FORM_DATA), resetFormData)

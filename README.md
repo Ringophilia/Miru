@@ -8,7 +8,7 @@ Android 原生浏览器，包名 `app.miru.browser`。产品需求以 [MIRU-SPEC
 
 图标由维护者以《Ringo EXPO 08》封面为灵感，通过 AI 生成；素材的授权范围与来源见 [design/PROVENANCE.md](design/PROVENANCE.md)。Miru 与椎名林檎、相关唱片公司、Mozilla 或 Google 没有隶属或背书关系。
 
-目前推进至 **M3 与浏览器核心开发批次（0.5.3开发中）**：在 GeckoView / Compose 浏览器、uBlock Origin、断点下载与 Media3 播放器基础上，接入清晰度探测、字幕 / 音轨、HLS / DASH 视频离线、Anime4K / FSR 渲染，以及网页长按菜单、清除浏览数据和滚动工具栏。
+目前推进至 **M3 与浏览器核心开发批次（0.5.4开发中）**：在 GeckoView / Compose 浏览器、uBlock Origin、断点下载与 Media3 播放器基础上，接入清晰度探测、字幕 / 音轨、HLS / DASH 视频离线、Anime4K / FSR 渲染，以及网页长按菜单、清除浏览数据、滚动工具栏和首批站点权限。
 
 「设置 → 播放器」可调整缓存上限、预缓冲和手势参数，清除流缓存 / 播放进度。清缓存保留下载文件，无痕播放不读写缓存和进度。
 
@@ -32,12 +32,14 @@ uBO 使用原版站点面板、过滤规则和例外列表。在扩展就绪前�
 ```powershell
 .\gradlew.bat :app:assembleDebug
 .\gradlew.bat testDebugUnitTest :core:common:test :app:lintDebug
-.\gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.notClass=app.miru.browser.DownloadRestartTest,app.miru.browser.OfflineRestartTest"
+.\gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.notClass=app.miru.browser.DownloadRestartTest,app.miru.browser.OfflineRestartTest,app.miru.browser.RuntimeSitePermissionIntegrationTest"
 ```
 
 调试 APK：`app/build/outputs/apk/debug/app-debug.apk`。Android 8.0 及以上；调试版包含 `arm64-v8a` 与模拟器 `x86_64`，当前 release 配置仅包含 `arm64-v8a`。发布签名从未提交的 `keystore.properties` 读取；未配置时使用调试密钥，仅供开发安装。
 
 设备测试需要连接模拟器或手机，测试网页由测试进程内的 loopback HTTP 服务提供；全新 uBO 安装仍可能访问 Gecko 远程设置。独立手动 fixture 可用 `node tools/m1-fixture-server.mjs` 启动。`DownloadRestartTest` 与 `OfflineRestartTest` 都必须分阶段运行并在中间强制停止进程，方法见 [M1 验证记录](docs/M1-VALIDATION.md)和[离线记录](docs/M3-OFFLINE-VALIDATION.md)；上述常规命令排除这两类，不把排除算作通过。
+
+`RuntimeSitePermissionIntegrationTest`单独在四项系统权限尚未授权的API35实例顺序运行，实际点击Android权限弹窗；普通回归将其排除，不把排除记通过，见[运行方法](docs/B13-RUNTIME-PERMISSIONS-TEST.md)。站点权限用例的Android预授权与系统弹窗用例具有不同验证范围，不能相互替代。
 
 最新已验证打包的开发包为 `artifacts/releases/Miru-0.5.3-arm64.apk`，对应源码 `7521c04`，**107,897,008字节**，通过严格十进制110MB体积门。最终包使用压缩字节复用、对齐和原证书重签链路，1517项载荷逐项保留，完整检查见 [打包工具](tools/apk-release-buildlogic/README.md)和[验证记录](docs/BROWSER-CORE-VALIDATION.md)。当前仍为本机调试签名，尚未完成正式发行和ARM64真机验收；0.5.1保留为历史产物，含随后修复的图片策略问题。
 

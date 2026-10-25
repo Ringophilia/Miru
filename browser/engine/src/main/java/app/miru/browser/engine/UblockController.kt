@@ -293,7 +293,7 @@ internal class UblockController(
         if (navigationObservers[tabId]?.first !== session) {
             navigationObservers.remove(tabId)?.let { (previous, observer) -> previous.unregister(observer) }
             var observedUrl = initialUrl
-            val observer = object : EngineSession.Observer {
+            val observer = object : PermissionNeutralObserver() {
                 @Suppress("DEPRECATION")
                 override fun onLoadRequest(url: String, triggeredByRedirect: Boolean, triggeredByWebContent: Boolean) {
                     observedUrl = url

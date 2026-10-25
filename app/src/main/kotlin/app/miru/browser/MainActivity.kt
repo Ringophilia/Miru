@@ -126,10 +126,33 @@ class MainActivity : ComponentActivity() {
     private val container get() = (application as MiruApplication).container
     private var incoming by mutableStateOf<Pair<Long, String>?>(null)
     private var incomingOffline by mutableStateOf<String?>(null)
+    internal var sitePermissionSettingsRequired by mutableStateOf(false)
+        private set
+    private val sitePermissionsLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+        val relevant = container.browser.permissions.onRuntimePermissionsResult(results)
+        val locationGranted = checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if(relevant) sitePermissionSettingsRequired = results.any { (permission, granted) ->
+            val location = permission == Manifest.permission.ACCESS_COARSE_LOCATION || permission == Manifest.permission.ACCESS_FINE_LOCATION
+            !granted && !(location && locationGranted) && !shouldShowRequestPermissionRationale(permission)
+        }
+    }
+
+    internal fun requestSiteRuntimePermissions(token: Long, permissions: List<String>) {
+        if(container.browser.permissions.markRuntimeRequestLaunched(token)) sitePermissionsLauncher.launch(permissions.toTypedArray())
+    }
+
+    internal fun dismissSitePermissionSettings() { sitePermissionSettingsRequired = false }
+
+    internal fun openSitePermissionSettings() {
+        sitePermissionSettingsRequired = false
+        startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", packageName, null)))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        container.browser.permissions.attachPermissionHost(this)
         enableEdgeToEdge()
         if (savedInstanceState == null) readIntent(intent)
         incomingOffline = savedInstanceState?.getString("miru.pendingOffline") ?: incomingOffline
@@ -140,6 +163,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); readIntent(intent) }
     override fun onStart() { super.onStart(); container.downloads.onAppForeground(); container.offline.onAppForeground() }
+    override fun onResume() { super.onResume(); container.browser.permissions.refreshSite() }
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        container.browser.permissions.onHostWindowFocusChanged(this, hasFocus)
+    }
+    override fun onDestroy() { container.browser.permissions.detachPermissionHost(this); super.onDestroy() }
     override fun onStop() { container.browser.saveSession(); super.onStop() }
     override fun onSaveInstanceState(outState: Bundle) {
         incomingOffline?.let { outState.putString("miru.pendingOffline", it) }
@@ -185,10 +214,17 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     val adblockPopup by controller.adblockPopup.collectAsStateWithLifecycle()
     val mediaByTab by controller.media.collectAsStateWithLifecycle()
     val contextMenu by controller.contextMenus.state.collectAsStateWithLifecycle()
+    val sitePermissionPrompt by controller.permissions.prompt.collectAsStateWithLifecycle()
+    val runtimePermissionRequest by controller.permissions.runtimeRequest.collectAsStateWithLifecycle()
+    val sitePermissions by controller.permissions.siteState.collectAsStateWithLifecycle()
     val playerOptions by container.playerPreferences.settings.collectAsStateWithLifecycle(initialValue = app.miru.player.PlayerPreferences())
     val tab = snapshot.selectedTab
     val context = LocalContext.current
     val activity = context as ComponentActivity
+    val permissionActivity = activity as MainActivity
+    LaunchedEffect(runtimePermissionRequest?.token) {
+        runtimePermissionRequest?.takeIf { !it.launched }?.let { permissionActivity.requestSiteRuntimePermissions(it.token, it.permissions) }
+    }
     val scope = rememberCoroutineScope()
     val snackbars = remember { SnackbarHostState() }
     var route by rememberSaveable { mutableStateOf(Route.BROWSER) }
@@ -201,6 +237,9 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     var findQuery by remember { mutableStateOf("") }
     var input by remember { mutableStateOf("") }
     var siteInfo by remember { mutableStateOf(false) }
+    LaunchedEffect(siteInfo, tab?.id) {
+        if(siteInfo) controller.permissions.refreshSite()
+    }
     var adblockPanel by remember { mutableStateOf(false) }
     var mediaPanel by remember { mutableStateOf(false) }
     var mediaBusy by remember { mutableStateOf(false) }
@@ -632,15 +671,36 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         scope.launch { if(snackbars.showWithAction(downloadStarted, viewLabel)) route = Route.DOWNLOADS }
                     } catch(_: Exception) { cancelOfflinePreparation(); showMessage(offlineFailed) }
                 }) }
-            if(siteInfo) ModalBottomSheet(onDismissRequest = { siteInfo = false }) {
-                Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if(siteInfo && sitePermissionPrompt == null) ModalBottomSheet(onDismissRequest = { siteInfo = false }) {
+                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(AddressResolver.display(tab?.url.orEmpty()).ifBlank { stringResource(R.string.app_name) }, style = MaterialTheme.typography.titleLarge)
                     Text(stringResource(if(tab?.secure == true) R.string.connection_secure else R.string.connection_info), style = MaterialTheme.typography.bodyLarge)
                     Text(tab?.url.orEmpty(), style = MaterialTheme.typography.bodySmall)
+                    sitePermissions?.takeIf { it.tabId == tab?.id }?.let { state ->
+                        HorizontalDivider()
+                        SitePermissionControls(state,
+                            onChange = { kind, choice -> controller.permissions.setForSite(state.token, kind, choice) },
+                            onReset = { controller.permissions.resetSite(state.token) },
+                            onSystemSettings = permissionActivity::openSitePermissionSettings)
+                    }
                     HorizontalDivider()
                     TextButton(onClick = { siteInfo = false; adblockPanel = true }) { Text(stringResource(app.miru.adblock.R.string.title)) }
                 }
             }
+            sitePermissionPrompt?.let { prompt ->
+                SitePermissionSheet(prompt, onDismiss = { controller.permissions.dismiss(prompt.token) },
+                    onAnswer = { allow, remember ->
+                        android.util.Log.d("MiruPermissionsUi", "answer allow=$allow hostFocused=${activity.hasWindowFocus()}")
+                        controller.permissions.answer(prompt.token, allow, remember)
+                    })
+            }
+            if(permissionActivity.sitePermissionSettingsRequired && sitePermissionPrompt == null) AlertDialog(
+                onDismissRequest = permissionActivity::dismissSitePermissionSettings,
+                title = { Text(stringResource(R.string.site_permission_settings_title)) },
+                text = { Text(stringResource(R.string.site_permission_settings_detail)) },
+                confirmButton = { TextButton(onClick = permissionActivity::openSitePermissionSettings) { Text(stringResource(R.string.site_permission_settings)) } },
+                dismissButton = { TextButton(onClick = permissionActivity::dismissSitePermissionSettings) { Text(stringResource(android.R.string.cancel)) } },
+            )
             editedBookmark?.let { bookmark ->
                 BookmarkEditDialog(bookmark, onDismiss = { editedBookmark = null }) { title, url ->
                     editedBookmark = null

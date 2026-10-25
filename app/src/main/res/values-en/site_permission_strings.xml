@@ -1,0 +1,22 @@
+<resources>
+    <string name="site_permission_title">Site permissions</string>
+    <string name="site_permission_request">Allow this site to use these permissions?</string>
+    <string name="site_permission_camera">Camera</string>
+    <string name="site_permission_microphone">Microphone</string>
+    <string name="site_permission_location">Location</string>
+    <string name="site_permission_allow">Allow</string>
+    <string name="site_permission_block">Block</string>
+    <string name="site_permission_ask">Ask every time</string>
+    <string name="site_permission_remember">Remember this site’s choice</string>
+    <string name="site_permission_private_remember">Remember during this private browsing session</string>
+    <string name="site_permission_embedded">Embedded in %1$s</string>
+    <string name="site_permission_private">Private permissions are kept only during this private browsing session.</string>
+    <string name="site_permission_system_missing">Not allowed by Android</string>
+    <string name="site_permission_settings">Open system permission settings</string>
+    <string name="site_permission_reset">Reset this site’s permissions</string>
+    <string name="site_permission_reload_notice">Changing permissions reloads open pages from this site.</string>
+    <string name="site_permission_failed">Could not update permissions. Please try again.</string>
+    <string name="site_permission_settings_title">System permission needed</string>
+    <string name="site_permission_settings_detail">Android has not allowed the required permissions. You can change them in Miru’s system settings, then return to the page and try again.</string>
+    <string name="site_permission_change">Change %1$s permission</string>
+</resources>

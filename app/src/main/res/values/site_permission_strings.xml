@@ -1,0 +1,22 @@
+<resources>
+    <string name="site_permission_title">网站权限</string>
+    <string name="site_permission_request">允许此网站使用以下权限？</string>
+    <string name="site_permission_camera">摄像头</string>
+    <string name="site_permission_microphone">麦克风</string>
+    <string name="site_permission_location">位置</string>
+    <string name="site_permission_allow">允许</string>
+    <string name="site_permission_block">阻止</string>
+    <string name="site_permission_ask">每次询问</string>
+    <string name="site_permission_remember">记住此网站的选择</string>
+    <string name="site_permission_private_remember">在本次无痕浏览中记住</string>
+    <string name="site_permission_embedded">嵌入于 %1$s</string>
+    <string name="site_permission_private">无痕权限仅在本次无痕浏览中保留。</string>
+    <string name="site_permission_system_missing">Android 尚未允许</string>
+    <string name="site_permission_settings">打开系统权限设置</string>
+    <string name="site_permission_reset">重置本站权限</string>
+    <string name="site_permission_reload_notice">修改权限后，本站已打开的页面会重新加载。</string>
+    <string name="site_permission_failed">无法更新权限，请重试。</string>
+    <string name="site_permission_settings_title">需要系统权限</string>
+    <string name="site_permission_settings_detail">Android 未允许所需权限。可以在 Miru 的系统设置中修改，然后回到网页重试。</string>
+    <string name="site_permission_change">更改%1$s权限</string>
+</resources>
