@@ -5,6 +5,8 @@ package app.miru.offline
 
 import android.content.Context
 import android.os.Looper
+import android.os.SystemClock
+import android.util.Log
 import app.miru.common.DownloadConcurrency
 import androidx.media3.common.MediaMetadata
 import androidx.media3.datasource.HttpDataSource
@@ -174,17 +176,36 @@ class OfflineCoordinator private constructor(private val context: Context) {
 
     /** Delayed deletion belongs to the application, so leaving the download page keeps the deadline. */
     fun stageDelete(ids: Set<String>): String {
+        val startedAt = SystemClock.elapsedRealtime()
         val token = UUID.randomUUID().toString()
         val retained = ids.filter { id -> items.value.any { it.id == id } }.toSet()
         val job = scope.launch(start = CoroutineStart.LAZY) {
-            delay(6_000)
-            retained.forEach(::remove)
-            deletions.remove(token); updateHidden()
+            try {
+                delay(6_000)
+                deleteDiagnostic("expiry", retained.size, startedAt = startedAt)
+                retained.forEach(::remove)
+                deletions.remove(token); updateHidden()
+                deleteDiagnostic("expiry_completed", retained.size, startedAt = startedAt)
+            } catch(cancelled: CancellationException) {
+                deleteDiagnostic("timer_cancelled", retained.size, startedAt = startedAt)
+                throw cancelled
+            }
         }
-        deletions[token] = retained to job; updateHidden(); job.start()
+        deletions[token] = retained to job; updateHidden()
+        deleteDiagnostic("staged", retained.size, startedAt = startedAt)
+        job.start()
         return token
     }
-    fun undoDelete(token: String) { deletions.remove(token)?.second?.cancel(); updateHidden() }
+    fun undoDelete(token: String) {
+        val entry = deletions.remove(token)
+        deleteDiagnostic("undo_invoked", entry?.first?.size ?: 0, tokenFound = entry != null)
+        entry?.second?.cancel(); updateHidden()
+        deleteDiagnostic("undo_completed", entry?.first?.size ?: 0, tokenFound = entry != null)
+    }
+    private fun deleteDiagnostic(stage: String, itemCount: Int, tokenFound: Boolean? = null, startedAt: Long? = null) {
+        val now = SystemClock.elapsedRealtime()
+        Log.i("MiruDeleteUndo", "backend=offline stage=$stage monotonicMs=$now elapsedMs=${startedAt?.let { now - it } ?: -1} itemCount=$itemCount undoTokenFound=$tokenFound pendingCount=${mutableHidden.value.size}")
+    }
     private fun updateHidden() { mutableHidden.value = deletions.values.flatMap { it.first }.toSet() }
 
     suspend fun playback(id: String): OfflinePlayback? {

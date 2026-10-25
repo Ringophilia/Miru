@@ -9,6 +9,8 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
+import android.util.Log
 import app.miru.common.DownloadConcurrency
 import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.*
@@ -125,22 +127,39 @@ class DownloadCoordinator private constructor(private val context: Context) {
         context.getSystemService(android.app.NotificationManager::class.java).cancel(MiruDownloadService.notificationId(id))
     } }
     fun stageDelete(items:List<DownloadItem>,deleteFile:Boolean=false):String {
+        val startedAt=SystemClock.elapsedRealtime()
         val token=UUID.randomUUID().toString()
         val ids=items.map { it.id }.toSet()
         synchronized(deletions){mutablePendingDeletionIds.value=mutablePendingDeletionIds.value+ids}
+        deleteDiagnostic("staged",ids.size,startedAt=startedAt)
         val job=scope.launch(start=CoroutineStart.LAZY){
-            delay(6_000)
-            ids.forEach { delete(it,deleteFile) }
-            // Wait for Room removal before showing the remaining list again.
-            downloads.first { rows->rows.none { it.id in ids } }
-            synchronized(deletions){mutablePendingDeletionIds.value=mutablePendingDeletionIds.value-ids;deletions.remove(token)}
+            try {
+                delay(6_000)
+                deleteDiagnostic("expiry",ids.size,startedAt=startedAt)
+                ids.forEach { delete(it,deleteFile) }
+                deleteDiagnostic("expiry_waiting_records",ids.size,startedAt=startedAt)
+                // Wait for Room removal before showing the remaining list again.
+                downloads.first { rows->rows.none { it.id in ids } }
+                synchronized(deletions){mutablePendingDeletionIds.value=mutablePendingDeletionIds.value-ids;deletions.remove(token)}
+                deleteDiagnostic("expiry_completed",ids.size,startedAt=startedAt)
+            } catch(cancelled:CancellationException) {
+                deleteDiagnostic("timer_cancelled",ids.size,startedAt=startedAt)
+                throw cancelled
+            }
         }
         deletions[token]=ids to job;job.start();return token
     }
     fun undoDelete(token:String){
-        val entry=deletions.remove(token)?:return
+        val entry=deletions.remove(token)
+        deleteDiagnostic("undo_invoked",entry?.first?.size ?: 0,tokenFound=entry!=null)
+        if(entry==null)return
         entry.second.cancel()
         synchronized(deletions){mutablePendingDeletionIds.value=mutablePendingDeletionIds.value-entry.first}
+        deleteDiagnostic("undo_completed",entry.first.size,tokenFound=true)
+    }
+    private fun deleteDiagnostic(stage:String,itemCount:Int,tokenFound:Boolean?=null,startedAt:Long?=null) {
+        val now=SystemClock.elapsedRealtime()
+        Log.i("MiruDeleteUndo","backend=ordinary stage=$stage monotonicMs=$now elapsedMs=${startedAt?.let { now-it } ?: -1} itemCount=$itemCount undoTokenFound=$tokenFound pendingCount=${mutablePendingDeletionIds.value.size}")
     }
     // UI defers delete until its undo window expires; no record recreation or credential persistence.
     fun open(item: DownloadItem) { item.destUri?.let { uri ->

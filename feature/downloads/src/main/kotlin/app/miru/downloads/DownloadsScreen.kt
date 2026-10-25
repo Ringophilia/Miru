@@ -5,6 +5,8 @@ package app.miru.downloads
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
@@ -28,6 +30,7 @@ import app.miru.offline.OfflineCoordinator
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** One list identity for the two download backends; never persists a copied media request. */
@@ -78,17 +81,38 @@ fun DownloadsScreen(
     }
     LaunchedEffect(rows.map { it.key }) { selected = selected.intersect(rows.map { it.key }.toSet()) }
     fun delete(target: List<UnifiedDownload>, files: Boolean) {
+        val startedAt = SystemClock.elapsedRealtime()
         selected -= target.map { it.key }.toSet()
         val ordinary = target.filterNot { it.offline }.map { it.item }
         val offlineIds = target.filter { it.offline }.map { it.item.id }.toSet()
         val ordinaryToken = ordinary.takeIf { it.isNotEmpty() }?.let { coordinator.stageDelete(it, files) }
         val offlineToken = offlineIds.takeIf { it.isNotEmpty() }?.let { offline?.stageDelete(it) }
+        // Fixed stages and counts only: never include content, IDs or deletion tokens.
+        fun diagnostic(stage: String) {
+            val now = SystemClock.elapsedRealtime()
+            Log.i("MiruDeleteUndo", "backend=ui stage=$stage monotonicMs=$now elapsedMs=${now - startedAt} ordinaryCount=${ordinary.size} offlineCount=${offlineIds.size} ordinaryTokenPresent=${ordinaryToken != null} offlineTokenPresent=${offlineToken != null} ordinaryPendingCount=${coordinator.pendingDeletionIds.value.size} offlinePendingCount=${offline?.pendingDeletionIds?.value?.size ?: 0} snackbarPresent=${snackbar.currentSnackbarData != null}")
+        }
+        diagnostic("staged")
         snackbar.currentSnackbarData?.dismiss()
+        diagnostic("snackbar_requested")
         scope.launch {
-            val result = withTimeoutOrNull(6_000) { snackbar.showSnackbar(deleted, undo, duration = SnackbarDuration.Indefinite) }
-            if(result == SnackbarResult.ActionPerformed) {
-                ordinaryToken?.let(coordinator::undoDelete)
-                offlineToken?.let { offline?.undoDelete(it) }
+            try {
+                diagnostic("snackbar_started")
+                val result = withTimeoutOrNull(6_000) { snackbar.showSnackbar(deleted, undo, duration = SnackbarDuration.Indefinite) }
+                diagnostic(when(result) {
+                    SnackbarResult.ActionPerformed -> "snackbar_result_action"
+                    SnackbarResult.Dismissed -> "snackbar_result_dismissed"
+                    null -> "snackbar_result_timeout"
+                })
+                if(result == SnackbarResult.ActionPerformed) {
+                    diagnostic("undo_invoked")
+                    ordinaryToken?.let(coordinator::undoDelete)
+                    offlineToken?.let { offline?.undoDelete(it) }
+                    diagnostic("undo_completed")
+                }
+            } catch(cancelled: CancellationException) {
+                diagnostic("snackbar_cancelled")
+                throw cancelled
             }
         }
     }

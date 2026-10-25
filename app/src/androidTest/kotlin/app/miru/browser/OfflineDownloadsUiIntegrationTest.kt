@@ -5,6 +5,7 @@ package app.miru.browser
 
 import android.content.Context
 import android.os.SystemClock
+import android.util.Log
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -96,16 +97,39 @@ class OfflineDownloadsUiIntegrationTest {
                 compose.onNodeWithText(context.getString(app.miru.downloads.R.string.download_selected, 2)).assertIsDisplayed()
                 compose.onNode(hasContentDescription(label(app.miru.downloads.R.string.download_delete)) and hasClickAction()).performClick()
                 compose.onNodeWithText(label(app.miru.downloads.R.string.download_delete_offline)).assertIsDisplayed()
-                compose.onNodeWithText(label(app.miru.downloads.R.string.download_keep_ordinary_files)).performClick()
-                compose.waitUntil(3_000) { offlineId in offline.pendingDeletionIds.value && regularId in ordinary.pendingDeletionIds.value }
-                compose.onNodeWithText(renamed).assertDoesNotExist()
-                compose.onNodeWithText(ordinaryName).assertDoesNotExist()
-                compose.onNodeWithText(label(app.miru.downloads.R.string.download_undo)).performClick()
-                compose.waitUntil(3_000) { offlineId !in offline.pendingDeletionIds.value && regularId !in ordinary.pendingDeletionIds.value }
-                compose.onNodeWithText(renamed).assertIsDisplayed()
-                compose.onNodeWithText(ordinaryName).assertIsDisplayed()
-                assertTrue(offline.items.value.any { it.id == offlineId && it.status == "completed" })
-                assertTrue(ordinary.downloads.value.any { it.id == regularId && it.status == "completed" })
+                val undoStartedAt = SystemClock.elapsedRealtime()
+                fun undoDiagnostic(stage: String): String {
+                    val now = SystemClock.elapsedRealtime()
+                    val offlineRow = offline.items.value.firstOrNull { it.id == offlineId }
+                    val ordinaryRow = ordinary.downloads.value.firstOrNull { it.id == regularId }
+                    // Keep this snapshot safe for device logs: no IDs, names or request data.
+                    return "backend=test stage=$stage monotonicMs=$now elapsedMs=${now - undoStartedAt} offlinePending=${offlineId in offline.pendingDeletionIds.value} ordinaryPending=${regularId in ordinary.pendingDeletionIds.value} offlinePendingCount=${offline.pendingDeletionIds.value.size} ordinaryPendingCount=${ordinary.pendingDeletionIds.value.size} offlineRecordExists=${offlineRow != null} ordinaryRecordExists=${ordinaryRow != null} offlineStatus=${offlineRow?.status} ordinaryStatus=${ordinaryRow?.status}"
+                        .also { Log.i("MiruDeleteUndo", it) }
+                }
+                var undoStage = "before_delete"
+                try {
+                    undoDiagnostic(undoStage)
+                    compose.onNodeWithText(label(app.miru.downloads.R.string.download_keep_ordinary_files)).performClick()
+                    undoStage = "wait_staged"
+                    compose.waitUntil(3_000) { offlineId in offline.pendingDeletionIds.value && regularId in ordinary.pendingDeletionIds.value }
+                    undoDiagnostic("staged_observed")
+                    compose.onNodeWithText(renamed).assertDoesNotExist()
+                    compose.onNodeWithText(ordinaryName).assertDoesNotExist()
+                    undoStage = "before_undo"
+                    undoDiagnostic(undoStage)
+                    compose.onNodeWithText(label(app.miru.downloads.R.string.download_undo)).performClick()
+                    undoStage = "after_undo_click"
+                    undoDiagnostic(undoStage)
+                    compose.waitUntil(3_000) { offlineId !in offline.pendingDeletionIds.value && regularId !in ordinary.pendingDeletionIds.value }
+                    undoStage = "undo_settled"
+                    undoDiagnostic(undoStage)
+                    compose.onNodeWithText(renamed).assertIsDisplayed()
+                    compose.onNodeWithText(ordinaryName).assertIsDisplayed()
+                    assertTrue(offline.items.value.any { it.id == offlineId && it.status == "completed" })
+                    assertTrue(ordinary.downloads.value.any { it.id == regularId && it.status == "completed" })
+                } catch(failure: Throwable) {
+                    throw AssertionError("Mixed download Undo failed: ${undoDiagnostic(undoStage)}", failure)
+                }
 
                 compose.onNodeWithText(label(app.miru.downloads.R.string.download_video)).performClick()
                 compose.onNodeWithText(renamed).assertIsDisplayed()
