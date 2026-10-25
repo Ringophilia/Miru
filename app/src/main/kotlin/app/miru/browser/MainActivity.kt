@@ -217,6 +217,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     val sitePermissionPrompt by controller.permissions.prompt.collectAsStateWithLifecycle()
     val runtimePermissionRequest by controller.permissions.runtimeRequest.collectAsStateWithLifecycle()
     val sitePermissions by controller.permissions.siteState.collectAsStateWithLifecycle()
+    val pagePrompt by controller.prompts.prompt.collectAsStateWithLifecycle()
     val playerOptions by container.playerPreferences.settings.collectAsStateWithLifecycle(initialValue = app.miru.player.PlayerPreferences())
     val tab = snapshot.selectedTab
     val context = LocalContext.current
@@ -494,6 +495,8 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     }
     BackHandler {
         when {
+            sitePermissionPrompt != null -> controller.permissions.dismiss(sitePermissionPrompt!!.token)
+            pagePrompt != null -> controller.prompts.dismiss(pagePrompt!!.token)
             webFullScreen -> controller.exitWebFullScreen()
             menuVisible -> menuVisible = false
             adblockPopup != null -> { controller.closeAdblockPopup(); controller.reload() }
@@ -569,7 +572,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         toolbarAtBottom = toolbarAtBottom,
                         toolbarVisible = !webFullScreen && (!bottomToolbar || editing || toolbarAtBottom),
                         forceToolbarVisible = editing || finding || menuVisible || tabsVisible || route != Route.BROWSER ||
-                            siteInfo || adblockPanel || mediaPanel || contextMenu != null,
+                            siteInfo || adblockPanel || mediaPanel || contextMenu != null || pagePrompt != null,
                         refreshEnabled = !webFullScreen && route == Route.BROWSER && !tabsVisible && !editing,
                         reducedMotion = reducedMotion, toolbar = toolbar) {
                         when {
@@ -671,7 +674,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         scope.launch { if(snackbars.showWithAction(downloadStarted, viewLabel)) route = Route.DOWNLOADS }
                     } catch(_: Exception) { cancelOfflinePreparation(); showMessage(offlineFailed) }
                 }) }
-            if(siteInfo && sitePermissionPrompt == null) ModalBottomSheet(onDismissRequest = { siteInfo = false }) {
+            if(siteInfo && sitePermissionPrompt == null && pagePrompt == null) ModalBottomSheet(onDismissRequest = { siteInfo = false }) {
                 Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(AddressResolver.display(tab?.url.orEmpty()).ifBlank { stringResource(R.string.app_name) }, style = MaterialTheme.typography.titleLarge)
                     Text(stringResource(if(tab?.secure == true) R.string.connection_secure else R.string.connection_info), style = MaterialTheme.typography.bodyLarge)
@@ -694,7 +697,10 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         controller.permissions.answer(prompt.token, allow, remember)
                     })
             }
-            if(permissionActivity.sitePermissionSettingsRequired && sitePermissionPrompt == null) AlertDialog(
+            if(sitePermissionPrompt == null) pagePrompt?.let { prompt ->
+                key(prompt.token) { BrowserPromptDialog(prompt, controller.prompts) }
+            }
+            if(permissionActivity.sitePermissionSettingsRequired && sitePermissionPrompt == null && pagePrompt == null) AlertDialog(
                 onDismissRequest = permissionActivity::dismissSitePermissionSettings,
                 title = { Text(stringResource(R.string.site_permission_settings_title)) },
                 text = { Text(stringResource(R.string.site_permission_settings_detail)) },

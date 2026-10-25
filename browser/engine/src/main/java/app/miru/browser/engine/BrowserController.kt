@@ -79,6 +79,7 @@ class BrowserController(
     private val tabs = TabsUseCases(store)
     private val sessions = SessionUseCases(store)
     val contextMenus = BrowserContextMenus(applicationScope, store)
+    val prompts = BrowserPrompts(applicationScope, store)
     val permissions = BrowserPermissions(applicationContext, applicationScope, store, runtime = { runtime },
         onSiteChanged = { origin, isPrivate, contextId ->
             store.state.tabs.filter { tab ->
@@ -189,6 +190,7 @@ class BrowserController(
                         remoteDebuggingEnabled = false,
                         javaScriptCanOpenWindowsAutomatically = false,
                         mediaPlaybackRequiresUserGesture = true,
+                        loginAutofillEnabled = false,
                         trackingProtectionPolicy = EngineSession.TrackingProtectionPolicy.recommended(),
                         historyTrackingDelegate = historyDelegate,
                         downloadDelegate = EngineDownloadDelegate(applicationContext) { android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS).path + "/Miru" },
@@ -232,7 +234,8 @@ class BrowserController(
                     ublock.awaitStartup()
                 }
                 deferredEngine.connect(
-                    listOf(PermissionOwnerMiddleware(permissions), UblockNavigationMiddleware(ublock::onLoadRequested, ublock::onSessionLinked)) +
+                    listOf(PermissionOwnerMiddleware(permissions), PromptOwnerMiddleware(prompts),
+                        UblockNavigationMiddleware(ublock::onLoadRequested, ublock::onSessionLinked)) +
                         EngineMiddleware.create(createdEngine, applicationScope),
                     store,
                 )
@@ -277,9 +280,12 @@ class BrowserController(
             // Native NTP never navigates Gecko to about:newtab.
             store.dispatch(ContentAction.UpdateUrlAction(store.state.selectedTabId!!, NEW_TAB_URL))
         } else {
-            // Main.immediate middleware may create/link a session inline. Publish its destination first,
-            // otherwise the linking step loads about:newtab and adds a spurious entry to the back stack.
-            store.state.selectedTabId?.let { store.dispatch(ContentAction.UpdateUrlAction(it, url)) }
+            // Only a new session needs its first destination published before linking.
+            // An existing document can reject navigation through BeforeUnload; its
+            // address must continue to follow Gecko's accepted location.
+            store.state.selectedTab?.takeIf { it.engineState.engineSession == null }?.let {
+                store.dispatch(ContentAction.UpdateUrlAction(it.id, url))
+            }
             sessions.loadUrl(url)
         }
     }

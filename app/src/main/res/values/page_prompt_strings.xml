@@ -1,0 +1,23 @@
+<resources>
+    <string name="page_prompt_title">网页提示</string>
+    <string name="page_prompt_unknown_origin">来源不可用</string>
+    <string name="page_prompt_embedded">当前网页：%1$s</string>
+    <string name="page_prompt_confirm">确定</string>
+    <string name="page_prompt_cancel">取消</string>
+    <string name="page_prompt_input">输入内容</string>
+    <string name="page_prompt_stop_dialogs">阻止此页面继续显示提示</string>
+    <string name="page_prompt_leave_title">离开此页面？</string>
+    <string name="page_prompt_leave_detail">尚未保存的更改可能会丢失。</string>
+    <string name="page_prompt_leave">离开</string>
+    <string name="page_prompt_stay">留在此页</string>
+    <string name="page_prompt_repost_title">重新发送表单？</string>
+    <string name="page_prompt_repost_detail">此操作会重新发送先前提交的数据。</string>
+    <string name="page_prompt_resubmit">重新发送</string>
+    <string name="page_prompt_auth_title">网站身份验证</string>
+    <string name="page_prompt_proxy_title">代理身份验证</string>
+    <string name="page_prompt_username">用户名</string>
+    <string name="page_prompt_password">密码</string>
+    <string name="page_prompt_auth_failed">上次验证失败，请检查用户名和密码。</string>
+    <string name="page_prompt_auth_unencrypted">此连接未加密。</string>
+    <string name="page_prompt_auth_cross_origin">验证请求来自嵌入的资源。</string>
+</resources>

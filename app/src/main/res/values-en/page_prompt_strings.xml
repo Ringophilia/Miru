@@ -1,0 +1,23 @@
+<resources>
+    <string name="page_prompt_title">Page message</string>
+    <string name="page_prompt_unknown_origin">Source unavailable</string>
+    <string name="page_prompt_embedded">Current page: %1$s</string>
+    <string name="page_prompt_confirm">OK</string>
+    <string name="page_prompt_cancel">Cancel</string>
+    <string name="page_prompt_input">Your response</string>
+    <string name="page_prompt_stop_dialogs">Prevent this page from showing more dialogs</string>
+    <string name="page_prompt_leave_title">Leave this page?</string>
+    <string name="page_prompt_leave_detail">Unsaved changes may be lost.</string>
+    <string name="page_prompt_leave">Leave</string>
+    <string name="page_prompt_stay">Stay on page</string>
+    <string name="page_prompt_repost_title">Resend this form?</string>
+    <string name="page_prompt_repost_detail">This action resends the data submitted earlier.</string>
+    <string name="page_prompt_resubmit">Resend</string>
+    <string name="page_prompt_auth_title">Website authentication</string>
+    <string name="page_prompt_proxy_title">Proxy authentication</string>
+    <string name="page_prompt_username">Username</string>
+    <string name="page_prompt_password">Password</string>
+    <string name="page_prompt_auth_failed">Authentication failed. Check your username and password.</string>
+    <string name="page_prompt_auth_unencrypted">This connection is not encrypted.</string>
+    <string name="page_prompt_auth_cross_origin">The authentication request comes from an embedded resource.</string>
+</resources>

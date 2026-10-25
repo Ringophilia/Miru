@@ -28,6 +28,7 @@ P0 是首个可用版本门，P1 是第二轮功能，P2 在规范中为“有�
 | E7 | [M1-BLOCKLIST-VALIDATION.md](M1-BLOCKLIST-VALIDATION.md)、`artifacts/m1-blocklist/` | 固定官方blocklist资源、36项归档检查、最终APK原4079项与5项新增的逐项完整性；API35 fresh-profile离线/在线各1项签名安装与受控拦截通过。未证明多轮真机稳定性、MLBF读取追踪或在线更新。 |
 | E8 | [BROWSER-CORE-VALIDATION.md](BROWSER-CORE-VALIDATION.md)、`artifacts/browser-core/` | 真实Cookie时间边界/私密表单、APZ/工具栏、HTTP/meta/frame来源策略、内存图片URI。0.5.1常规75/77；0.5.2为77/78。0.5.3：107项JVM、46项JS、14项设备专项、同值设置及fresh首装通过；全套79项77通过2失败（混合下载撤销、QUALITY benchmark），四条60帧GL通过。107,897,008字节发布打包已验证，不能扩大为全部B10/B11/B20或后续B13验收。 |
 | E9 | [B13-PERMISSIONS-VALIDATION.md](B13-PERMISSIONS-VALIDATION.md)、`artifacts/browser-core/054-*` | 0.5.4首批已提交97d8be1（overlay f3117fb、相邻删除诊断d593ee2）：固定Observer提前reject根因与只读前后对照；neutral2/2（21.221秒）、早期站点7/7（61.002秒）、最终源码非trace站点/混合下载7/7（46.626秒）、fresh5590真实系统权限3/3（21.741秒）；全部旧失败保留。release构建/1517 payload/对齐/同证书/17个ARM64库/4078+1+5 Gecko资源和107,966,640字节打包验证通过。固定0.5.4 APK常规回归87/87通过（641.35秒），另排除两个强停重启类及独立系统权限类；没有完整B13、正式签名或ARM64运行通过声明。 |
+| E10 | [B13-PROMPTS-VALIDATION.md](B13-PROMPTS-VALIDATION.md)、[B13-PROMPTS-TEST.md](B13-PROMPTS-TEST.md)、`artifacts/browser-core/055-prompts-*` | 0.5.5页面提示首批：真实alert/confirm/text、beforeunload、POST重发、HTTP401、Activity重建和旧token；原生callback身份修复后7/7（33.102秒），最新连续提示抑制及真实蒙层专项整类9/9（57.245秒），所有旧失败保留。Debug构建/JVM111项及最终lint0错误/22警告通过；常规全套与0.5.5发布包仍待，不代表整个B13。 |
 | SRC | 当前模块源码、Gradle、manifest、资源和 `design/tokens.json` | 证明存在代码 / 配置。单独不能证明运行正确、无泄漏、无掉帧或兼容所有站点。 |
 | LEGAL | [OPEN-SOURCE-REVIEW.md](OPEN-SOURCE-REVIEW.md)、[third_party/README.md](../third_party/README.md) | M0 源码公开范围的检查和后续依赖说明；不是含 uBO / 嵌套依赖的完整二进制分发审查。 |
 
@@ -51,7 +52,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | B10 P0 下拉刷新 / 隐藏栏 | implemented | E8：真实Gecko compositor滚动、APZ允许接管、SwipeRefreshFeature+M3指示、DynamicToolbar负裁剪；顶底栏滚动/页顶刷新通过。 | 网站既有手势/嵌套滚动、固定底部元素、键盘/焦点/旋转/字体完整真机矩阵。 |
 | B11 P0 上下文菜单 | implemented | E8：真实Engine hit链接/图片/视频菜单；链接文字、HTTP图片原字节/私密敏感剪贴板、新无痕标签、SVG只读URI通过。 | blob原文档图片完整动作、实际跨应用分享、视频原生播放/下载及各项菜单入口全部专项；站点已有手势兼容。 |
 | B12 P0 页内查找 | verified | `BrowserUiTest` 通过真实 Gecko 查找；聚焦键盘、计数 / 上下 / 关闭已有。 | 保留全站 / 长页回归。 |
-| B13 P0 权限 / 站点设置 | pending | E9/97d8be1：三项权限面板、普通/私密选择与B20联动；真实音视频live、临时GEO新文档再问。站点/混合下载7/7、真实系统3/3；生命周期2/2（16.548秒）证明Activity重建保留请求、CAMERA撤销后实际native录制停止且MIC选择保留。 | 系统永久拒绝、系统弹窗中的旋转/取消/迟到结果、完整持久化/私密隔离及多页活动流撤销矩阵仍需证据。通知、弹窗、自动播放、文件/页面提示、证书与站点数据管理仍未闭合。 |
+| B13 P0 权限 / 站点设置 | pending | E9/97d8be1：三项权限面板、普通/私密选择与B20联动；真实音视频live、临时GEO新文档再问。站点/混合下载7/7、真实系统3/3；生命周期2/2（16.548秒）证明Activity重建保留请求、CAMERA撤销后实际native录制停止且MIC选择保留。 | 系统永久拒绝、系统弹窗中的旋转/取消/迟到结果、完整持久化/私密隔离及多页活动流撤销矩阵仍需证据。E10另有页面提示首批9/9专项（57.245秒），完整prompt矩阵仍待。通知、弹窗、自动播放、文件上传、其余页面提示、证书与站点数据管理仍未闭合。 |
 | B14 P0 默认浏览器 / Intent | implemented | RoleManager、http(s)、SEND 文字 / URL、WEB_SEARCH；播放器独立 VIEW filter。 | 首启可跳过引导、系统默认浏览器实际选择、外部返回来源 App、协议拉起确认及文件类型矩阵。 |
 | B15 P1 地址栏顶 / 底 | implemented | DataStore 即时生效、键盘避让，E0 截图。 | 完整无重启 / 主题 / 字体 / 旋转 / 表单设备矩阵和二选一卡片示意 UI。 |
 | B16 P1 横滑工具栏 | pending | 无接入。 | 相邻标签截图跟手、阈值、速度 spring 与无标签边界。 |

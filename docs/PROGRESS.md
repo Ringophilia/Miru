@@ -1,6 +1,6 @@
 # 实现进度
 
-开始日期：2026-10-22。当前推进至 M3 超分及浏览器核心缺口批次（0.5.4 权限首批已提交，ARM64开发包打包已验证）；M0 / M1 / M2 剩余专项继续保留，iOS 按规范在 Android M4 后开始。全部要求和证据映射见 `ACCEPTANCE.md`，不以当前通过的测试替代全量验收。
+开始日期：2026-10-22。当前推进至 M3 超分及浏览器核心缺口批次（0.5.5 页面提示首批已接入并完成9项设备专项；0.5.4的87项常规回归和ARM64开发包打包已验证）；M0 / M1 / M2 剩余专项继续保留，iOS 按规范在 Android M4 后开始。全部要求和证据映射见 `ACCEPTANCE.md`，不以当前通过的测试替代全量验收。
 
 ## 已实现的 M0 代码
 
@@ -152,6 +152,12 @@
 - 暂停 / 取消显式关闭对应 UUID 正在读取的 HTTP socket；通知 tag 和 Intent data 使用完整 UUID，避免哈希碰撞覆盖。
 - 2 项真实 socket JVM 测试与 3 项 API35 通知专项通过（27.387 秒），包括停源全片回放。失败证据及测试 Activity 清理修正见 `OFFLINE-NOTIFICATION-VALIDATION.md`；完整真机 / 后台 / 权限矩阵仍待验收。
 
+## B13 页面提示首批（0.5.5；完整矩阵未完成）
+
+- 接入alert/confirm/text、beforeunload、POST重发和HTTP认证；内存表单草稿、不保存密码、显示当前网页与可验证请求来源。已有会话的导航地址只随原生接受的location变化，Stay不会提前显示目标地址。
+- 真实ALERT首轮超时后，核实AC在每个observer中创建不同wrapper/UID；按共享completion闭包引用身份关联原生归属与store wrapper，旧UI token、替换wrapper与已完成callback分别管理。原首轮1项失败（28.172秒）及中间8/9定位失败保留，见`B13-PROMPTS-VALIDATION.md`。
+- 原生身份修复后7/7通过（33.102秒）；最新连续提示抑制、文本取消策略、新文档恢复及真实Scrim关闭后的下一提示，整类9/9通过（57.245秒）。JVM111项和最终lint0错误/22警告通过，Debug主/测试APK已固定；0.5.5全套回归及release/ARM64打包仍待。
+- 文件上传尚未实现，固定API的同名缓存覆盖、目录二阶段确认、私密registry Bundle及暂存生命周期已形成后续`B13-FILE-UPLOAD-PLAN.md`。私密/iframe/完整生命周期、公网站点及B13其余类型继续pending，不把安全取消记为功能支持。
 ## M3 尚待推进
 
 - 离线已接入 Media3 DownloadManager / DownloadService、HLS / DASH 清晰度与关联音轨 / 字幕、独立非 LRU 缓存、统一下载页与 upstream-free 播放。直链 MP4 保留普通下载引擎；实现与准确验证边界见 `M3-OFFLINE-VALIDATION.md`。下载进行中进程终止、真机网络 / 重启与后台矩阵仍需专项，不能用已完成项的重启恢复代替。
