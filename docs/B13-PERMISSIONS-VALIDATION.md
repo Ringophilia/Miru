@@ -158,13 +158,20 @@ Gecko两类设备RECORDING事件后，从站点面板将CAMERA改为BLOCK；
 夹具持有stream且没有调用track.stop，不用页面重载事实单独代替原生停止证据。
 
 新版87项常规回归使用`054-binaries/`固定主/测试APK，在新实例5592运行，
-日志`054-full-device.log`、输入`054-full-precondition.json`；终态待补。
+日志`054-full-device.log`、输入`054-full-precondition.json`；终态为**87/87通过，641.35秒**，
+没有失败、错误或跳过终态。主APK SHA-256为
+`0186a815febce1e9534ed60afc6ac6c70832ac928f42af5d39829c5d44f841be`，
+测试APK为`33f257391d24a3851c0dcce18e7cedcdd27d52288dc2d2434304833a6794a9cb`。
+包含混合下载撤销、三个档位benchmark及四条60帧渲染链；
+本轮通过没有抹去0.5.3的77/79历史，也没有单凭通过证明原时序失败的根因已经修复。
 真实系统权限类单独已有3/3；两个强停重启类仍排除，不计通过。
+运行命令为`adb -s emulator-5592 shell am instrument -w -r -e notClass app.miru.browser.DownloadRestartTest,app.miru.browser.OfflineRestartTest,app.miru.browser.RuntimeSitePermissionIntegrationTest app.miru.browser.test/androidx.test.runner.AndroidJUnitRunner`。
+后续0.5.5提示源码不属于这两个固定APK，必须另行构建和验收。
 
 ## 仍需证据
 
 系统永久拒绝、系统弹窗中的旋转/取消/迟到结果及完整生命周期矩阵；
 旧native GEO迁移和跨进程普通选择保持；
 私密完整origin隔离与最后私密context关闭；多标签/iframe/私密活动媒体撤销矩阵；
-新版常规回归和ARM64运行/正式签名。最终源码站点/混合下载7项、系统权限3项与生命周期2项通过不等于首批全部完成，
+ARM64运行/正式签名。87项常规回归、最终源码站点/混合下载7项、系统权限3项与生命周期2项通过不等于首批全部完成，
 本版体积/打包通过不等于正式发行；0.5.3的77/79与107,897,008字节历史证据继续保留。
