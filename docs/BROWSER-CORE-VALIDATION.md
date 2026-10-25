@@ -303,10 +303,26 @@ lint XML为 **0 error、22 warning**。原AGP包111,081,525字节，SHA-256
 `053-full-device.log` 首次79项回归在第8项进行时中断：仅7项有通过终态，未取得整套终态。
 续查时原工具session不存在，Windows中也没有原模拟器/qemu进程；没有充分证据确定退出原因。
 保留该日志，不把第8项或整套记为通过/失败。新只读API35实例5582使用固定在
-`053-binaries/` 的同一主/测试APK复跑，日志为 `053-full-rerun-device.log`，终态待补。
+`053-binaries/` 的同一主/测试APK复跑，日志为 `053-full-rerun-device.log`。
 主包SHA-256 `659b4e2b2ae8fdc79125908f919c33321c66ef193f234327499997ea8b003a39`，
 测试包 `f90faca1861f41304b99ed433a63fee1d2b355d05dd948975e55a21c6546d64d`；
 `053-rerun-precondition.json` 记录新实例安装前无Miru包。排除的两个外部重启类继续不计通过。
+
+新实例复跑终态为 **79项77通过、2失败，799.008秒**：
+
+- `OfflineDownloadsUiIntegrationTest` L104：点击混合下载撤销后，等待两个pending删除ID消退超过原3秒；
+  不应误读成进入pending等待失败。当前日志不足以区分Snackbar回调、撤销期限或其他同步问题。
+- `SuperResBenchmarkUiIntegrationTest` L67：QUALITY未在原45秒内取得足够有效渲染帧。
+  FAST/BALANCED已测得385.8/526.8ms/frame（synchronized render），QUALITY无结果。
+
+其他77项通过，包含本批图片/私密/首装/同值开关、全部四条GL链60帧、故障回退、取消/后台释放等。
+`053-rerun-runtime.log` 中四链60帧平均315.7/402.0/576.7/121.8ms，
+实际输出1920×1080、13/21/23/2 passes；不证明16ms性能门或完整超分验收。
+全套期间没有并行Gradle/R8/录屏，未调整期限、帧数或像素断言。
+
+全套结束后同一APK/模拟器另起instrumentation，仅运行混合下载用例，
+`053-isolated-mixed-delete-device.log` **1/1通过，13.743秒**，没有强停应用。
+隔离通过不能抹去全套失败，也不能单凭它判定根因；继续保留与定位。
 
 外部强停重启专项组合命令遭自动审批拒绝（工具仅返回blocked by policy），命令未执行。
 工具没有提供更具体原因；当前没有将500MB或离线的0.5.2/0.5.3强停验证记为通过，
