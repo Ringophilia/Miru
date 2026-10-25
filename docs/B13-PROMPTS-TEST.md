@@ -47,9 +47,31 @@ adb -s <isolated-serial> shell am instrument -w -r -e class app.miru.browser.Pag
 类型/token归属与计数判定；不得输出真实网站、表单内容、认证头、用户名/密码或私密源。
 先独立运行该类，再决定是否进入常规回归；独立通过也不能覆盖整套回归失败。
 
+## 私密新增两项：已取得专项终态
+
+`PrivatePagePromptIntegrationTest`新增以下两项；与普通9项合跑为**11/11通过，49.725秒**，日志`055-prompts-ordinary-private-device.log`、输入`055-prompts-ordinary-private-input.json`。这不改变上文旧二进制9/9的历史范围。
+使用真实Gecko私密页面、Compose提示面板与loopback服务端，不构造PromptRequest、不替换Web API或注入网页回答。
+
+| 专项用例 | 真实触发与验收条件 |
+| --- | --- |
+| 私密文本回答与最后私密tab关闭 | 真实触摸网页按钮触发文本prompt，经UI输入本次合成nonce并确认；实际JS返回值同时由网页标题和服务端beacon核对。关闭夹具的最后私密tab后，确认私密tab已移除且prompt coordinator无pending。 |
+| 关闭全部私密tab后的迟到回答 | 私密confirm未回答时调用真实`closeAllTabs(isPrivate=true)`；随后普通新tab通过真实网页按钮产生confirm。主动发送原私密token的迟到回答不得终结普通新请求；通过UI取消普通请求，JS与服务端结果仍为false。 |
+
+两项保留`FLAG_SECURE`，不截图、不关闭或绕过安全标志。页面以`DOMContentLoaded`之后连续两帧
+`requestAnimationFrame`再发布ready标题与服务端ready beacon；等待这些真实网页信号后，按EngineView屏幕边界注入可信触摸，
+不依赖截图像素判断私密页面是否已绘制。
+
+这组专项只在受控独立AVD、无用户私密测试态时运行；本轮5592最初从只读基础镜像启动、安装前无Miru，此前仅执行本批普通夹具。起测前确认没有既有私密tab；
+若前提不成立，不得为满足前提删除用户私密态。保留起测前所有普通tab，仅清理夹具创建的标签。
+`closeAllTabs(isPrivate=true)`用例须在此隔离前提下运行，不能混入用户会话。
+
+nonce只用于进程内及loopback网页结果判定，不写Log，不通过对象`toString`或失败诊断输出其内容。
+后续复跑继续另存命令、APK SHA和明确终态；两项专项通过不能代替磁盘、日志、
+Bundle/保存状态的完整敏感值审计，更不能预记完整私密隔离验收通过。
+
 ## 尚未覆盖
 
-- 私密对应用例、最后私密context关闭和磁盘/日志/保存状态的完整敏感值审计。本夹具只测试普通网页；
+- 私密其余提示类型、native context销毁和磁盘/日志/保存状态的完整敏感值审计；本批仅补私密文本与关页迟到回答，
   不为取得私密截图关闭FLAG_SECURE。
 - 跨源iframe来源提示、更多队列/重复请求竞态、后台/前台、进程死亡、session替换及更多取消竞态。
 - 中立按钮、认证错误重试/仅密码/代理认证、输入在重建后的完整保留策略与密码始终不进持久状态的取证。

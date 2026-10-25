@@ -84,5 +84,36 @@ POST取消不重发/确认只增加一次、HTTP401成功/独立端口取消均�
 `055-jvm-summary.json`保存111项JVM报告的逐类计数与SHA，均0失败/错误/跳过。
 `055-installed-version.txt`核对实际安装的versionCode=13、versionName=0.5.5。
 
+## 私密首批：普通与私密合计11项通过
+
+production源码已提交`2048cecea401a1d085692aa7489ead1e693a8968`。
+随后仅新增私密测试，`055-private-prompts-build.log`测试包构建成功（33秒），
+`055-prompts-ordinary-private-input.json`绑定相同主APK及新测试APK
+`9edd151fc2bbbbef0db43175625ba3c913b7d6b3ae196af87ec407b240441c5d`。
+同一受控只读API35实例5592起测没有既有私密tab，之前仅运行本批普通夹具；没有删除用户状态。
+`055-prompts-ordinary-private-device.log`两个类合计**11/11通过，49.725秒**。
+私密用例保持FLAG_SECURE、没有截图；DOMContentLoaded和双rAF后的ready beacon同步真实触摸。
+实际text输入的合成值由JS标题与POST正文共同核对，关闭最后私密tab后prompt为空；
+另在私密confirm待答时关闭全部私密tab，旧token不能影响新普通confirm，普通UI取消实际返回false。
+这两项没有证明全部私密类型、native context销毁或磁盘/日志/Bundle零残留，相关门继续保留。
+新增私密测试后的`055-private-prompts-lint.log`成功（49秒），`055-private-final-lint.xml`仍为0错误/22警告。
+
+## 0.5.5 ARM64开发包：已验证打包
+
+production源码`2048cec`的`055-release-build.log`成功（4分31秒），开启R8和资源收缩。
+`055-release-input.json`记录AGP原包111,137,721字节，SHA-256
+`0407a7db3c2ea3c91bdcb406a676fb88df4984dd853953120ab882d4f163efcd`。
+`055-optimize-release.log`及`artifacts/releases/Miru-0.5.5-arm64.apk.verification-20261025-121338-8d7e8552/`
+记录八步全部通过：1517项payload逐项保持、SDK对齐及v2/v3签名验证通过，证书与原包相同。
+最终`artifacts/releases/Miru-0.5.5-arm64.apk` **107,987,120字节 < 110,000,000字节**，SHA-256
+`0d2792006695fdbbffb38f1a319054c9fea9333ed0da501c0fa6abb470fb6c0b`。
+仍为Android Debug证书`5aa1a00e59b8638298dbddcc5a61053ca245249136edb67199e0c9a3e4cb1f84`，不是正式签名。
+`055-final-abi.json`独立核对17个arm64-v8a库均为ELF64/AArch64；
+`055-final-omni-verification.json`核对4078项原payload、1项精确GEO修改、5项官方blocklist新增及原index保持，
+omni SHA仍为`2a8da1a2c185d24f11e385e794b18b5d169a4e5afa64ce7f8882f8af33b14cb1`。
+初次调用时PowerShell日期对象转字符串导致最低时间偏移8小时，初报告保存在`055-final-omni-initial-minimum.json`；
+已按构建开始UTC `2026-10-25T12:08:14.9817471Z`重新执行全部检查，正式摘要中的最低时间已核对。
+本批没有运行最终ARM64 APK；普通/私密11项运行的是固定x86_64 Debug包，不能扩大为ARM64运行或正式发行验收。
+
 仍待完成：普通导航及整体回归；
 私密、iframe来源、复杂提示更新、系统文件选择及完整站点矩阵继续在全量验收中保留。
