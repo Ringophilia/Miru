@@ -273,7 +273,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | PERF05 良好网络HLS起播<1.5s | pending | 真实首画 / 首音时间，不是ready布尔值；受控网络和release真机。 |
 | PERF06 判定后倍速<100ms | pending | 手势判定时间→实际PlaybackParameters事件；并与P2按下400ms要求分开计。 |
 | PERF07 10标签内存 / Gecko回收 | pending | 10个实际内容标签、后台回收 / 恢复 / 峰值内存，应用不额外限标签。 |
-| PERF08 ARM64 APK<110MB | verified（仅0.5.1体积/打包） | 历史0.5.1最终APK **107,892,912字节**，SHA `2364c2ad…af91362`；1517 payload逐项保留、SDK对齐/原证书一致、仅17个ARM64库，E8。包含随后修复的图片策略问题，不能视为当前源码产物；0.5.3需重新验证。当前仍为Android Debug签名，正式签名/ARM64真机与完整发行门另列。 |
+| PERF08 ARM64 APK<110MB | verified（仅0.5.3体积/打包） | 源码7521c04最终APK **107,897,008字节**，SHA `aca04bda…baf8956`；1517 payload逐项保留、SDK对齐/原证书一致、仅17个ARM64库，原4079 Gecko资源+5官方blocklist保持，E8。当前仍为Android Debug签名，正式签名/ARM64真机与完整发行门另列；不覆盖后续B13源码。 |
 | PERF09 超分均衡<12ms | pending | 指定8Gen2级设备、540P动画→1080P、稳定统计含保护；与设置benchmark<16ms推荐门分别验。 |
 | PRIV01 无账号 / Glean / Sync / FxA / 上传 | implemented | E0静态图与源码有证据；完整实际依赖、崩溃上传配置、抓包 / 日志取证、关于本机日志导出待补。 |
 | PRIV02 Cookie / Authorization不落盘 | implemented | 普通下载 / playback / media models内存、分区摘要；需最终Room / prefs / savedstate / files / logs取证和重启恢复认证测试。 |
@@ -324,7 +324,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | R5 鉴权 / 签名 | implemented | 401 / 403刷新一次、失败回网页、释放期间不重建已测；真实站点登录Cookie / token轮换需补。 |
 | R6 Transformer离线导出 | pending | P2实现前先验证支持；失败再用TS+Muxer，不预承诺能无重编码导出。 |
 | R7 GL SurfaceView同步 / HDR | implemented | E5实际同帧比较、暂停重绘/旋转/故障回退；HDR策略存在，真实HDR/驱动矩阵仍待补。 |
-| R8 ABI体积 | pending（超标） | 已单ARM64仍111,123,172字节>110MB；需优化实际产物。 |
+| R8 ABI体积 | verified（仅0.5.3打包） | PERF08：源码7521c04最终107,897,008字节<110,000,000，只有17个ARM64库；仍需正式签名/真机与后续版本重验。 |
 | R9 uBO / Gecko分发许可 | pending | 全部第三方 / 列表 / 嵌套库实际产物审查与人工确认；旧M0开源检查不能覆盖含uBO发行。 |
 | R10 Google Play视频下载政策 | pending（条件项） | 仅在决定上架Play时需当时政策与站点限制核对；当前本地构建没有商店发布证据。保留此门，不主动上架。 |
 

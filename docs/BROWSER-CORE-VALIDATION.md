@@ -281,8 +281,32 @@ bridge0.3.8还保证background全部监听器先注册后连接native，每个�
 随后1.5秒内真实HTML `documentLoads` 不增加、当前受保护文档不变。
 先前14项通过发生在同值guard修改之前，不能代替最终源码的全套回归。
 
-0.5.3的新资料完整 **79项**、ARM64 release/lint、最终发布包摘要/体积及外部强停重启门，
-仍须各自终态日志后补记；本节不预记成功。
+## 0.5.3 首次安装与发布包终态
+
+`053-fresh-adblock-device.log`：全新只读API35软件实例5580、安装前没有Miru包，
+**1/1通过，66.166秒**。`053-fresh-m1-startup.log` 实际记录earlyAllowed=true、
+native INSTALLING、needsReload=true、documentLoads=1；READY后仍为同一允许页面、
+needsReload=true、documentLoads=1。它覆盖此前未保护页面的警告分支，没有靠同值setter重载清除证据。
+
+`053-release-lint.log`：源码 **7521c04** 的ARM64 release/lint成功，4分47秒；
+lint XML为 **0 error、22 warning**。原AGP包111,081,525字节，SHA-256
+`acbba9413881bb6607d15135a07a4867dd5b453f4ce013c5710a1ba62283e606`。
+`053-optimize-release.log` 与
+`artifacts/releases/Miru-0.5.3-arm64.apk.verification-20261024-162332-e6c54b00/`
+证明1517项payload逐项相同、SDK对齐和签名有效、原证书集合相同。
+最终 `artifacts/releases/Miru-0.5.3-arm64.apk` 为 **107,897,008字节**，SHA-256
+`aca04bda986685b603ce70a5ece60a5aa49adaeb1b998b116eb773eeabaf8956`。
+`053-final-omni-verification.json` 验证原4079项与5项官方blocklist全部保持；
+`053-final-abi.json` 验证仅17个arm64-v8a库。证书仍为本机Android Debug（前述5aa1a00e…），
+尚未证明正式签名、ARM64真机或完整发行门；不能将此包套给后续B13未编译源码。
+
+`053-full-device.log` 首次79项回归在第8项进行时中断：仅7项有通过终态，未取得整套终态。
+续查时原工具session不存在，Windows中也没有原模拟器/qemu进程；没有充分证据确定退出原因。
+保留该日志，不把第8项或整套记为通过/失败。新只读API35实例5582使用固定在
+`053-binaries/` 的同一主/测试APK复跑，日志为 `053-full-rerun-device.log`，终态待补。
+主包SHA-256 `659b4e2b2ae8fdc79125908f919c33321c66ef193f234327499997ea8b003a39`，
+测试包 `f90faca1861f41304b99ed433a63fee1d2b355d05dd948975e55a21c6546d64d`；
+`053-rerun-precondition.json` 记录新实例安装前无Miru包。排除的两个外部重启类继续不计通过。
 
 外部强停重启专项组合命令遭自动审批拒绝（工具仅返回blocked by policy），命令未执行。
 工具没有提供更具体原因；当前没有将500MB或离线的0.5.2/0.5.3强停验证记为通过，
