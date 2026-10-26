@@ -51,6 +51,8 @@
 | `056-forwarding-targeted-device.log` | 47项中**39通过/8失败，548.342 s**。包括全部11项普通/私密页面提示、旧图片复制及5类fixture测试通过；文件8项只在新增uBO READY前置失败，未进入文件选择。原失败保留，不能拼成47/47。 |
 | `056-upload-startup-independent-build.log` | 只重编测试APK，去除无关uBO前置并增加读/写grant分别释放断言，1m19s。生产APK未改。 |
 | `056-upload-startup-independent-device.log` | 最终主APK上的文件专项 **8/8，81.741 s**。真实页面/字节/数量断言不变，临时READ和WRITE均单独为DENIED。运行中安装状态另记runtime日志，不能由此推定所有冷启动时序已通过。 |
+| `056-committed-full-device.log` | 提交`56a22a1`及最终固定APK的完整常规 **102/106通过，4失败，1328.953 s**。上传8项与普通/私密提示11项全部通过；剩余uBO READY超时、两项GEO重新询问、QUALITY benchmark超时。输入/逐项摘要见`056-committed-full-input.json`与`056-committed-full-result.json`。 |
+| `056-restored-adblock-device.log` | 同提交旧APK在已安装profile上隔离复跑 **1/1，34.377 s**；日志有实际Native ready及setup完成。它不能抵消完整回归的READY超时，也不足以唯一归因为某一时序。 |
 
 receiver修复首个八项通过轮输入 `056-upload-grant-owner-input.json` 固定基线 `01fafeb` 加本批源码，主 APK SHA-256
 `b102bdda43c0fa3d9c7993a30824677f80f7cf18223fda06208d07fbbb80bcd2`，测试 APK SHA-256
@@ -63,6 +65,8 @@ receiver修复首个八项通过轮输入 `056-upload-grant-owner-input.json` �
 最终测试APK另存 `androidTest-startup-independent.apk`，SHA-256
 `3d3027bd5a1505e991caf9047cccfda535cc67d2a37d9eb5fc7c4e2b4eb6debc`。
 此前含uBO前置的测试APK也保留，不能将该47项日志标为最终测试APK的结果。
+生产与测试源码已提交`56a22a18f9778773f1df58f6082a171d33da5aa6`；
+`056-committed-source-map.json`记录构建后对应的干净源码提交及不可覆盖二进制映射。
 
 中间测试曾增加uBO READY前置，但浏览器在1.5秒有界等待后允许加载，合法上传也必须可用；该耦合已移除。
 页面仍须在原30秒内完成真实GET / DOM / 两帧rAF beacon；不以增加页面超时解决首轮失败。
@@ -116,7 +120,7 @@ omni SHA为 `f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`�
 - 实际拍照、录像、录音及相机方向、拒绝/取消/无处理器；目录选择后的二次确认与 relativePath 完整上传。
 - 私密成功/取消、单 owner 与最后 context 关闭、IO 取消、导航/关 tab/换 session 后的旧结果隔离。
 - Bundle / saved-state / Room / preferences / session / logs / 专属 cache 与 URI grant 的直接取证；进程死亡和遗留清扫。
-- 其他页面提示、站点权限、扩展 popup / uBO 与常规套件在最终本批 APK 上回归。
+- 完整常规四项失败及其根因；其余页面提示（选项/日期/颜色等）、权限/站点矩阵仍待，已通过的页面提示不替代这些缺项。
 - 初始 about:blank / opener document.write / popup / WebExtension 新 session 的真实文档握手及文件交付。
   固定 Progress 模块明确不保证最初 blank 的 location 事件，不能把未收到事件的 generation 0 当成有效文档。
 - 本批R8实际运行、ARM64实际运行、正式签名及真机矩阵；已通过的构建/体积/打包不替代这些门。
