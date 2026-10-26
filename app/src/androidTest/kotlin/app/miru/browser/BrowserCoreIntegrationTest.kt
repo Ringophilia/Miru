@@ -30,6 +30,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
 import mozilla.components.concept.engine.EngineView
 import org.junit.Assert.*
+import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -42,6 +44,16 @@ class BrowserCoreIntegrationTest {
     private val context get() = instrumentation.targetContext
     private val container get() = (compose.activity.application as MiruApplication).container
     private val browser get() = container.browser
+    private val tabFixture = BrowserTabFixture()
+
+    @Before fun rememberPreExistingTabsAfterRestoration() {
+        compose.waitUntil(30_000) { browser.state.value.ready }
+        compose.runOnIdle { tabFixture.capture(browser) }
+    }
+
+    @After fun closeOnlyThisMethodsTabsAndRestoreSelection() {
+        compose.runOnIdle { tabFixture.closeCreatedTabs(browser) }
+    }
 
     @Test fun cookiesClearByCreationTimeAndAllTimeIncludesPrivateJar() {
         CoreOrigin().use { origin ->

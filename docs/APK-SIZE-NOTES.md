@@ -94,3 +94,13 @@ SDK 对齐、签名和原 Android Debug 证书一致性通过，独立 Python �
 官方 bundletool 1.18.3 的 [`BundleConfig.Compression.apk_compression_algorithm=P7ZIP`](https://github.com/google/bundletool/blob/1.18.3/src/main/proto/config.proto) 也是受支持的 DEFLATE 编码选择，其注释说明较小 APK 可能换来较大更新补丁。若采用，需保留完整 AAB 配置和签名链、验证真实安装 APK 集；不能把 AAB 文件长度、下载估算、单个配置 split 或 MiB 数字当作当前单 ARM64 APK 门槛通过证据。
 
 不通过删除功能、网页语言、安全资源、uBO、许可证或更换引擎版本来凑体积。不要压缩 `resources.arsc`、盲目启用旧系统不兼容的稀疏资源表，或将大库改成安装后联网下载；这些路径不等价于现有规格交付物。
+
+## 2026-10-26：0.5.6上传首批开发包
+
+原AGP ARM64 release为111,158,173字节，SHA `212aca35e829fe398fa78b0930c33e287d67672809f81aada1d8a36ee5ecd0a4`。
+同一工具链最终输出 `artifacts/releases/Miru-0.5.6-arm64.apk` **108,007,656字节**，SHA
+`f874d3192cf7bc057eabd58b259b0d296d51b3e738549280c5ba836b98023dbb`。
+1518个payload、SDK对齐、原证书一致与17个ELF64/AArch64库均通过；Gecko为4077原项不变、两项精确GEO/导航修改、5项官方新增。
+完整流水线见同名 `.verification-20261026-093251-4dcff025/`，独立Gecko和ELF记录见
+`artifacts/browser-core/056-release-omni-verification.json`、`056-release-native-verification.json`。
+仍为Android Debug签名；R8运行、ARM64运行与正式发行继续待验，详见[B13上传记录](B13-FILE-UPLOAD-VALIDATION.md)。

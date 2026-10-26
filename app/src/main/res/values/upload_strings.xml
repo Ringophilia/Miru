@@ -1,0 +1,14 @@
+<resources>
+    <string name="upload_title">上传文件</string>
+    <string name="upload_choose">选择文件</string>
+    <string name="upload_photo">拍照</string>
+    <string name="upload_video">录像</string>
+    <string name="upload_audio">录音</string>
+    <string name="upload_preparing">正在准备文件…</string>
+    <string name="upload_waiting">正在等待系统选择…</string>
+    <string name="upload_unavailable">无法打开文件选择或录制应用。</string>
+    <string name="upload_permission_denied">未获得录制所需的系统权限。</string>
+    <string name="upload_too_many">一次最多选择512个文件。</string>
+    <string name="upload_busy">请先完成或取消系统中的文件选择。</string>
+    <string name="upload_unreadable">无法读取所选文件或可用空间不足，请重新选择。</string>
+</resources>

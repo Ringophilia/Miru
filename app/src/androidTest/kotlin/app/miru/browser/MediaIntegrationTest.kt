@@ -21,6 +21,8 @@ import app.miru.player.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.*
+import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -37,6 +39,17 @@ class MediaIntegrationTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val browser get() = (compose.activity.application as MiruApplication).container.browser
     private val context get() = instrumentation.targetContext
+    private val tabFixture = BrowserTabFixture()
+
+    @Before fun rememberPreExistingTabsAfterRestoration() {
+        compose.waitUntil(30_000) { browser.state.value.ready }
+        compose.runOnIdle { tabFixture.capture(browser) }
+    }
+
+    @After fun closeOnlyThisMethodsTabsAndRestoreSelection() {
+        compose.runOnIdle { tabFixture.closeCreatedTabs(browser) }
+    }
+
     private fun waitFor(timeout: Long = 30_000, predicate: () -> Boolean) {
         val until = SystemClock.elapsedRealtime() + timeout
         while(!predicate()) { if(SystemClock.elapsedRealtime() > until) throw AssertionError("Timed out waiting for media condition"); SystemClock.sleep(100) }

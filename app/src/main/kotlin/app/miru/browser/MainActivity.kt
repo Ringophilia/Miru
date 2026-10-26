@@ -153,6 +153,7 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         container.browser.permissions.attachPermissionHost(this)
+        container.browser.uploads.attachHost(this, UploadPickerActivity::class.java)
         enableEdgeToEdge()
         if (savedInstanceState == null) readIntent(intent)
         incomingOffline = savedInstanceState?.getString("miru.pendingOffline") ?: incomingOffline
@@ -168,7 +169,11 @@ class MainActivity : ComponentActivity() {
         super.onWindowFocusChanged(hasFocus)
         container.browser.permissions.onHostWindowFocusChanged(this, hasFocus)
     }
-    override fun onDestroy() { container.browser.permissions.detachPermissionHost(this); super.onDestroy() }
+    override fun onDestroy() {
+        container.browser.permissions.detachPermissionHost(this)
+        container.browser.uploads.detachHost(this)
+        super.onDestroy()
+    }
     override fun onStop() { container.browser.saveSession(); super.onStop() }
     override fun onSaveInstanceState(outState: Bundle) {
         incomingOffline?.let { outState.putString("miru.pendingOffline", it) }
@@ -485,6 +490,16 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     LaunchedEffect(controller) { controller.downloadRequests.collect { request ->
         handleDownload(DownloadRequest(url = request.url, fileName = request.fileName, mimeType = request.mimeType, contentLength = request.contentLength ?: -1, headers = request.headers, sourcePage = request.sourcePage, isPrivate = request.isPrivate, bodyStream = request.bodyStream))
     } }
+    val uploadMessages by rememberUpdatedState(mapOf(
+        app.miru.browser.engine.BrowserUploadError.UNAVAILABLE to stringResource(R.string.upload_unavailable),
+        app.miru.browser.engine.BrowserUploadError.PERMISSION_DENIED to stringResource(R.string.upload_permission_denied),
+        app.miru.browser.engine.BrowserUploadError.TOO_MANY_FILES to stringResource(R.string.upload_too_many),
+        app.miru.browser.engine.BrowserUploadError.BUSY to stringResource(R.string.upload_busy),
+        app.miru.browser.engine.BrowserUploadError.UNREADABLE to stringResource(R.string.upload_unreadable),
+    ))
+    LaunchedEffect(controller) { controller.uploads.errors.collect { error ->
+        snackbars.showMessage(uploadMessages.getValue(error))
+    } }
     DisposableEffect(Unit) { onDispose { downloadQueue.forEach { runCatching { it.bodyStream?.close() } } } }
     LaunchedEffect(finding, findQuery, tab?.id) { if(finding) { delay(150); controller.findAll(findQuery) } else controller.clearFind() }
     val privateDownloadDialog = offlineSelection?.source?.isPrivate == true || pendingDownload?.isPrivate == true
@@ -698,7 +713,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                     })
             }
             if(sitePermissionPrompt == null) pagePrompt?.let { prompt ->
-                key(prompt.token) { BrowserPromptDialog(prompt, controller.prompts) }
+                key(prompt.token) { BrowserPromptDialog(prompt, controller.prompts, controller.uploads) }
             }
             if(permissionActivity.sitePermissionSettingsRequired && sitePermissionPrompt == null && pagePrompt == null) AlertDialog(
                 onDismissRequest = permissionActivity::dismissSitePermissionSettings,

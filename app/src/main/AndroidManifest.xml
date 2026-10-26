@@ -26,6 +26,11 @@
         android:theme="@style/Theme.Miru">
         <provider android:name=".ContextImageProvider" android:authorities="${applicationId}.context-images"
             android:exported="false" android:grantUriPermissions="true" />
+        <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.uploads"
+            android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/upload_capture_paths" />
+        </provider>
+        <activity android:name=".UploadPickerActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

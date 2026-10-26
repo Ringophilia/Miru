@@ -12,6 +12,7 @@ package app.miru.browser.engine
 
 import java.lang.ref.WeakReference
 import java.util.IdentityHashMap
+import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +25,7 @@ import mozilla.components.concept.engine.EngineSession
 import mozilla.components.concept.engine.prompt.PromptRequest
 
 /** Main-thread, application-lifetime ownership of actual engine requests; never retains an Activity. */
-class BrowserPrompts internal constructor(scope: CoroutineScope, private val store: BrowserStore) {
+class BrowserPrompts internal constructor(private val context: Context, scope: CoroutineScope, private val store: BrowserStore) {
     private val bindings = mutableMapOf<String, Binding>()
     // Gecko creates separate PromptRequest wrappers inside notifyObservers. The
     // native completion closure is shared by those wrappers, unlike their uid.
@@ -34,6 +35,8 @@ class BrowserPrompts internal constructor(scope: CoroutineScope, private val sto
     private val retired = mutableListOf<WeakReference<PromptRequest>>()
     private val mutablePrompt = MutableStateFlow<BrowserPromptState?>(null)
     val prompt = mutablePrompt.asStateFlow()
+    private val mutableLifecycle = MutableStateFlow(0L)
+    internal val lifecycleChanges = mutableLifecycle.asStateFlow()
     private var sequence = 0L
     private var selectedTabId = store.state.selectedTabId
 
@@ -80,6 +83,7 @@ class BrowserPrompts internal constructor(scope: CoroutineScope, private val sto
         val previous = bindings[tabId]
         if(previous?.session === session && previous.isPrivate == isPrivate && previous.contextId == contextId) return
         previous?.let { invalidate(it); it.session.unregister(it.observer) }
+        NativeFilePrompts.install(session, context)
         val binding = Binding(tabId, session, pageUrl, isPrivate, contextId)
         binding.observer = object : PermissionNeutralObserver() {
             override fun onPromptRequest(promptRequest: PromptRequest) = capture(binding, promptRequest)
@@ -94,7 +98,10 @@ class BrowserPrompts internal constructor(scope: CoroutineScope, private val sto
                 binding.nativePageUrl = url
                 binding.locationGeneration++
                 binding.suppressDialogs = false
-                cancelMatching(binding) { true }
+                cancelMatching(binding) { pending ->
+                    val file = pending.request as? PromptRequest.File
+                    file == null || NativeFilePrompts.documentOwner(file)?.isCurrent() != true
+                }
             }
             // PageStart/loading=true precedes commit and may contain HTTP auth.
             // Never turn delayed loading/store URL actions into another epoch.
@@ -111,7 +118,7 @@ class BrowserPrompts internal constructor(scope: CoroutineScope, private val sto
         binding.attemptGeneration++
         // BeforeUnload belongs to the pending leave/stay decision, and survives
         // the navigation attempt which requested it. Hard/location changes end it.
-        cancelMatching(binding) { it.request.shouldDismissOnLoad }
+        cancelMatching(binding) { it.request.shouldDismissOnLoad && it.request !is PromptRequest.File }
     }
 
     internal fun invalidateTab(tabId: String) { bindings[tabId]?.let(::invalidate) }
@@ -232,8 +239,9 @@ class BrowserPrompts internal constructor(scope: CoroutineScope, private val sto
         return store.state.selectedTabId == binding.tabId && bindings[binding.tabId] === binding &&
             tab.engineState.engineSession === binding.session && tab.content.private == binding.isPrivate &&
             tab.contextId == binding.contextId && binding.hardGeneration == owner.hardGeneration &&
-            binding.locationGeneration == owner.locationGeneration &&
-            (!pending.request.shouldDismissOnLoad || binding.attemptGeneration == owner.attemptGeneration)
+            (if(pending.request is PromptRequest.File) NativeFilePrompts.documentOwner(pending.request)?.isCurrent() == true
+             else binding.locationGeneration == owner.locationGeneration &&
+                 (!pending.request.shouldDismissOnLoad || binding.attemptGeneration == owner.attemptGeneration))
     }
 
     private fun syncState(state: BrowserState) {
@@ -252,6 +260,7 @@ class BrowserPrompts internal constructor(scope: CoroutineScope, private val sto
         }
         requests.values.toList().filterNot(::valid).forEach { pending -> finish(pending) { cancel(pending.request) } }
         publish()
+        mutableLifecycle.value++
     }
 
     private fun cancelMatching(binding: Binding, predicate: (Pending) -> Boolean) {
@@ -320,6 +329,32 @@ class BrowserPrompts internal constructor(scope: CoroutineScope, private val sto
         val pending = current(token) ?: return
         if(scriptDialog(pending.request)) setScriptPolicy(pending, allowMoreDialogs)
         finish(pending) { cancel(pending.request) }
+    }
+
+    /** Internal capability bound to the real pending request; never part of UI/saved state. */
+    internal fun fileSelection(token: Long): BrowserFileSelection? {
+        val pending = current(token, BrowserPromptKind.FILE) ?: return null
+        val request = pending.request as? PromptRequest.File ?: return null
+        val document = NativeFilePrompts.documentOwner(request) ?: return null
+        val binding = pending.owner.binding
+        return BrowserFileSelection(token, request.mimeTypes.toList(), request.isMultipleFilesSelection,
+            binding.isPrivate, BrowserFileCapture.valueOf(request.captureMode.name),
+            pending = { current(token, BrowserPromptKind.FILE) === pending },
+            documentAlive = {
+                val tab = store.state.tabs.firstOrNull { it.id == binding.tabId }
+                tab?.engineState?.engineSession === binding.session && tab.content.private == binding.isPrivate &&
+                    tab.contextId == binding.contextId && !tab.engineState.crashed && document.isCurrent()
+            },
+            prepare = { files -> NativeFilePrompts.prepareFiles(request, files) },
+            deliver = { prepared ->
+                if(current(token, BrowserPromptKind.FILE) !== pending || !document.isCurrent()) false
+                else {
+                    finish(pending) { NativeFilePrompts.selectPrepared(request, prepared) }
+                    NativeFilePrompts.wasConfirmed(request)
+                }
+            },
+            cancel = { if(current(token, BrowserPromptKind.FILE) === pending) finish(pending) { request.onDismiss() } },
+        )
     }
 
     private fun setScriptPolicy(pending: Pending, allowMore: Boolean) {
@@ -391,6 +426,7 @@ class BrowserPrompts internal constructor(scope: CoroutineScope, private val sto
         is PromptRequest.BeforeUnload -> request.onLeave
         is PromptRequest.Repost -> request.onConfirm
         is PromptRequest.Authentication -> request.onConfirm
+        is PromptRequest.File -> request.onSingleFileSelected
         is PromptRequest.CertificateRequest -> request.onComplete
         is PromptRequest.Popup -> request.onDeny
         is PromptRequest.Redirect -> request.onDeny
@@ -400,7 +436,7 @@ class BrowserPrompts internal constructor(scope: CoroutineScope, private val sto
 
     private fun supported(request: PromptRequest) = request is PromptRequest.Alert || request is PromptRequest.Confirm ||
         request is PromptRequest.TextPrompt || request is PromptRequest.BeforeUnload || request is PromptRequest.Repost ||
-        request is PromptRequest.Authentication
+        request is PromptRequest.Authentication || (request is PromptRequest.File && NativeFilePrompts.isManaged(request))
 
     private fun scriptDialog(request: PromptRequest) = request is PromptRequest.Alert || request is PromptRequest.Confirm || request is PromptRequest.TextPrompt
 
@@ -433,6 +469,8 @@ class BrowserPrompts internal constructor(scope: CoroutineScope, private val sto
                 userName = request.userName, onlyShowPassword = request.onlyShowPassword, previousFailed = request.previousFailed,
                 isCrossOrigin = request.isCrossOrigin, authMethod = BrowserAuthMethod.valueOf(request.method.name),
                 authLevel = BrowserAuthLevel.valueOf(request.level.name))
+            is PromptRequest.File -> base.copy(fileMimeTypes = request.mimeTypes.toList(),
+                fileMultiple = request.isMultipleFilesSelection, fileCapture = BrowserFileCapture.valueOf(request.captureMode.name))
             else -> error("Unsupported prompt cannot be projected")
         }
     }
@@ -444,6 +482,7 @@ class BrowserPrompts internal constructor(scope: CoroutineScope, private val sto
         is PromptRequest.BeforeUnload -> BrowserPromptKind.BEFORE_UNLOAD
         is PromptRequest.Repost -> BrowserPromptKind.REPOST
         is PromptRequest.Authentication -> BrowserPromptKind.AUTHENTICATION
+        is PromptRequest.File -> BrowserPromptKind.FILE
         else -> error("Unsupported prompt has no UI kind")
     }
 

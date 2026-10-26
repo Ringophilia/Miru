@@ -79,7 +79,8 @@ class BrowserController(
     private val tabs = TabsUseCases(store)
     private val sessions = SessionUseCases(store)
     val contextMenus = BrowserContextMenus(applicationScope, store)
-    val prompts = BrowserPrompts(applicationScope, store)
+    val prompts = BrowserPrompts(applicationContext, applicationScope, store)
+    val uploads = BrowserFileUploads(applicationContext, applicationScope, prompts)
     val permissions = BrowserPermissions(applicationContext, applicationScope, store, runtime = { runtime },
         onSiteChanged = { origin, isPrivate, contextId ->
             store.state.tabs.filter { tab ->

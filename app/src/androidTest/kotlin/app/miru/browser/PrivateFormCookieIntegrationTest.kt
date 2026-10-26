@@ -25,6 +25,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
+import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,11 +36,23 @@ import org.junit.runner.RunWith
 class PrivateFormCookieIntegrationTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private val browser get() = (compose.activity.application as MiruApplication).container.browser
+    private val tabFixture = BrowserTabFixture()
+
+    @Before fun requireAnIsolatedPrivateContextAndRememberExistingTabs() {
+        compose.waitUntil(30_000) { browser.state.value.ready }
+        compose.runOnIdle {
+            tabFixture.capture(browser)
+            assertTrue("Run last-private-context fixtures on a controlled device without existing private tabs",
+                browser.state.value.tabs.none { it.isPrivate })
+        }
+    }
+
+    @After fun closeOnlyThisMethodsTabsAndRestoreSelection() {
+        compose.runOnIdle { tabFixture.closeCreatedTabs(browser) }
+    }
 
     @Test fun clearingFormsFromANormalTabRetainsThePrivateCookieAfterAFreshPageLoad() {
         PrivateFormOrigin().use { origin ->
-            // An unrelated private context could conceal last-private-context teardown.
-            compose.runOnIdle { browser.closeAllTabs(isPrivate = true) }
             var privateId = ""
             var normalId = ""
             try {
@@ -101,7 +115,6 @@ class PrivateFormCookieIntegrationTest {
             var incomingId = ""
             try {
                 compose.runOnIdle {
-                    browser.closeAllTabs(isPrivate = true)
                     privateId = browser.newTab("${origin.url}/seed", isPrivate = true)
                 }
                 compose.waitUntil(30_000) {

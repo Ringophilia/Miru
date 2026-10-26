@@ -97,12 +97,14 @@ Miru 的取舍遵循产品规范 [MIRU-SPEC.md](MIRU-SPEC.md)（唯一需求来�
 | **M1** | uBlock Origin 集成、断点下载 | 🟢 已接入 · 首装稳定性 / 自动更新待补 |
 | **M2** | 视频嗅探、Media3 播放器与接管 | 🟢 已接入 · 详见 [M2 记录](docs/M2-VALIDATION.md) |
 | **M3** | 清晰度探测、字幕音轨、离线、超分 | 🟡 主体已接入 · 缩略图与完整矩阵推进中 |
-| **B13** | 站点权限与网页提示 | 🟡 权限首批已提交（0.5.4）· 网页提示开发中（0.5.5） |
+| **B13** | 站点权限、网页提示与上传 | 🟡 权限/提示已接入 · 0.5.6上传首批专项通过，完整矩阵待验 |
 | **M4** | 动效、网站矩阵、真机性能、完整验收 | ⚪ 未开始 |
 | **iOS** | 按规范在 Android M4 之后启动 | ⚪ 未开始 |
 
+最新已验证打包为 **0.5.6 ARM64开发包，108,007,656字节**，仍使用Android Debug签名；具体证据与剩余门见[上传验收记录](docs/B13-FILE-UPLOAD-VALIDATION.md)。
+
 <details>
-<summary><b>最近一次已验证打包：0.5.4（ARM64 开发包）</b></summary>
+<summary><b>历史已验证打包：0.5.4（ARM64 开发包）</b></summary>
 
 <br>
 
@@ -215,7 +217,7 @@ Miru
 | 广告拦截与下载 | [uBO 接口与限制](docs/M1-ADBLOCK.md) · [blocklist](docs/M1-BLOCKLIST-VALIDATION.md) · [M1 记录](docs/M1-VALIDATION.md) |
 | 播放器 | [M2](docs/M2-VALIDATION.md) · [0.3.1 补齐](docs/M2-031-VALIDATION.md) |
 | 媒体增强 | [M3 首批](docs/M3-VALIDATION.md) · [离线](docs/M3-OFFLINE-VALIDATION.md) · [超分](docs/M3-SUPERRES-VALIDATION.md) |
-| 权限与网页提示 | [B13 权限](docs/B13-PERMISSIONS-VALIDATION.md) · [网页提示](docs/B13-PROMPTS-VALIDATION.md) |
+| 权限与网页提示 | [B13 权限](docs/B13-PERMISSIONS-VALIDATION.md) · [网页提示](docs/B13-PROMPTS-VALIDATION.md) · [文件上传](docs/B13-FILE-UPLOAD-VALIDATION.md) |
 | 开源合规 | [开源检查](docs/OPEN-SOURCE-REVIEW.md) · [第三方说明](third_party/README.md) |
 
 ## ✦ 许可与致谢

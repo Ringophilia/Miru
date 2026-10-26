@@ -1,6 +1,6 @@
 # 实现进度
 
-开始日期：2026-10-22。当前推进至 M3 超分及浏览器核心缺口批次（0.5.5 页面提示首批已提交，98项常规回归、独立系统3项、普通/私密专项11项及ARM64开发包打包已验证）；M0 / M1 / M2 剩余专项继续保留，iOS 按规范在 Android M4 后开始。全部要求和证据映射见 `ACCEPTANCE.md`，不以当前通过的测试替代全量验收。
+开始日期：2026-10-22。当前推进至 M3 超分及浏览器核心缺口批次（0.5.6 文件上传首批8项专项、39项受影响功能、独立系统3项及ARM64开发包打包分别通过，完整B13与本批完整回归/发行仍待）；0.5.5的98项常规回归及其他历史证据保留。M0 / M1 / M2 剩余专项继续保留，iOS 按规范在 Android M4 后开始。全部要求和证据映射见 `ACCEPTANCE.md`，不以当前通过的测试替代全量验收。
 
 ## 已实现的 M0 代码
 
@@ -157,7 +157,17 @@
 - 接入alert/confirm/text、beforeunload、POST重发和HTTP认证；内存表单草稿、不保存密码、显示当前网页与可验证请求来源。已有会话的导航地址只随原生接受的location变化，Stay不会提前显示目标地址。
 - 真实ALERT首轮超时后，核实AC在每个observer中创建不同wrapper/UID；按共享completion闭包引用身份关联原生归属与store wrapper，旧UI token、替换wrapper与已完成callback分别管理。原首轮1项失败（28.172秒）及中间8/9定位失败保留，见`B13-PROMPTS-VALIDATION.md`。
 - 原生身份修复后7/7通过（33.102秒）；最新连续提示抑制、文本取消策略、新文档恢复及真实Scrim关闭后的下一提示，整类9/9通过（57.245秒）。随后普通/私密合跑11/11通过（49.725秒），保持FLAG_SECURE并验证私密真实文本和关页迟到回答。JVM111项及最终lint0错误/22警告通过，主/测试APK已固定；固定0.5.5 APK常规98/98通过（595.555秒），fresh5594真实系统权限另3/3通过（21.844秒）；强停重启两类排除，未计通过。源码2048cec的release成功（4分31秒），ARM64开发包107,987,120字节，1517 payload/对齐/同开发证书/17个ELF64库/4078+1+5 Gecko资源验证通过；正式签名与ARM64运行仍待。
-- 文件上传尚未实现，固定API的同名缓存覆盖、目录二阶段确认、私密registry Bundle及暂存生命周期已形成后续`B13-FILE-UPLOAD-PLAN.md`。私密/iframe/完整生命周期、公网站点及B13其余类型继续pending，不把安全取消记为功能支持。
+- 文件上传的固定API审查和原计划保留在`B13-FILE-UPLOAD-PLAN.md`；后续0.5.6已实现首批生产路径，仍未通过完整上传验收，见下节。私密/iframe/完整生命周期、公网站点及B13其余类型继续pending，不把安全取消记为功能支持。
+
+## B13 文件上传（0.5.6 实现中）
+
+- 单/多选采用真实系统DocumentsUI、独立非导出receiver、可取消IO暂存和按文档的文件租约；固定版本native兼容层避免AC按basename同步复制。顶层文档事件与两项精确Gecko资源修改已单独提交`01fafeb`，不等同上传整体验收。
+- 真实设备测试发现提前结束receiver会使迟到结果URI grant挂到已结束ActivityRecord，已改为保留只含UUID的通道至旧结果返回；取消Job/关闭stream、provider远程取消和最终文件校验移到IO。多选驱动按系统实际advertised ACTION_LONG_CLICK与选中状态确认1→2，仍要求两个原名与各自字节哈希一致。
+- receiver修复后8/8（112.02秒）通过；首轮完整106为85通过21失败，定位到Java default未转发和旧测试私密标签残留，另保留图片与QUALITY benchmark失败。已显式转发全部25个callback并补每方法fixture清理，后续定向其他39项通过；文件8项被不合适的uBO READY前置挡住，该耦合已移除。
+- 最终`056-upload-startup-independent-device.log` **8/8通过（81.741秒）**，包括真实单/同名多选字节、取消、重建、hash、新文档/私密owner清理和临时READ/WRITE授权释放；fresh5596的uBO首装1/1（41.44秒）、系统权限3/3（60.882秒）单独通过。123项JVM、最终lint0错误/22警告及R8构建通过；所有失败保留，未拼接成完整回归通过。
+- 最终ARM64开发包108,007,656字节，SHA `f874d3192cf7bc057eabd58b259b0d296d51b3e738549280c5ba836b98023dbb`，1518payload/对齐/同Debug证书/17个库/4077+2+5 Gecko资源通过。
+- 目录二次确认、capture、完整MIME/私密/保存状态、初始blank/popup文档握手、完整回归、R8/ARM64运行及正式签名仍待。细节和各轮固定APK摘要见`B13-FILE-UPLOAD-VALIDATION.md`。
+
 ## M3 尚待推进
 
 - 离线已接入 Media3 DownloadManager / DownloadService、HLS / DASH 清晰度与关联音轨 / 字幕、独立非 LRU 缓存、统一下载页与 upstream-free 播放。直链 MP4 保留普通下载引擎；实现与准确验证边界见 `M3-OFFLINE-VALIDATION.md`。下载进行中进程终止、真机网络 / 重启与后台矩阵仍需专项，不能用已完成项的重启恢复代替。

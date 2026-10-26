@@ -23,6 +23,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import mozilla.components.concept.engine.EngineView
 import org.junit.Assert.*
+import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,6 +36,16 @@ class ContextImagePolicyIntegrationTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
     private val browser get() = (compose.activity.application as MiruApplication).container.browser
+    private val tabFixture = BrowserTabFixture()
+
+    @Before fun rememberPreExistingTabsAfterRestoration() {
+        compose.waitUntil(30_000) { browser.state.value.ready }
+        compose.runOnIdle { tabFixture.capture(browser) }
+    }
+
+    @After fun closeOnlyThisMethodsTabsAndRestoreSelection() {
+        compose.runOnIdle { tabFixture.closeCreatedTabs(browser) }
+    }
 
     @Test fun documentHttpNoReferrerRemainsAbsentDuringPrivateImageCopy() {
         PolicyOrigin().use { image -> PolicyOrigin().use { page ->

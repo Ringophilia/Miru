@@ -1,0 +1,14 @@
+<resources>
+    <string name="upload_title">Upload files</string>
+    <string name="upload_choose">Choose files</string>
+    <string name="upload_photo">Take photo</string>
+    <string name="upload_video">Record video</string>
+    <string name="upload_audio">Record audio</string>
+    <string name="upload_preparing">Preparing files…</string>
+    <string name="upload_waiting">Waiting for the system picker…</string>
+    <string name="upload_unavailable">The file picker or recorder could not be opened.</string>
+    <string name="upload_permission_denied">System recording permission was not granted.</string>
+    <string name="upload_too_many">Choose at most 512 files at a time.</string>
+    <string name="upload_busy">Finish or cancel the system file selection first.</string>
+    <string name="upload_unreadable">The selected files could not be read, or storage is full. Please choose again.</string>
+</resources>

@@ -15,6 +15,8 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.After
+import org.junit.Before
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
@@ -33,6 +35,16 @@ class BrowserUiTest {
     private fun label(id: Int): String = compose.activity.getString(id)
     private val browser get() = (compose.activity.application as MiruApplication).container.browser
     private val library get() = (compose.activity.application as MiruApplication).container.library
+    private val tabFixture = BrowserTabFixture()
+
+    @Before fun rememberPreExistingTabsAfterRestoration() {
+        compose.waitUntil(30_000) { browser.state.value.ready }
+        compose.runOnIdle { tabFixture.capture(browser) }
+    }
+
+    @After fun closeOnlyThisMethodsTabsAndRestoreSelection() {
+        compose.runOnIdle { tabFixture.closeCreatedTabs(browser) }
+    }
 
     @Test fun menuCreatesPrivateTabAndTraySeparatesGroups() {
         compose.runOnIdle { browser.newTab() }
