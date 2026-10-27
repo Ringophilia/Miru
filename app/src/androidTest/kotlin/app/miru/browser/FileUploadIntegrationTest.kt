@@ -10,9 +10,15 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Rect
+import android.graphics.BitmapFactory
+import android.media.MediaExtractor
+import android.media.MediaFormat
+import android.net.Uri
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.os.Process
 import android.provider.DocumentsContract
+import android.provider.MediaStore
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
@@ -23,19 +29,23 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.core.content.FileProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import app.miru.browser.engine.BrowserPromptKind
 import app.miru.browser.engine.BrowserPromptState
+import app.miru.browser.engine.BrowserFileCapture
 import java.io.Closeable
 import java.io.File
+import java.io.FileInputStream
 import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
+import java.nio.ByteBuffer
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -69,6 +79,10 @@ class FileUploadIntegrationTest {
     private var pickerMonitor: Instrumentation.ActivityMonitor? = null
     private val pickerLaunchCount = AtomicInteger()
     private val pickerMultipleFlag = AtomicReference<Boolean?>()
+    private val captureLaunchCount = AtomicInteger()
+    private val captureLaunch = AtomicReference<CaptureLaunch?>()
+    private val capturePermissionPrompts = mutableSetOf<Pair<Int, Int>>()
+    private var captureRequested = false
 
     @Before fun preserveExistingTabsAndExposeActualSystemNodes() {
         compose.waitUntil(30_000) { browser.state.value.ready }
@@ -91,11 +105,25 @@ class FileUploadIntegrationTest {
         // Returning null always lets Android launch it and never supplies an ActivityResult.
         pickerLaunchCount.set(0)
         pickerMultipleFlag.set(null)
+        captureLaunchCount.set(0)
+        captureLaunch.set(null)
+        capturePermissionPrompts.clear()
+        captureRequested = false
         pickerMonitor = object : Instrumentation.ActivityMonitor() {
             override fun onStartActivity(intent: Intent): Instrumentation.ActivityResult? {
                 if (intent.action == Intent.ACTION_OPEN_DOCUMENT) {
                     pickerMultipleFlag.set(intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false))
                     pickerLaunchCount.incrementAndGet()
+                }
+                if(intent.action in setOf(MediaStore.ACTION_IMAGE_CAPTURE, MediaStore.ACTION_VIDEO_CAPTURE)) {
+                    @Suppress("DEPRECATION")
+                    val output = intent.getParcelableExtra<Uri>(MediaStore.EXTRA_OUTPUT)
+                    val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    captureLaunch.set(CaptureLaunch(checkNotNull(intent.action), output,
+                        intent.flags and flags == flags, intent.clipData?.let {
+                            it.itemCount == 1 && it.getItemAt(0).uri == output
+                        } == true, intent.getIntExtra("android.intent.extras.CAMERA_FACING", -1) == 0))
+                    captureLaunchCount.incrementAndGet()
                 }
                 return null
             }
@@ -112,6 +140,13 @@ class FileUploadIntegrationTest {
             try { action() } catch (problem: Throwable) { rememberFailure(problem) }
         }
         try {
+            if(captureRequested) {
+                if(permissionControllerVisible()) {
+                    systemBack()
+                    compose.waitUntil(10_000) { !permissionControllerVisible() }
+                }
+                cleanupActualCameraIfVisible()
+            }
             if (documentsUiVisible()) {
                 systemBack()
                 compose.waitUntil(10_000) { !documentsUiVisible() }
@@ -424,6 +459,301 @@ class FileUploadIntegrationTest {
         acceptedTypes = ".png", multiple = false,
         expected = listOf(pngFixture()), blocked = listOf(textFixture(), opaqueFixture()),
     )
+
+    @Test fun realCameraPhotoReachesTheWebsiteWithItsOriginalJpegBytes() = runCaptureCase(video = false)
+
+    @Test fun realCameraVideoReachesTheWebsiteWithItsOriginalRecordedBytes() = runCaptureCase(video = true)
+
+    /** Only process-memory evidence from the actual system launch. Never log the output URI. */
+    private class CaptureLaunch(val action: String, val output: Uri?, val readWriteFlags: Boolean,
+        val outputClip: Boolean, val backFacingHint: Boolean) {
+        override fun toString() = "CaptureLaunch(outputPresent=${output != null}, readWrite=$readWriteFlags, clip=$outputClip)"
+    }
+
+    private fun runCaptureCase(video: Boolean) {
+        val acceptedTypes = if(video) "video/*" else "image/*"
+        val expectedName = if(video) "capture.mp4" else "capture.jpg"
+        val expectedMime = if(video) "video/mp4" else "image/jpeg"
+        val expectedAction = if(video) MediaStore.ACTION_VIDEO_CAPTURE else MediaStore.ACTION_IMAGE_CAPTURE
+        val outputBaseline = captureOutputFiles()
+        val leaseBaseline = uploadLeaseDirectories()
+        UploadOrigin(acceptedTypes, captureMode = "environment").use { origin ->
+            val owner = page(origin, multiple = false)
+            val request = openFilePrompt(owner)
+            assertEquals("The real HTML capture=environment request must retain its facing hint",
+                BrowserFileCapture.BACK_CAMERA, request.fileCapture)
+            captureRequested = true
+            compose.onNodeWithTag(if(video) "page_prompt_capture_video" else "page_prompt_capture_photo")
+                .assertIsDisplayed().performClick()
+            awaitActualCameraControl("shutter_button")
+            assertEquals("Exactly one real external capture action must be launched", 1, captureLaunchCount.get())
+            assertEquals("Capture must not be replaced by choosing a static document", 0, pickerStarts())
+            val launch = checkNotNull(captureLaunch.get())
+            assertEquals(expectedAction, launch.action)
+            assertTrue("The actual output grant must include read and write flags", launch.readWriteFlags)
+            assertTrue("The actual launch must carry its same output URI in ClipData", launch.outputClip)
+            assertTrue("The back-facing camera extra must be an actual launch hint", launch.backFacingHint)
+            val outputUri = checkNotNull(launch.output)
+            val context = instrumentation.targetContext
+            assertEquals("content", outputUri.scheme)
+            assertEquals("${context.packageName}.uploads", outputUri.authority)
+            var outputFile: File? = null
+            waitFor("The actual capture action must own one new restricted output file") {
+                outputFile = (captureOutputFiles() - outputBaseline).singleOrNull { it.name == expectedName }
+                outputFile != null
+            }
+            val originalFile = checkNotNull(outputFile)
+            assertTrue("The new capture file must be the actual EXTRA_OUTPUT resource",
+                FileProvider.getUriForFile(context, "${context.packageName}.uploads", originalFile) == outputUri)
+            val cameraUid = actualCameraUid()
+            assertNotEquals("Capture grants must be checked for the external camera, not our own provider UID", Process.myUid(), cameraUid)
+            assertCaptureGrant(outputUri, cameraUid, granted = true)
+
+            // Camera2 PhotoModule writes EXTRA_OUTPUT only when Done is clicked. Open the actual
+            // output read-only BEFORE that click and retain its original inode across cleanup.
+            // This descriptor is never a staging copy and never writes or delays production IO.
+            val descriptor = checkNotNull(context.contentResolver.openFileDescriptor(outputUri, "r"))
+            ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { source ->
+                clickActualCameraControl("shutter_button")
+                if(video) {
+                    waitFor("The actual Camera2 recording clock must advance to at least two seconds", 20_000) {
+                        allowCapturePermissionIfShown()
+                        actualCameraRecordingSeconds()?.let { it >= 2 } == true
+                    }
+                    clickActualCameraControl("shutter_button")
+                }
+                awaitActualCameraControl("done_button")
+                assertEquals("A real review must not upload before the user accepts it", 0, origin.reportCount("change"))
+                assertEquals(request.token, browser.prompts.prompt.value?.token)
+                assertTrue("The original camera output must still exist during review", originalFile.isFile)
+                assertCaptureGrant(outputUri, cameraUid, granted = true)
+                if(video) assertRecordedVideoFormat(source)
+                else android.util.Log.i("MiruUploadAcceptance", "photoReview originalOutputNonEmpty=${source.channel.size() > 0}")
+
+                clickActualCameraControl("done_button")
+                val report = awaitReport(origin, 1)
+                // Success and native staging may unlink the original pathname. The retained
+                // read-only descriptor still supplies exactly the camera's original bytes.
+                val originalBytes = readOriginalCaptureBytes(source)
+                if(video) assertRecordedVideoFormat(source) else assertCapturedJpegFormat(originalBytes)
+                assertEquals("change", report.label)
+                assertEquals(1, report.files.size)
+                assertFile(report.files.single(), expectedName, originalBytes, origin.upload(1, 0), expectedMime)
+                assertEquals("Exactly one native change may reach the actual website", 1, origin.reportCount("change"))
+                assertEquals(1, captureLaunchCount.get())
+                assertNull(browser.prompts.prompt.value)
+                waitFor("Capture completion must retire the actual output file, receiver and camera grants") {
+                    !originalFile.exists() && liveActivities().none { it is UploadPickerActivity } &&
+                        captureGrantDenied(outputUri, cameraUid)
+                }
+                val leases = awaitNewUploadLeases(leaseBaseline)
+                val retained = leases.flatMap { it.walkTopDown().filter(File::isFile).toList() }
+                assertEquals("The delivered capture must retain one document-owned file", 1, retained.size)
+                assertEquals(expectedName, retained.single().name)
+                assertEquals("Document retention must preserve the separately verified original capture bytes",
+                    uploadHash(originalBytes), uploadHash(retained.single().readBytes()))
+                compose.runOnIdle { browser.closeTab(owner) }
+                awaitUploadLeasesDeleted(leases)
+                assertCaptureGrant(outputUri, cameraUid, granted = false)
+            } // Finally closes the original read-only descriptor even after a failed assertion.
+        }
+    }
+
+    private fun captureOutputFiles(): Set<File> =
+        File(instrumentation.targetContext.cacheDir, "miru-upload-capture").takeIf { it.isDirectory }
+            ?.walkTopDown()?.filter { it.isFile }?.toSet().orEmpty()
+
+    private fun actualCameraUid(): Int {
+        try { return instrumentation.targetContext.packageManager.getApplicationInfo(CAMERA_PACKAGE, 0).uid }
+        catch(_: PackageManager.NameNotFoundException) {
+            // Resolve only the already observed handler's UID through read-only package inventory.
+            // No permission identity is adopted and no camera/microphone permission is pregranted.
+            val descriptor = instrumentation.uiAutomation.executeShellCommand("cmd package list packages -U $CAMERA_PACKAGE")
+            return ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { reader ->
+                val exact = Regex("^package:com\\.android\\.camera2\\s+uid:(\\d+)\\s*$")
+                val matches = reader.lineSequence().take(32).mapNotNull {
+                    exact.matchEntire(it.trim())?.groupValues?.get(1)?.toIntOrNull()
+                }.toList()
+                assertEquals("Read-only inventory must identify exactly the actual Camera2 package UID", 1, matches.size)
+                matches.single()
+            }
+        }
+    }
+
+    private fun assertCaptureGrant(uri: Uri, uid: Int, granted: Boolean) {
+        val expected = if(granted) PackageManager.PERMISSION_GRANTED else PackageManager.PERMISSION_DENIED
+        for(flag in listOf(Intent.FLAG_GRANT_READ_URI_PERMISSION, Intent.FLAG_GRANT_WRITE_URI_PERMISSION))
+            assertEquals("The actual Camera2 output grant must match its capture lifecycle", expected,
+                instrumentation.targetContext.checkUriPermission(uri, -1, uid, flag))
+    }
+
+    private fun captureGrantDenied(uri: Uri, uid: Int): Boolean =
+        listOf(Intent.FLAG_GRANT_READ_URI_PERMISSION, Intent.FLAG_GRANT_WRITE_URI_PERMISSION).all {
+            instrumentation.targetContext.checkUriPermission(uri, -1, uid, it) == PackageManager.PERMISSION_DENIED
+        }
+
+    private fun readOriginalCaptureBytes(source: FileInputStream): ByteArray {
+        val length = source.channel.size()
+        assertTrue("A real bounded capture output must contain nonempty bytes", length in 1L..CAPTURE_BODY_LIMIT.toLong())
+        source.channel.position(0)
+        val bytes = ByteArray(length.toInt())
+        var offset = 0
+        while(offset < bytes.size) {
+            val count = source.read(bytes, offset, bytes.size - offset)
+            assertTrue("The original camera output must remain readable in full", count > 0)
+            offset += count
+        }
+        assertEquals("The finalized camera output must have exactly its observed length", -1, source.read())
+        source.channel.position(0)
+        return bytes
+    }
+
+    private fun assertCapturedJpegFormat(bytes: ByteArray) {
+        assertTrue("The actual captured image must contain JPEG framing", bytes.size > 4 &&
+            bytes[0] == 0xff.toByte() && bytes[1] == 0xd8.toByte() &&
+            bytes[bytes.lastIndex - 1] == 0xff.toByte() && bytes.last() == 0xd9.toByte())
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        assertEquals("image/jpeg", options.outMimeType)
+        assertTrue("The real JPEG decoder must report positive captured dimensions", options.outWidth > 0 && options.outHeight > 0)
+    }
+
+    private fun assertRecordedVideoFormat(source: FileInputStream) {
+        assertTrue("A completed recording must have actual bytes before parsing", source.channel.size() > 0)
+        val extractor = MediaExtractor()
+        try {
+            source.channel.position(0)
+            extractor.setDataSource(source.fd)
+            val track = (0 until extractor.trackCount).firstOrNull {
+                extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true
+            }
+            assertNotNull("The actual recorder output must contain a video track", track)
+            val selectedTrack = checkNotNull(track)
+            val format = extractor.getTrackFormat(selectedTrack)
+            assertTrue("The actual recorded video must have positive dimensions",
+                format.getInteger(MediaFormat.KEY_WIDTH) > 0 && format.getInteger(MediaFormat.KEY_HEIGHT) > 0)
+            assertTrue("The actual recorded video must have nonzero duration",
+                format.containsKey(MediaFormat.KEY_DURATION) && format.getLong(MediaFormat.KEY_DURATION) > 0)
+            extractor.selectTrack(selectedTrack)
+            assertTrue("The actual video track must contain a real encoded sample",
+                extractor.readSampleData(ByteBuffer.allocate(1024 * 1024), 0) > 0)
+        } finally {
+            extractor.release()
+            source.channel.position(0)
+        }
+    }
+
+    private fun awaitActualCameraControl(resource: String) {
+        try {
+            waitFor("The actual Camera2 control must become available: $resource", 30_000) {
+                allowCapturePermissionIfShown()
+                actualCameraControlAvailable(resource)
+            }
+        } catch(failure: AssertionError) {
+            throw AssertionError("Camera2 control=$resource; ${captureUiDiagnostics()}", failure)
+        }
+    }
+
+    private fun clickActualCameraControl(resource: String) {
+        awaitActualCameraControl(resource)
+        waitFor("The actual Camera2 control must accept the user's action: $resource") {
+            withCameraRoot { root ->
+                val nodes = root.findAccessibilityNodeInfosByViewId("$CAMERA_PACKAGE:id/$resource")
+                try { nodes.any { it.isVisibleToUser && it.isEnabled &&
+                    it.actionList.any { action -> action.id == AccessibilityNodeInfo.ACTION_CLICK } &&
+                    it.performAction(AccessibilityNodeInfo.ACTION_CLICK) } }
+                finally { nodes.forEach { it.recycle() } }
+            } == true
+        }
+    }
+
+    private fun actualCameraControlAvailable(resource: String): Boolean = withCameraRoot { root ->
+        val nodes = root.findAccessibilityNodeInfosByViewId("$CAMERA_PACKAGE:id/$resource")
+        try { nodes.any { it.isVisibleToUser && it.isEnabled &&
+            it.actionList.any { action -> action.id == AccessibilityNodeInfo.ACTION_CLICK } } }
+        finally { nodes.forEach { it.recycle() } }
+    } == true
+
+    private fun actualCameraRecordingSeconds(): Int? = withCameraRoot { root ->
+        val nodes = root.findAccessibilityNodeInfosByViewId("$CAMERA_PACKAGE:id/recording_time")
+        try {
+            nodes.firstNotNullOfOrNull { node ->
+                if(!node.isVisibleToUser) return@firstNotNullOfOrNull null
+                val time = node.text?.toString()?.substringBefore('.')?.filter { it.isDigit() || it == ':' }.orEmpty()
+                val parts = time.split(':').map { it.toIntOrNull() }
+                if(parts.any { it == null }) null else when(parts.size) {
+                    2 -> checkNotNull(parts[0]) * 60 + checkNotNull(parts[1])
+                    3 -> checkNotNull(parts[0]) * 3600 + checkNotNull(parts[1]) * 60 + checkNotNull(parts[2])
+                    else -> null
+                }
+            }
+        } finally { nodes.forEach { it.recycle() } }
+    }
+
+    /** Real system buttons only. Ordinary capture may need CAMERA for Miru and CAMERA/MIC for
+     * the external recorder. An unknown permission, including location, is never auto-allowed.
+     * The tested AVD's dialog is English; the explicit Chinese capability phrases are also safe.
+     */
+    private fun allowCapturePermissionIfShown(): Boolean {
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return false
+        try {
+            if(root.packageName?.toString() !in PERMISSION_CONTROLLER_PACKAGES) return false
+            for(namespace in PERMISSION_CONTROLLER_PACKAGES) {
+                val nodes = root.findAccessibilityNodeInfosByViewId("$namespace:id/permission_message")
+                val message = try { nodes.joinToString(" ") { it.text?.toString().orEmpty() }.lowercase(Locale.ROOT) }
+                    finally { nodes.forEach { it.recycle() } }
+                if(message.isBlank()) continue
+                val location = listOf("location", "位置信息", "位置").any(message::contains)
+                val camera = listOf("take pictures", "record video", "拍摄", "录制视频").any(message::contains)
+                val microphone = listOf("record audio", "microphone", "麦克风", "录音", "录制音频").any(message::contains)
+                assertTrue("Capture may only authorize an actual camera/microphone dialog; knownCamera=$camera knownMicrophone=$microphone location=$location",
+                    !location && (camera || microphone))
+                val seen = root.windowId to message.hashCode()
+                if(seen in capturePermissionPrompts) return false
+                for(resource in listOf("permission_allow_foreground_only_button", "permission_allow_one_time_button", "permission_allow_button")) {
+                    val buttons = root.findAccessibilityNodeInfosByViewId("$namespace:id/$resource")
+                    try {
+                        if(buttons.any { it.isVisibleToUser && it.isEnabled && it.performAction(AccessibilityNodeInfo.ACTION_CLICK) }) {
+                            capturePermissionPrompts += seen
+                            return true
+                        }
+                    } finally { buttons.forEach { it.recycle() } }
+                }
+            }
+            return false
+        } finally { root.recycle() }
+    }
+
+    private fun permissionControllerVisible(): Boolean {
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return false
+        try { return root.packageName?.toString() in PERMISSION_CONTROLLER_PACKAGES }
+        finally { root.recycle() }
+    }
+
+    private fun <T> withCameraRoot(block: (AccessibilityNodeInfo) -> T): T? {
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return null
+        try { return if(root.packageName?.toString() == CAMERA_PACKAGE) block(root) else null }
+        finally { root.recycle() }
+    }
+
+    private fun captureUiDiagnostics(): String =
+        "cameraVisible=${withCameraRoot { true } == true}, permissionVisible=${permissionControllerVisible()}, " +
+            listOf("shutter_button", "done_button", "cancel_button", "retake_button").joinToString { resource ->
+                "$resource=${actualCameraControlAvailable(resource)}"
+            } + ", realRecordingClockObserved=${actualCameraRecordingSeconds() != null}, " +
+            "captureLaunches=${captureLaunchCount.get()}, outputPresent=${captureLaunch.get()?.output != null}"
+
+    private fun cleanupActualCameraIfVisible() {
+        repeat(3) {
+            if(withCameraRoot { true } != true) return
+            val reviewBefore = actualCameraControlAvailable("cancel_button")
+            if(reviewBefore) clickActualCameraControl("cancel_button") else systemBack()
+            waitFor("The real Camera2 cancel/back action must finish or change its capture state", 10_000) {
+                withCameraRoot { true } != true || actualCameraControlAvailable("cancel_button") != reviewBefore
+            }
+        }
+        assertFalse("Fixture cleanup must not leave the actual external camera open", withCameraRoot { true } == true)
+    }
 
     private data class ExpectedUpload(val documentId: String, val name: String, val mime: String, val bytes: ByteArray)
     private fun textFixture() = ExpectedUpload("single", UploadFixtureDocumentsProvider.SINGLE_NAME,
@@ -1108,6 +1438,9 @@ class FileUploadIntegrationTest {
     }
 
     companion object {
+        private const val CAMERA_PACKAGE = "com.android.camera2"
+        private val PERMISSION_CONTROLLER_PACKAGES = setOf("com.android.permissioncontroller", "com.google.android.permissioncontroller")
+        private const val CAPTURE_BODY_LIMIT = 32 * 1024 * 1024
         private val DOCUMENTS_UI_PACKAGES = setOf("com.android.documentsui", "com.google.android.documentsui")
         private val SYNTHETIC_DOCUMENT_NAMES = listOf(UploadFixtureDocumentsProvider.SINGLE_NAME,
             UploadFixtureDocumentsProvider.SAME_NAME, UploadFixtureDocumentsProvider.PNG_NAME,
@@ -1121,7 +1454,7 @@ private fun uploadHash(bytes: ByteArray): String = MessageDigest.getInstance("SH
     .joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
 /** Reads actual HTTP bodies as bytes, without a Reader consuming ahead into the binary payload. */
-private class UploadOrigin(private val acceptedTypes: String? = "text/plain") : Closeable {
+private class UploadOrigin(private val acceptedTypes: String? = "text/plain", private val captureMode: String? = null) : Closeable {
     private val server = ServerSocket(0, 12, InetAddress.getByName("127.0.0.1"))
     private val running = AtomicBoolean(true)
     private val sockets = ConcurrentHashMap.newKeySet<Socket>()
@@ -1134,8 +1467,12 @@ private class UploadOrigin(private val acceptedTypes: String? = "text/plain") : 
     val url = "http://127.0.0.1:${server.localPort}"
 
     init {
-        require(acceptedTypes in setOf(null, "text/plain", "text/plain,image/png", "image/*", ".png")) {
+        require(acceptedTypes in setOf(null, "text/plain", "text/plain,image/png", "image/*", ".png", "video/*")) {
             "Only the fixed synthetic accept matrix may be rendered"
+        }
+        require(captureMode in setOf(null, "environment") &&
+            (captureMode == null || acceptedTypes in setOf("image/*", "video/*"))) {
+            "Only the fixed environment photo/video capture fixtures may be rendered"
         }
         thread(isDaemon = true, name = "miru-file-upload-origin") {
             while (running.get()) {
@@ -1172,7 +1509,8 @@ private class UploadOrigin(private val acceptedTypes: String? = "text/plain") : 
             headers[value.substringBefore(':').lowercase(Locale.ROOT)] = value.substringAfter(':').trim()
         }
         val length = headers["content-length"]?.toInt() ?: 0
-        check(length in 0..1_048_576)
+        val bodyLimit = if(captureMode == null) 1_048_576 else 32 * 1024 * 1024
+        check(length in 0..bodyLimit)
         val body = ByteArray(length)
         var offset = 0
         while (offset < body.size) {
@@ -1218,7 +1556,7 @@ private class UploadOrigin(private val acceptedTypes: String? = "text/plain") : 
         <!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Upload ready</title>
         <style>body{margin:0}button{display:block;width:220px;height:100px;border:0;color:white;background:#13579b}#inspect{margin-top:10px;background:#246824}</style>
         <button id="pick">Choose fixture</button><button id="inspect">Inspect selected files</button>
-        <input id="files" type="file" ${acceptedTypes?.let { "accept=\"$it\"" }.orEmpty()} ${if (multiple) "multiple" else ""} hidden>
+        <input id="files" type="file" ${acceptedTypes?.let { "accept=\"$it\"" }.orEmpty()} ${captureMode?.let { "capture=\"$it\"" }.orEmpty()} ${if (multiple) "multiple" else ""} hidden>
         <script>
         const files=document.getElementById('files');let round=0;
         async function report(label){

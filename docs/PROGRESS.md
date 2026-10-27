@@ -179,6 +179,12 @@
 - MIME扩展已重编并真实运行：首轮17/19含两项图片网格行识别失败，适配系统contentDescription后，上传整类**13/13（146.829秒）**通过（原8+新增NONE/TXT/MIXED/image通配/.png五项），全部实际文件元数据和POST字节校验，TXT/PNG/BIN完整列表过滤负例。仅测试代码增加，生产0.5.7未改；不将它写成整套回归全绿。拍照/录像handler已发现，录音handler在各audio MIME均不存在，成功capture仍待。
 - 新deep行为实测新doc DOM/visual/flow都0且实际刷新成功，SDK canUp仍true；已将原底栏测试的陈旧缓存门替换为当前doc真实页顶证明，保留原手势/GET/8与15秒时限。`057-viewport-observed-top-device.log`Core整类7/7（66.105秒）通过，生产未改，旧菜单重开及完整回归失败仍保留。扩展测试尚需整合回归，见`BROWSER-CORE-VALIDATION.md`。
 
+## B13 capture首批（0.5.8）
+
+- 真实HTML capture=environment→Miru按钮→Camera2拍照/录像/review→网页POST。测试从真实EXTRA_OUTPUT原FD验证JPEG/视频轨/尺寸/duration及原字节，Done后capture原文件和外部UID读写grant消失、document lease仍完整，关owner后删除。不用staging冒充相机源，也不伪造ActivityResult。
+- `058-camera-first-device.log`2/2（46.552秒）；`058-upload-complete-device.log`整类15/15（170.368秒），包含原8和MIME5。JVM141项及lint0错误/22警告通过。
+- 拍照实际Intent存在但data URI为空，录像有URI；空Intent、私密/取消/重建/迟到capture、音频处理器、前摄/物理机、目录及完整回归仍待。Cancel/Back均交manager处理，避免直接finish绕过等待旧结果策略。详见`B13-CAPTURE-VALIDATION.md`；0.5.8尚无release打包/运行声明。
+
 ## M3 尚待推进
 
 - 离线已接入 Media3 DownloadManager / DownloadService、HLS / DASH 清晰度与关联音轨 / 字幕、独立非 LRU 缓存、统一下载页与 upstream-free 播放。直链 MP4 保留普通下载引擎；实现与准确验证边界见 `M3-OFFLINE-VALIDATION.md`。下载进行中进程终止、真机网络 / 重启与后台矩阵仍需专项，不能用已完成项的重启恢复代替。

@@ -11,6 +11,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import app.miru.browser.engine.BrowserFileUploads
 
 /**
@@ -25,6 +26,9 @@ class UploadPickerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         token = intent.getStringExtra(BrowserFileUploads.PICKER_TOKEN_EXTRA).orEmpty()
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() { uploads.cancelPicker(token) }
+        })
         if(uploads.pickerIsPrivate(token)) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         val spacing = (24 * resources.displayMetrics.density).toInt()
         setContentView(LinearLayout(this).apply {
@@ -40,13 +44,18 @@ class UploadPickerActivity : ComponentActivity() {
             addView(Button(this@UploadPickerActivity).apply {
                 setText(R.string.page_prompt_cancel)
                 minimumHeight = (48 * resources.displayMetrics.density).toInt()
-                setOnClickListener { uploads.cancelPicker(token); finish() }
+                setOnClickListener { uploads.cancelPicker(token) }
             })
         })
         if(token.isEmpty() || !uploads.attachPickerHost(this, token)) finish()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if(BuildConfig.DEBUG && requestCode == BrowserFileUploads.PICKER_REQUEST_CODE) {
+            android.util.Log.d("MiruUploadResult", "ok=${resultCode == RESULT_OK} " +
+                "dataIntentPresent=${data != null} dataUriPresent=${data?.data != null} " +
+                "clipItems=${data?.clipData?.itemCount ?: 0}")
+        }
         if(!uploads.onActivityResult(token, requestCode, resultCode, data)) super.onActivityResult(requestCode, resultCode, data)
     }
 

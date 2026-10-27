@@ -171,7 +171,12 @@ class BrowserFileUploads internal constructor(
         }
     }
 
-    fun cancelPicker(token: String) { operation?.takeIf { it.channel == token }?.let(::abandon) }
+    fun cancelPicker(token: String) {
+        val active = operation?.takeIf { it.channel == token }
+        if(active != null) abandon(active)
+        else if(launched?.let { it.token == token && it.systemStarted } != true) finishPickerHost(token)
+        // A real OS result still in flight must retain its receiver until it returns.
+    }
 
     fun choose(token: Long, source: BrowserUploadSource = BrowserUploadSource.DOCUMENT) {
         reconcile()
