@@ -104,3 +104,11 @@ SDK 对齐、签名和原 Android Debug 证书一致性通过，独立 Python �
 完整流水线见同名 `.verification-20261026-093251-4dcff025/`，独立Gecko和ELF记录见
 `artifacts/browser-core/056-release-omni-verification.json`、`056-release-native-verification.json`。
 仍为Android Debug签名；R8运行、ARM64运行与正式发行继续待验，详见[B13上传记录](B13-FILE-UPLOAD-VALIDATION.md)。
+
+## 2026-10-27：0.5.7启动修复开发包
+
+最终`artifacts/releases/Miru-0.5.7-arm64.apk`为**108,011,752字节**，SHA
+`74e95bc52ef4bf7186f2a852ca1017392a5c36aff21060ddec714d74816d867e`。
+同名`.verification-20261027-061211-10e647bb/pipeline.json`记录全部步骤成功，1518payload完整、对齐及同Debug证书；
+`057-release-native-verification.json`验证17个ELF64/AArch64库，`057-release-omni-verification.json`验证4077+2+5资源。
+打包范围与运行门分开，详见[0.5.7记录](M1-057-STARTUP-VALIDATION.md)。

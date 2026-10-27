@@ -23,6 +23,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import mozilla.components.browser.engine.gecko.GeckoEngine
+import mozilla.components.browser.engine.gecko.webextension.GeckoWebExtension
 import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.concept.engine.EngineSession
@@ -60,6 +61,7 @@ internal class UblockController(
     private data class PendingInstall(val attempt: Long, val result: CompletableDeferred<WebExtension>)
     private var pendingInstall: PendingInstall? = null
     private var onEnabledApplied: (() -> Unit)? = null
+    private var lastDiagnosticState: String? = null
     private val popupObserver = object : EngineSession.Observer {
         override fun onWindowRequest(windowRequest: WindowRequest) {
             if (windowRequest.type == WindowRequest.Type.CLOSE) closePopup()
@@ -83,9 +85,23 @@ internal class UblockController(
 
     fun start(engine: GeckoEngine) {
         this.engine = engine
+        logLifecycle("delegate-register-before")
         engine.registerWebExtensionDelegate(delegate)
+        logLifecycle("delegate-register-after")
         retry()
     }
+
+    /** Only retain proof from the real early event; the later list supplies current metadata. */
+    fun observeEarlyReady(runtime: org.mozilla.geckoview.GeckoRuntime,
+        extension: org.mozilla.geckoview.WebExtension) {
+        if(extension.id != UBLOCK_ID) return
+        logLifecycle("early-ready-observed")
+        installation.recordGenuineReadyVersion(GeckoWebExtension(extension, runtime).getMetadata()?.version)
+        publish()
+        completeStartupIfReady()
+    }
+
+    fun observeEarlyProcessUnavailable() = delegate.onDisabledExtensionProcessSpawning()
 
     /** The setup job continues after a timeout: UI must report STARTING, never a fake success. */
     suspend fun awaitStartup() {
@@ -94,7 +110,7 @@ internal class UblockController(
         }
     }
 
-    fun retry() {
+    fun retry(allowExtensionProcessRestart: Boolean = false) {
         val target = engine ?: return
         val attempt = installation.beginAttempt() ?: run {
             Log.d("MiruAdblock", "Startup is still pending; retaining the existing native operation")
@@ -120,6 +136,10 @@ internal class UblockController(
                 }
             }
             try {
+                if(allowExtensionProcessRestart && installation.requestExtensionProcessRestart()) {
+                    logStage("extension-process-restart")
+                    target.enableExtensionProcessSpawning()
+                }
                 logStage("list")
                 val listed = suspendCancellableCoroutine<List<WebExtension>> { continuation ->
                     target.listInstalledWebExtensions({ if(continuation.isActive) continuation.resume(it) }, { if(continuation.isActive) continuation.resumeWithException(it) })
@@ -161,7 +181,9 @@ internal class UblockController(
                 while (true) {
                     val current = checkNotNull(extension)
                     if (!current.isAllowedInPrivateBrowsing()) {
+                        logLifecycle("invalidate-private-before")
                         installation.invalidateReady(current.getMetadata()?.version)
+                        logLifecycle("invalidate-private-after")
                         logStage("private-permission")
                         val permitted = suspendCancellableCoroutine<WebExtension> { continuation ->
                             target.setAllowedInPrivateBrowsing(current, true, { if(continuation.isActive) continuation.resume(it) }, { if(continuation.isActive) continuation.resumeWithException(it) })
@@ -211,7 +233,9 @@ internal class UblockController(
         val current = extension ?: return
         val desired = installation.desiredEnabled
         if (current.isEnabled() != desired) {
+            logLifecycle("invalidate-enabled-before")
             installation.invalidateReady(current.getMetadata()?.version)
+            logLifecycle("invalidate-enabled-after")
             val applied = suspendCancellableCoroutine<WebExtension> { continuation ->
                 val success: (WebExtension) -> Unit = { if(continuation.isActive) continuation.resume(it) }
                 val error: (Throwable) -> Unit = { if(continuation.isActive) continuation.resumeWithException(it) }
@@ -272,6 +296,26 @@ internal class UblockController(
             blockedCount = parseBadgeCount(badge),
             popupAvailable = currentAction() != null && installed && enabled,
         )
+        val diagnostic = diagnosticState()
+        if(diagnostic != lastDiagnosticState) {
+            lastDiagnosticState = diagnostic
+            logLifecycle("state")
+        }
+    }
+
+    /** Fixed install state only: never include tabs, origins, credentials or native message data. */
+    private fun diagnosticState(): String {
+        val value = installation.installed
+        return "status=${installation.status} phase=${installation.phase} attempt=${installation.activeAttempt} " +
+            "setup=${installation.setupFinished} nativePending=${installation.nativeInstallPending} " +
+            "installed=${value != null} enabled=${value?.enabled} private=${value?.privateAllowed} " +
+            "readyVersion=${installation.hasReadyVersion(value?.version)} desired=${installation.desiredEnabled} " +
+            "failed=${installation.error != null} processBlocked=${installation.extensionProcessBlocked} " +
+            "processRestartRequested=${installation.processRestartRequested}"
+    }
+
+    private fun logLifecycle(event: String) {
+        Log.d("MiruAdblock", "event=$event elapsedMs=${SystemClock.elapsedRealtime()} ${diagnosticState()}")
     }
 
     private fun attachSessionHandlers(value: BrowserState) {
@@ -342,6 +386,11 @@ internal class UblockController(
         override fun onInstalled(extension: WebExtension) { if(extension.id == UBLOCK_ID) { selectExtension(newestExtension(extension, this@UblockController.extension) ?: extension); publish() } }
         override fun onReady(extension: WebExtension) {
             if(extension.id != UBLOCK_ID) return
+            logLifecycle("ready-received")
+            if(installation.extensionProcessBlocked && !installation.processRestartRequested) {
+                logLifecycle("ready-ignored-process-blocked")
+                return
+            }
             // Ignore an old-version ready callback while the bundled upgrade is still pending.
             if(installation.nativeInstallPending && versionOlder(extension.getMetadata()?.version.orEmpty(), UBLOCK_VERSION)) return
             this@UblockController.extension = extension
@@ -358,11 +407,13 @@ internal class UblockController(
         }
         override fun onEnabled(extension: WebExtension) {
             if(extension.id != UBLOCK_ID) return
+            logLifecycle("enabled-received")
             selectExtension(extension); publish()
             if (installation.needsReconciliation) retry()
         }
         override fun onDisabled(extension: WebExtension) {
             if(extension.id != UBLOCK_ID) return
+            logLifecycle("disabled-received")
             selectExtension(extension); publish()
             if (installation.needsReconciliation) retry()
         }

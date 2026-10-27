@@ -118,6 +118,7 @@ class BrowserController(
 
     private var engine: GeckoEngine? = null
     private var runtime: GeckoRuntime? = null
+    private var earlyAddonReadiness: EarlyAddonReadiness? = null
     private var activeView: WeakReference<EngineView>? = null
     private var sessionStorage: SessionStorage? = null
     private val sessionWriteLock = Any()
@@ -182,9 +183,16 @@ class BrowserController(
                     .crashHandler(null)
                     .build()
                 val existingRuntime = runtime ?: GeckoRuntime.create(applicationContext, runtimeSettings).also { runtime = it }
-                // Legacy native geolocation grants would bypass Miru's per-document
-                // policy. Verify their removal before restoring or opening sessions.
+                val pendingReadiness = earlyAddonReadiness ?: if(engine == null)
+                    EarlyAddonReadiness(existingRuntime, UblockController.UBLOCK_ID).also { earlyAddonReadiness = it }
+                else null
+                Log.d("MiruAdblock", "Runtime created elapsedMs=${android.os.SystemClock.elapsedRealtime()}")
+                // No engine or extension tab handler is started before legacy native
+                // geolocation grants have been removed and verified. Only real lifecycle
+                // events are retained by the early listener while this operation yields.
+                Log.d("MiruAdblock", "Permission migration begin elapsedMs=${android.os.SystemClock.elapsedRealtime()}")
                 permissions.prepareRuntime()
+                Log.d("MiruAdblock", "Permission migration end elapsedMs=${android.os.SystemClock.elapsedRealtime()}")
                 val createdEngine = engine ?: GeckoEngine(
                     applicationContext,
                     defaultSettings = DefaultSettings(
@@ -203,6 +211,10 @@ class BrowserController(
                 engine = createdEngine
                 // Install only Miru's own extension with ensureBuiltIn. The signed uBO XPI uses install(file://).
                 ublock.start(createdEngine)
+                val earlyState = pendingReadiness?.take()
+                earlyAddonReadiness = null
+                if(earlyState?.processUnavailable == true) ublock.observeEarlyProcessUnavailable()
+                else earlyState?.ready?.let { ublock.observeEarlyReady(existingRuntime, it) }
                 cookieBridge.start(createdEngine)
                 val storage = SessionStorage(applicationContext, createdEngine, applicationScope = applicationScope)
                 sessionStorage = storage
@@ -354,7 +366,7 @@ class BrowserController(
         store.state.selectedTabId?.let { store.dispatch(ContentAction.UpdateExpandedToolbarStateAction(it, false)) }
     }
     fun setAdblockEnabled(enabled: Boolean) { ublock.setEnabled(enabled, ::reload) }
-    fun retryAdblock() = ublock.retry()
+    fun retryAdblock() = ublock.retry(allowExtensionProcessRestart = true)
     fun openAdblockPopup(): Boolean = ublock.openPopup()
     fun closeAdblockPopup() = ublock.closePopup()
     fun openAdblockDashboard(): Boolean = ublock.openDashboard()

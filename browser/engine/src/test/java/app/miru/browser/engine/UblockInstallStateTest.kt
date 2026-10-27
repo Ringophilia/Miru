@@ -151,4 +151,223 @@ class UblockInstallStateTest {
         assertEquals(AdblockStatus.READY, state.status)
         assertNull(state.error)
     }
+
+    @Test fun `disabled process spawning retires every previously ready version`() {
+        val state = UblockInstallState(true)
+        val attempt = state.beginAttempt()!!
+        state.observeReady(enabled.copy(version = "1.74.0"))
+        state.observeReady(enabled)
+        assertTrue(state.finishSetup(attempt))
+        assertEquals(AdblockStatus.READY, state.status)
+
+        state.extensionProcessUnavailable()
+
+        assertTrue(state.extensionProcessBlocked)
+        assertFalse(state.processRestartRequested)
+        assertFalse(state.hasReadyVersion("1.74.0"))
+        assertFalse(state.hasReadyVersion(enabled.version))
+        assertFalse(state.setupFinished)
+        assertEquals(UblockInstallState.PROCESS_UNAVAILABLE_ERROR, state.error)
+        assertEquals(AdblockStatus.FAILED, state.status)
+    }
+
+    @Test fun `metadata completion releases its attempt without clearing the process block`() {
+        val state = UblockInstallState(true)
+        state.extensionProcessUnavailable()
+        repeat(2) {
+            val attempt = state.beginAttempt()!!
+            assertEquals(UblockInstallState.PROCESS_UNAVAILABLE_ERROR, state.error)
+            assertEquals(AdblockStatus.FAILED, state.status)
+            state.observeInstalled(enabled)
+            assertTrue(state.startSetup(attempt))
+            assertTrue("Metadata setup must end rather than loop forever", state.finishSetup(attempt))
+            assertTrue(state.setupFinished)
+            assertNull(state.activeAttempt)
+            assertNull(state.phase)
+            assertTrue(state.extensionProcessBlocked)
+            assertFalse(state.processRestartRequested)
+            assertFalse(state.hasReadyVersion(enabled.version))
+            assertEquals(UblockInstallState.PROCESS_UNAVAILABLE_ERROR, state.error)
+            assertEquals(AdblockStatus.FAILED, state.status)
+        }
+    }
+
+    @Test fun `unsolicited late ready neither updates metadata nor starts automatic recovery while blocked`() {
+        val state = UblockInstallState(true)
+        val beforeFailure = enabled.copy(privateAllowed = false)
+        state.observeInstalled(beforeFailure)
+        state.extensionProcessUnavailable()
+
+        repeat(3) {
+            assertFalse(state.observeReady(enabled))
+            assertEquals(beforeFailure, state.installed)
+            assertFalse(state.hasReadyVersion(enabled.version))
+            assertFalse(state.needsReconciliation)
+            assertNull(state.activeAttempt)
+            assertTrue(state.extensionProcessBlocked)
+            assertFalse(state.processRestartRequested)
+            assertEquals(UblockInstallState.PROCESS_UNAVAILABLE_ERROR, state.error)
+            assertEquals(AdblockStatus.FAILED, state.status)
+        }
+    }
+
+    @Test fun `restart intent requires a blocked process and does not itself prove readiness`() {
+        val state = UblockInstallState(true)
+        assertFalse(state.requestExtensionProcessRestart())
+        assertFalse(state.processRestartRequested)
+        state.extensionProcessUnavailable()
+        val firstAttempt = state.beginAttempt()!!
+        assertTrue(state.requestExtensionProcessRestart())
+        assertTrue(state.extensionProcessBlocked)
+        assertTrue(state.processRestartRequested)
+        assertFalse(state.hasReadyVersion(enabled.version))
+        assertEquals(AdblockStatus.FAILED, state.status)
+        assertTrue(state.fail(firstAttempt, "InstalledListException"))
+        assertTrue(state.extensionProcessBlocked)
+        assertTrue(state.processRestartRequested)
+        val attempt = state.beginAttempt()!!
+        assertTrue("A later explicit retry must not be blocked by the earlier request", state.requestExtensionProcessRestart())
+        assertEquals(UblockInstallState.PROCESS_UNAVAILABLE_ERROR, state.error)
+        state.observeInstalled(enabled)
+        assertTrue(state.finishSetup(attempt))
+        assertEquals("Listed metadata after restart is still not a native ready event", AdblockStatus.FAILED, state.status)
+
+        assertFalse(state.observeReady(enabled))
+        assertFalse(state.extensionProcessBlocked)
+        assertFalse(state.processRestartRequested)
+        assertTrue(state.hasReadyVersion(enabled.version))
+        assertNull(state.error)
+        assertEquals(AdblockStatus.READY, state.status)
+        assertFalse(state.requestExtensionProcessRestart())
+    }
+
+    @Test fun `real ready after an explicit restart still requires complete privacy setup`() {
+        val state = UblockInstallState(true)
+        state.extensionProcessUnavailable()
+        val attempt = state.beginAttempt()!!
+        assertTrue(state.requestExtensionProcessRestart())
+        state.observeReady(enabled.copy(privateAllowed = false))
+
+        assertFalse(state.extensionProcessBlocked)
+        assertFalse(state.processRestartRequested)
+        assertNull(state.error)
+        assertFalse(state.finishSetup(attempt))
+        assertEquals(AdblockStatus.INSTALLING, state.status)
+        state.invalidateReady(enabled.version)
+        state.observeInstalled(enabled)
+        assertTrue(state.finishSetup(attempt))
+        assertEquals("Changing private permission must await its own real ready", AdblockStatus.INSTALLING, state.status)
+        state.observeReady(enabled)
+        assertEquals(AdblockStatus.READY, state.status)
+    }
+
+    @Test fun `another process failure revokes an earlier restart request and ready event`() {
+        val state = UblockInstallState(true)
+        state.extensionProcessUnavailable()
+        assertTrue(state.requestExtensionProcessRestart())
+        state.extensionProcessUnavailable()
+
+        assertFalse(state.processRestartRequested)
+        assertFalse(state.observeReady(enabled))
+        assertTrue(state.extensionProcessBlocked)
+        assertFalse(state.hasReadyVersion(enabled.version))
+        assertEquals(AdblockStatus.FAILED, state.status)
+        val attempt = state.beginAttempt()!!
+        assertTrue(state.requestExtensionProcessRestart())
+        state.observeReady(enabled)
+        assertTrue(state.finishSetup(attempt))
+        assertEquals(AdblockStatus.READY, state.status)
+    }
+
+    @Test fun `process failure and deadlines keep the unfinished native install occupied`() {
+        val state = UblockInstallState(true)
+        val attempt = state.beginAttempt()!!
+        assertTrue(state.startNativeInstall(attempt))
+        state.extensionProcessUnavailable()
+
+        repeat(3) {
+            assertTrue(state.deadlineExceeded(attempt))
+            assertNull(state.beginAttempt())
+            assertEquals(attempt, state.activeAttempt)
+            assertTrue(state.nativeInstallPending)
+            assertFalse(state.observeReady(enabled))
+            assertEquals(UblockInstallState.PROCESS_UNAVAILABLE_ERROR, state.error)
+            assertEquals(AdblockStatus.FAILED, state.status)
+        }
+        assertTrue(state.finishNativeInstall(attempt))
+        state.observeInstalled(enabled)
+        assertTrue(state.finishSetup(attempt))
+        assertNull(state.activeAttempt)
+        assertFalse(state.nativeInstallPending)
+        assertEquals(AdblockStatus.FAILED, state.status)
+        assertTrue(state.extensionProcessBlocked)
+        assertFalse(state.processRestartRequested)
+    }
+
+    @Test fun `ready after a requested process restart does not clear an unrelated configuration failure`() {
+        val state = UblockInstallState(true)
+        state.extensionProcessUnavailable()
+        val attempt = state.beginAttempt()!!
+        assertTrue(state.requestExtensionProcessRestart())
+        assertTrue(state.startSetup(attempt))
+        assertTrue(state.fail(attempt, "PrivatePermissionException"))
+
+        assertFalse(state.observeReady(enabled))
+        assertFalse(state.extensionProcessBlocked)
+        assertFalse(state.processRestartRequested)
+        assertEquals("PrivatePermissionException", state.error)
+        assertFalse(state.needsReconciliation)
+        assertEquals(AdblockStatus.FAILED, state.status)
+        val retry = state.beginAttempt()!!
+        assertTrue(state.startSetup(retry))
+        state.observeInstalled(enabled)
+        assertTrue(state.finishSetup(retry))
+        assertEquals(AdblockStatus.READY, state.status)
+    }
+
+    @Test fun `disabled metadata cannot hide the process block as an ordinary disabled setting`() {
+        val state = UblockInstallState(false)
+        state.extensionProcessUnavailable()
+        val attempt = state.beginAttempt()!!
+        state.observeInstalled(enabled.copy(enabled = false))
+        assertTrue(state.finishSetup(attempt))
+
+        assertEquals(AdblockStatus.FAILED, state.status)
+        assertTrue(state.extensionProcessBlocked)
+        assertEquals(UblockInstallState.PROCESS_UNAVAILABLE_ERROR, state.error)
+    }
+
+    @Test fun `an early real ready version cannot overwrite the current listed enabled and private flags`() {
+        val state = UblockInstallState(true)
+        val attempt = state.beginAttempt()!!
+        val listed = enabled.copy(enabled = false, privateAllowed = false)
+        state.observeInstalled(listed)
+
+        assertTrue(state.recordGenuineReadyVersion(enabled.version))
+
+        assertSame("Version evidence must leave the actual current metadata object untouched", listed, state.installed)
+        assertFalse(state.installed!!.enabled)
+        assertFalse(state.installed!!.privateAllowed)
+        assertTrue(state.hasReadyVersion(enabled.version))
+        assertFalse(state.finishSetup(attempt))
+        assertNotEquals(AdblockStatus.READY, state.status)
+    }
+
+    @Test fun `an old genuine ready version plus a newer installed list is not a new version ready event`() {
+        val state = UblockInstallState(true)
+        val attempt = state.beginAttempt()!!
+        assertTrue(state.recordGenuineReadyVersion("1.74.0"))
+        assertNull("An early ready version does not invent installed metadata", state.installed)
+        assertFalse(state.finishSetup(attempt))
+
+        state.observeInstalled(enabled)
+        assertTrue(state.finishSetup(attempt))
+        assertTrue(state.hasReadyVersion("1.74.0"))
+        assertFalse(state.hasReadyVersion(enabled.version))
+        assertEquals("Listing the new version cannot supply its missing ready event", AdblockStatus.INSTALLING, state.status)
+
+        assertTrue(state.recordGenuineReadyVersion(enabled.version))
+        assertSame(enabled, state.installed)
+        assertEquals(AdblockStatus.READY, state.status)
+    }
 }

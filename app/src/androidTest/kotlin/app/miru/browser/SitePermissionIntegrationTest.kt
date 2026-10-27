@@ -24,7 +24,10 @@ import app.miru.data.BrowsingDataType
 import java.io.Closeable
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import kotlinx.coroutines.runBlocking
@@ -44,6 +47,8 @@ class SitePermissionIntegrationTest {
     private val context get() = instrumentation.targetContext
     private val browser get() = (compose.activity.application as MiruApplication).container.browser
     private val tabs = mutableListOf<String>()
+    private class FixtureDocument(val origin: PermissionOrigin, var url: String)
+    private val documents = mutableMapOf<String, FixtureDocument>()
     private var tracePermissions = false
     private var restoreConsole: (() -> Unit)? = null
 
@@ -107,14 +112,18 @@ class SitePermissionIntegrationTest {
             compose.onNodeWithContentDescription(context.getString(app.miru.toolbar.R.string.toolbar_site_info)).performClick()
             val state = awaitSite(owner)
             assertEquals(SitePermissionChoice.BLOCK, state.choices[SitePermissionKind.LOCATION])
+            val beforeResetDocument = first.latestServedDocumentId()
             compose.onNodeWithText(context.getString(R.string.site_permission_reset)).performScrollTo().performClick()
             compose.waitUntil(10_000) { browser.permissions.siteState.value?.let {
                 !it.busy && !it.error && it.choices[SitePermissionKind.LOCATION] == SitePermissionChoice.ASK
             } == true }
             compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+            // Reset itself reloads affected documents. Complete that real navigation
+            // before retaining the separate explicit-reload action below.
+            awaitReadyDocument(owner, first, "${first.url}/location", afterDocumentId = beforeResetDocument)
             reload(owner)
             request()
-            awaitPrompt(first)
+            awaitPromptWithDocumentEvidence(first, owner, "reset-then-reload", "${first.url}/location")
         } }
     }
 
@@ -180,8 +189,7 @@ class SitePermissionIntegrationTest {
             assertNotEquals("The actual Gecko permission grant must not be rejected", "Permission denied",
                 browser.state.value.tabs.first { it.id == owner }.title)
             awaitSite(owner) // Also verifies no unexpected native GEO override remains.
-            compose.runOnIdle { browser.navigate("${origin.url}/location?next-document=1") }
-            title(owner, "Permission ready")
+            navigateDocument(owner, origin, "${origin.url}/location?next-document=1")
             request()
             assertNotEquals("A temporary grant cannot authorize another document", original.token, awaitPrompt(origin).token)
         }
@@ -208,33 +216,91 @@ class SitePermissionIntegrationTest {
             val owner = page(origin, "location")
             request()
             val old = awaitPrompt(origin)
-            compose.runOnIdle { browser.navigate("${origin.url}/idle?new-document=1") }
-            title(owner, "Permission ready")
+            navigateDocument(owner, origin, "${origin.url}/idle?new-document=1")
             compose.waitUntil(10_000) { browser.permissions.prompt.value == null }
             compose.runOnIdle { browser.permissions.answer(old.token, allow = true, remember = true) }
             assertEquals(SitePermissionChoice.ASK, awaitSite(owner).choices[SitePermissionKind.LOCATION])
-            compose.runOnIdle { browser.navigate("${origin.url}/location?new-document=2") }
-            title(owner, "Permission ready")
+            navigateDocument(owner, origin, "${origin.url}/location?new-document=2")
             request()
-            assertNotEquals(old.token, awaitPrompt(origin).token)
+            assertNotEquals(old.token, awaitPromptWithDocumentEvidence(origin, owner,
+                "replace-idle-with-location", "${origin.url}/location?new-document=2").token)
         }
     }
 
     private fun page(origin: PermissionOrigin, mode: String, private: Boolean = false, expectedTitle: String = "Permission ready"): String {
         var id = ""
-        compose.runOnIdle { id = browser.newTab("${origin.url}/$mode", isPrivate = private); tabs += id }
+        val destination = "${origin.url}/$mode"
+        val previousDocument = origin.latestServedDocumentId()
+        compose.runOnIdle {
+            id = browser.newTab(destination, isPrivate = private)
+            tabs += id
+            documents[id] = FixtureDocument(origin, destination)
+        }
         // An automatic permission request may pause load completion until it is
-        // answered. Its native prompt, rather than loading=false, is the signal.
-        if(!mode.endsWith("-auto")) title(id, expectedTitle)
+        // answered. Prove its new HTTP document, actual script request and native
+        // origin/privacy instead of requiring loading=false or taking a private screenshot.
+        if(mode.endsWith("-auto")) compose.waitUntil(20_000) {
+            val served = origin.latestDocumentId(destination)
+            val tab = browser.state.value.tabs.firstOrNull { it.id == id }
+            served > previousDocument && origin.requestRecorded(served) &&
+                tab != null && tab.url == destination && tab.title == expectedTitle &&
+                browser.state.value.selectedTabId == id && browser.permissions.prompt.value?.let {
+                    it.origin == origin.url && it.isPrivate == private
+                } == true
+        } else {
+            awaitReadyDocument(id, origin, destination, afterDocumentId = previousDocument)
+            if(expectedTitle != "Permission ready") title(id, expectedTitle)
+        }
         return id
     }
 
     private fun reload(id: String) {
-        compose.runOnIdle { browser.reload() }
-        title(id, "Permission ready")
+        val document = checkNotNull(documents[id])
+        val previousDocument = document.origin.latestServedDocumentId()
+        compose.runOnIdle {
+            assertEquals("Reload must address the original fixture owner", id, browser.state.value.selectedTabId)
+            browser.reload()
+        }
+        awaitReadyDocument(id, document.origin, document.url, afterDocumentId = previousDocument)
+    }
+
+    private fun navigateDocument(id: String, origin: PermissionOrigin, destination: String) {
+        val previousDocument = origin.latestServedDocumentId()
+        compose.runOnIdle {
+            assertEquals("Navigation must address the original fixture owner", id, browser.state.value.selectedTabId)
+            checkNotNull(documents[id]).url = destination
+            browser.navigate(destination)
+        }
+        awaitReadyDocument(id, origin, destination, afterDocumentId = previousDocument)
+    }
+
+    private fun awaitReadyDocument(id: String, origin: PermissionOrigin, destination: String,
+        afterDocumentId: Int = 0) {
+        try {
+            compose.waitUntil(30_000) {
+                val served = origin.latestDocumentId(destination)
+                browser.state.value.tabs.firstOrNull { it.id == id }?.let { tab ->
+                    served > afterDocumentId && browser.state.value.selectedTabId == id &&
+                        tab.url == destination && !tab.loading &&
+                        tab.title == "Permission ready $served" && origin.readyRecorded(served)
+                } == true
+            }
+        } catch(failure: Throwable) {
+            val served = origin.latestDocumentId(destination)
+            val tab = browser.state.value.tabs.firstOrNull { it.id == id }
+            throw AssertionError("Permission document readiness: after=$afterDocumentId, served=$served, " +
+                "ownerPresent=${tab != null}, ownerSelected=${browser.state.value.selectedTabId == id}, " +
+                "urlMatches=${tab?.url == destination}, titleMatches=${tab?.title == "Permission ready $served"}, " +
+                "rafRecorded=${origin.readyRecorded(served)}, loading=${tab?.loading}; ${origin.documentEvidence()}", failure)
+        }
     }
 
     private fun title(id: String, expected: String) {
+        if(expected == "Permission ready") {
+            val document = checkNotNull(documents[id])
+            awaitReadyDocument(id, document.origin, document.url)
+            return
+        }
         try { compose.waitUntil(30_000) { browser.state.value.tabs.firstOrNull { it.id == id }?.let { it.title == expected && !it.loading } == true } }
         catch(failure: Throwable) { throw AssertionError("Expected $expected; current title=${browser.state.value.tabs.firstOrNull { it.id == id }?.title}", failure) }
     }
@@ -245,6 +311,61 @@ class SitePermissionIntegrationTest {
         assertEquals(origin.url, prompt.origin)
         compose.onNodeWithText(context.getString(R.string.site_permission_request)).assertIsDisplayed()
         return prompt
+    }
+
+    private fun awaitPromptWithDocumentEvidence(origin: PermissionOrigin, owner: String,
+        stage: String, expectedUrl: String): SitePermissionPrompt {
+        try { return awaitPrompt(origin) }
+        catch (failure: Throwable) {
+            val state = browser.state.value
+            val tab = state.tabs.firstOrNull { it.id == owner }
+            val site = browser.permissions.siteState.value
+            val title = when {
+                tab?.title?.startsWith("Permission ready ") == true -> "ready"
+                tab?.title == "Permission pending" -> "pending"
+                tab?.title == "Permission denied" -> "denied"
+                tab?.title == "Permission located" -> "located"
+                tab?.title == "Permission 2" -> "provider-unavailable"
+                tab?.title == "Permission 3" -> "provider-timeout"
+                else -> "other"
+            }
+            throw AssertionError("Permission fixture stage=$stage; ${origin.documentEvidence()}; " +
+                "ownerPresent=${tab != null}, ownerSelected=${state.selectedTabId == owner}, " +
+                "ownerUrlMatches=${tab?.url == expectedUrl}, title=$title, loading=${tab?.loading}, " +
+                "crashed=${tab?.crashed}, promptPresent=${browser.permissions.prompt.value != null}, " +
+                "runtimePending=${browser.permissions.runtimeRequest.value != null}, " +
+                "siteOwnerMatches=${site?.tabId == owner}, siteBusy=${site?.busy}, siteError=${site?.error}, " +
+                "siteLocation=${site?.choices?.get(SitePermissionKind.LOCATION)}, " +
+                "${permissionCoordinatorEvidence()}", failure)
+        }
+    }
+
+    /** Pinned coordinator fields are read only after a real fixture times out. Never print
+     * requests, origins, tab IDs, object references or callback payloads and never invoke them.
+     */
+    private fun permissionCoordinatorEvidence(): String {
+        var evidence = "coordinator=unobserved"
+        compose.runOnIdle {
+            evidence = runCatching {
+                fun field(target: Any, name: String): Any? = target.javaClass.getDeclaredField(name)
+                    .apply { isAccessible = true }.get(target)
+                val permissions = browser.permissions
+                val pending = field(permissions, "current")
+                val request = pending?.let { field(it, "request") }
+                val owner = pending?.let { field(it, "owner") }
+                val binding = owner?.let { field(it, "binding") }
+                val requestState = if (request?.javaClass?.simpleName == "Content")
+                    "contentCompleted=${field(request, "isCompleted")}, nativeResultCount=${(field(request, "geckoResults") as? List<*>)?.size}"
+                else "contentPresent=${request != null}"
+                "capturedCount=${(field(permissions, "captured") as? Map<*, *>)?.size}, " +
+                    "pendingCount=${(field(permissions, "requests") as? Map<*, *>)?.size}, " +
+                    "queueCount=${(field(permissions, "queue") as? Collection<*>)?.size}, " +
+                    "currentPresent=${pending != null}, currentComplete=${pending?.let { field(it, "complete") }}, " +
+                    "ownerGenerationMatches=${owner != null && binding != null && field(owner, "generation") == field(binding, "generation")}, " +
+                    "clearing=${field(permissions, "clearing")}, $requestState"
+            }.getOrElse { "coordinatorDiagnosticFailure=${it.javaClass.simpleName}" }
+        }
+        return evidence
     }
 
     private fun awaitSite(id: String): SitePermissionState {
@@ -295,6 +416,9 @@ class SitePermissionIntegrationTest {
     }
 
     private fun request() {
+        val owner = checkNotNull(browser.state.value.selectedTabId)
+        val document = checkNotNull(documents[owner])
+        awaitReadyDocument(owner, document.origin, document.url)
         // Require an actual Gecko frame before touching its fixture button.
         val density = context.resources.displayMetrics.density
         compose.waitUntil(8_000) {
@@ -321,6 +445,36 @@ private class PermissionOrigin : Closeable {
     private val running = AtomicBoolean(true)
     val url = "http://127.0.0.1:${server.localPort}"
     val mediaFailure = AtomicReference<String?>()
+    private val documentSequence = AtomicInteger()
+    private val servedDocuments = ConcurrentHashMap<Int, String>()
+    private val servedTargets = ConcurrentHashMap<Int, String>()
+    private val readyDocuments = ConcurrentHashMap.newKeySet<Int>()
+    private val requestedDocuments = ConcurrentHashMap.newKeySet<Int>()
+    private val events = ConcurrentLinkedDeque<String>()
+
+    fun latestServedDocumentId(): Int = documentSequence.get()
+    fun latestDocumentId(destination: String): Int = servedTargets.entries
+        .filter { it.value == destination.removePrefix(url) }.maxOfOrNull { it.key } ?: 0
+    fun readyRecorded(documentId: Int): Boolean = documentId in readyDocuments
+    fun requestRecorded(documentId: Int): Boolean = documentId in requestedDocuments
+
+    fun documentEvidence(): String = "documents=${servedDocuments.toSortedMap().entries.joinToString { "${it.key}:${it.value}" }}, " +
+        "events=${events.joinToString(prefix = "[", postfix = "]")}"
+
+    private fun recordDocumentEvent(target: String) {
+        val values = target.substringAfter('?', "").split('&').associate {
+            it.substringBefore('=') to it.substringAfter('=', "")
+        }
+        val sequence = values["document"]?.toIntOrNull() ?: return
+        val event = values["event"]?.takeIf { it in setOf("ready", "request", "located", "result-1", "result-2", "result-3") } ?: return
+        val kind = servedDocuments[sequence] ?: return
+        val visible = values["visible"] == "true"
+        val focused = values["focused"] == "true"
+        if(event == "ready") readyDocuments += sequence
+        if(event == "request") requestedDocuments += sequence
+        events.addLast("doc=$sequence:$kind/$event visible=$visible focused=$focused")
+        while (events.size > 24) events.pollFirst()
+    }
     init { thread(isDaemon = true, name = "miru-permission-origin") {
         while(running.get()) runCatching {
             val socket = server.accept()
@@ -330,19 +484,33 @@ private class PermissionOrigin : Closeable {
                 val target = reader.readLine()?.split(' ')?.getOrNull(1).orEmpty()
                 val path = target.substringBefore('?')
                 while(!reader.readLine().isNullOrEmpty()) { }
+                if(path == "/permission-fixture-event") recordDocumentEvent(target)
                 if(path == "/media-failure") {
                     val decoded = java.net.URLDecoder.decode(target.substringAfter("?data=", ""), "UTF-8")
                     mediaFailure.set(decoded.take(2048).replace(Regex("https?://[^\\s\\\"]+"), "[fixture-url]"))
                 }
+                val documentKind = when(path) {
+                    "/location" -> "location"
+                    "/location-auto" -> "location-auto"
+                    "/idle" -> "idle"
+                    "/media" -> "media"
+                    else -> null
+                }
+                val documentId = if(documentKind != null) documentSequence.incrementAndGet().also {
+                    servedDocuments[it] = documentKind
+                    servedTargets[it] = target
+                } else 0
                 val script = when(path) {
                     "/media" -> "navigator.mediaDevices.getUserMedia({audio:true,video:true}).then(s=>{document.title='Permission live '+s.getTracks().filter(t=>t.readyState==='live').map(t=>t.kind).sort().join(',');s.getTracks().forEach(t=>t.stop())}).catch(e=>{const d={name:e.name,message:String(e.message).slice(0,512),focused:document.hasFocus(),visible:document.visibilityState,secure:globalThis.isSecureContext,activated:navigator.userActivation?.isActive,camera:document.permissionsPolicy?.allowsFeature('camera')??'unknown',microphone:document.permissionsPolicy?.allowsFeature('microphone')??'unknown'};fetch('/media-failure?data='+encodeURIComponent(JSON.stringify(d)));document.title='Permission '+(e.name==='NotAllowedError'?'denied':e.name)})"
-                    "/location", "/location-auto" -> "navigator.geolocation.getCurrentPosition(p=>{document.title='Permission located'},e=>{document.title='Permission '+(e.code===1?'denied':e.code)},{timeout:10000})"
-                    else -> "document.title='Permission ready'"
+                    "/location", "/location-auto" -> "navigator.geolocation.getCurrentPosition(p=>{fixtureEvent('located');document.title='Permission located'},e=>{fixtureEvent('result-'+e.code);document.title='Permission '+(e.code===1?'denied':e.code)},{timeout:10000})"
+                    else -> "document.title='Permission ready $documentId'"
                 }
-                val body = ("<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'><title>Permission ready</title>" +
+                val body = ("<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'><title>Permission loading $documentId</title>" +
                     "<style>body{margin:0}button{background:#13579b;color:white;width:220px;height:100px;border:0}</style>" +
                     "<button onclick='requestPermission()'>Request permission</button>" +
-                    "<script>function requestPermission(){document.title='Permission pending';$script}</script>" +
+                    "<script>function fixtureEvent(event){fetch('/permission-fixture-event?document=$documentId&event='+event+'&visible='+(document.visibilityState==='visible')+'&focused='+document.hasFocus())}" +
+                    "let fixtureRequested=false;function requestPermission(){fixtureRequested=true;fixtureEvent('request');document.title='Permission pending';$script}" +
+                    "requestAnimationFrame(()=>requestAnimationFrame(()=>{if(!fixtureRequested)document.title='Permission ready $documentId';fixtureEvent('ready')}))</script>" +
                     if(path == "/location-auto") "<script>addEventListener('load',requestPermission,{once:true})</script>" else "").toByteArray()
                 client.getOutputStream().apply {
                     write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n".toByteArray())

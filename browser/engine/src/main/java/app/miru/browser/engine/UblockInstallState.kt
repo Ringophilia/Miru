@@ -24,12 +24,17 @@ internal class UblockInstallState(initialEnabled: Boolean) {
         private set
     var error: String? = null
         private set
+    var extensionProcessBlocked = false
+        private set
+    var processRestartRequested = false
+        private set
     private var failedPhase: Phase? = null
     private var sequence = 0L
     private val readyVersions = mutableSetOf<String>()
 
     val status: AdblockStatus
         get() = when {
+            extensionProcessBlocked -> AdblockStatus.FAILED
             error != null -> AdblockStatus.FAILED
             installed?.enabled == false && !desiredEnabled -> AdblockStatus.DISABLED
             setupFinished && desiredEnabled && installed?.enabled == true &&
@@ -43,7 +48,7 @@ internal class UblockInstallState(initialEnabled: Boolean) {
         activeAttempt = attempt
         phase = Phase.LISTING
         setupFinished = false
-        error = null
+        error = if (extensionProcessBlocked) PROCESS_UNAVAILABLE_ERROR else null
         failedPhase = null
         return attempt
     }
@@ -71,16 +76,30 @@ internal class UblockInstallState(initialEnabled: Boolean) {
 
     fun observeInstalled(value: Installed) { installed = value }
 
+    /** Retain a real event's version without replacing subsequently listed enabled/private state. */
+    fun recordGenuineReadyVersion(version: String?): Boolean {
+        // A queued ready from before Gecko disabled process spawning is stale. Only a
+        // real ready following the user's explicit restart request can lift this gate.
+        if (extensionProcessBlocked) {
+            if (!processRestartRequested) return false
+            extensionProcessBlocked = false
+            processRestartRequested = false
+            if (error == PROCESS_UNAVAILABLE_ERROR) error = null
+        }
+        version?.let(readyVersions::add)
+        return true
+    }
+
     /** Returns true only when a native install failure can be reconciled through a fresh list. */
     fun observeReady(value: Installed): Boolean {
+        if (!recordGenuineReadyVersion(value.version)) return false
         installed = value
-        value.version?.let(readyVersions::add)
         if (activeAttempt != null) clearDeadlineError()
         return needsReconciliation || (activeAttempt == null && !setupFinished && error != null && failedPhase != Phase.CONFIGURING)
     }
 
     val needsReconciliation: Boolean
-        get() = activeAttempt == null && failedPhase != Phase.CONFIGURING && installed?.let {
+        get() = !extensionProcessBlocked && activeAttempt == null && failedPhase != Phase.CONFIGURING && installed?.let {
             it.enabled != desiredEnabled || !it.privateAllowed
         } == true
 
@@ -97,7 +116,7 @@ internal class UblockInstallState(initialEnabled: Boolean) {
     /** Leaves the native operation occupied; Retry cannot start a second installation. */
     fun deadlineExceeded(attempt: Long): Boolean {
         if (activeAttempt != attempt) return false
-        error = DEADLINE_ERROR
+        if (!extensionProcessBlocked) error = DEADLINE_ERROR
         return true
     }
 
@@ -108,7 +127,7 @@ internal class UblockInstallState(initialEnabled: Boolean) {
         setupFinished = true
         activeAttempt = null
         phase = null
-        error = null
+        error = if (extensionProcessBlocked) PROCESS_UNAVAILABLE_ERROR else null
         failedPhase = null
         return true
     }
@@ -126,13 +145,26 @@ internal class UblockInstallState(initialEnabled: Boolean) {
     }
 
     fun extensionProcessUnavailable() {
+        readyVersions.clear()
+        extensionProcessBlocked = true
+        processRestartRequested = false
         setupFinished = false
-        error = "ExtensionProcessUnavailable"
+        error = PROCESS_UNAVAILABLE_ERROR
+    }
+
+    /** Records explicit user intent; neither metadata setup nor automatic reconciliation calls it. */
+    fun requestExtensionProcessRestart(): Boolean {
+        if (!extensionProcessBlocked) return false
+        processRestartRequested = true
+        return true
     }
 
     private fun clearDeadlineError() {
         if (error == DEADLINE_ERROR) error = null
     }
 
-    companion object { const val DEADLINE_ERROR = "TimeoutCancellationException" }
+    companion object {
+        const val DEADLINE_ERROR = "TimeoutCancellationException"
+        const val PROCESS_UNAVAILABLE_ERROR = "ExtensionProcessUnavailable"
+    }
 }

@@ -101,7 +101,7 @@ Miru 的取舍遵循产品规范 [MIRU-SPEC.md](MIRU-SPEC.md)（唯一需求来�
 | **M4** | 动效、网站矩阵、真机性能、完整验收 | ⚪ 未开始 |
 | **iOS** | 按规范在 Android M4 之后启动 | ⚪ 未开始 |
 
-最新已验证打包为 **0.5.6 ARM64开发包，108,007,656字节**，仍使用Android Debug签名；具体证据与剩余门见[上传验收记录](docs/B13-FILE-UPLOAD-VALIDATION.md)。
+最新已验证打包为 **0.5.7 ARM64开发包，108,011,752字节**，仍使用Android Debug签名；启动修复及剩余门见[0.5.7记录](docs/M1-057-STARTUP-VALIDATION.md)，上传范围见[上传验收记录](docs/B13-FILE-UPLOAD-VALIDATION.md)。
 
 <details>
 <summary><b>历史已验证打包：0.5.4（ARM64 开发包）</b></summary>

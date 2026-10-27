@@ -169,6 +169,13 @@
 - `56a22a1`固定APK完整106项终态 **102通过/4失败（1328.953秒）**；上传及全部页面提示通过，剩余uBO READY、两项定位重新询问、QUALITY benchmark。uBO同APK隔离复跑1/1（34.377秒）仍不抵消整套失败；0.5.7开始补阶段诊断，未放宽超时、帧数或授权策略。
 - 目录二次确认、capture、完整MIME/私密/保存状态、初始blank/popup文档握手、完整回归、R8/ARM64运行及正式签名仍待。细节和各轮固定APK摘要见`B13-FILE-UPLOAD-VALIDATION.md`。
 
+## 0.5.7 启动事件与回归修复
+
+- 实际诊断捕获uBO OnReady在GEO迁移期间无监听，配置完成仍INSTALLING；现于Runtime创建后只监听并保留真实生命周期事件，迁移完成后再构造正常engine、接管事件和恢复页面。非metadata伪造READY，旧缓存不覆盖列表的新enabled/private值；扩展进程失效使证据作废，只有用户明确重试后的真实READY可解除阻断。
+- 两项定位测试改以实际URL/递增docID/同ID双rAF和Native prompt来源/私密性判定文档，不改生产权限策略与原等待期限；benchmark只增加数值阶段诊断，不改45秒/60帧/画质门。
+- JVM141/141、最终lint0错误/22警告、R8 release构建通过；fresh首装1/1、已安装profile两轮各1/1，独立系统3/3、站点整类6/6分别通过。当前启动轮均未观察非空early handoff，不能声称该竞争分支已实机覆盖。
+- ARM64开发包108,011,752字节，SHA `74e95bc52ef4bf7186f2a852ca1017392a5c36aff21060ddec714d74816d867e`，1518payload/对齐/同Debug证书/17库/4077+2+5资源通过。完整回归、真实旧GEO迁移与进程崩溃、多轮真机、R8/ARM64运行及正式发行仍待，见`M1-057-STARTUP-VALIDATION.md`。
+
 ## M3 尚待推进
 
 - 离线已接入 Media3 DownloadManager / DownloadService、HLS / DASH 清晰度与关联音轨 / 字幕、独立非 LRU 缓存、统一下载页与 upstream-free 播放。直链 MP4 保留普通下载引擎；实现与准确验证边界见 `M3-OFFLINE-VALIDATION.md`。下载进行中进程终止、真机网络 / 重启与后台矩阵仍需专项，不能用已完成项的重启恢复代替。
