@@ -82,5 +82,15 @@ page/reload/navigate及触摸前同时检查实际目标URL、对应docID标题�
 GEO/导航两项精确修改和5项官方新增，omni仍为`f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`。
 R8 release构建及最终lint 0错误/22警告通过；没有ARM64/R8运行或正式签名声明。
 
-最终完整回归、非空早期事件交接及release运行仍需证据。
+## 已提交版本完整常规回归
+
+提交`041ec81`的固定包、API35/x86_64/SwiftShader，`057-full-device.log`终态为
+**103/106通过、3失败，883.116秒**；输入、逐项结果及运行阶段见`057-full-input.json`、`057-full-result.json`、`057-full-runtime.log`。
+uBO READY、此前两项定位重新询问、全部页面提示和上传均通过；没有把旧失败删除或将隔离通过拼接成全绿。
+
+- 底栏L213隐藏与L221恢复已通过，失败是新导航后L224的`canScrollVerticallyUp`页顶判断。原GET/loading门未核对新URL/owner，SDK DOM滚动缓存与Compositor流也需对照，尚未确认根因。
+- 长按用例普通图片URI、类型与原字节校验已通过，失败是L170再次打开链接菜单，不是图片策略未返回；当轮policy-live/query-live日志保留。
+- QUALITY在45,084ms期限时仍正常播放/渲染，仅取得45个有效帧，平均781.725ms/帧、23个passes、无renderer error。明确为COLLECTING阶段收帧不足，本轮不是释放交接卡住。原60帧/45秒门未改，软件GPU失败不作为物理GPU成绩。
+
+非空早期事件交接、上述三项完整范围及release运行仍需证据。
 真实扩展进程崩溃/恢复、多轮真机、更新及d3ward矩阵仍未由状态单测或一次首装证明。
