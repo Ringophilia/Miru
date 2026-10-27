@@ -29,12 +29,17 @@ public final class UploadFixtureDocumentsProvider extends DocumentsProvider {
     public static final String ROOT_LABEL = "Miru upload fixtures";
     public static final String SINGLE_NAME = "single.txt";
     public static final String SAME_NAME = "same.txt";
+    public static final String PNG_NAME = "fixture.png";
+    public static final String OPAQUE_NAME = "opaque.bin";
     public static final byte[] SINGLE_BYTES =
             "Miru synthetic single upload\nsecond fixture line\n".getBytes(StandardCharsets.UTF_8);
     public static final byte[] SAME_A_BYTES =
             "Miru duplicate basename A\n".getBytes(StandardCharsets.UTF_8);
     public static final byte[] SAME_B_BYTES =
             "Miru duplicate basename B has distinct bytes and length\n".getBytes(StandardCharsets.UTF_8);
+    public static final byte[] OPAQUE_BYTES = {
+        0x00, (byte) 0xff, 0x4d, 0x69, 0x72, 0x75, 0x00, (byte) 0x80, 0x7f, 0x0a,
+    };
     // One grayscale/alpha pixel. PNG chunk CRCs and the decompressed scanline were checked statically.
     public static final byte[] PNG_BYTES = Base64.decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=",
@@ -44,7 +49,8 @@ public final class UploadFixtureDocumentsProvider extends DocumentsProvider {
         new SyntheticFile("single", SINGLE_NAME, "text/plain", SINGLE_BYTES),
         new SyntheticFile("same-a", SAME_NAME, "text/plain", SAME_A_BYTES),
         new SyntheticFile("same-b", SAME_NAME, "text/plain", SAME_B_BYTES),
-        new SyntheticFile("image", "fixture.png", "image/png", PNG_BYTES),
+        new SyntheticFile("image", PNG_NAME, "image/png", PNG_BYTES),
+        new SyntheticFile("opaque", OPAQUE_NAME, "application/octet-stream", OPAQUE_BYTES),
     };
     private static final String[] ROOT_COLUMNS = {
         Root.COLUMN_ROOT_ID, Root.COLUMN_DOCUMENT_ID, Root.COLUMN_TITLE, Root.COLUMN_SUMMARY,
@@ -65,7 +71,7 @@ public final class UploadFixtureDocumentsProvider extends DocumentsProvider {
         row.put(Root.COLUMN_TITLE, ROOT_LABEL);
         row.put(Root.COLUMN_SUMMARY, "Synthetic upload integration files");
         row.put(Root.COLUMN_FLAGS, Root.FLAG_LOCAL_ONLY | Root.FLAG_SUPPORTS_IS_CHILD);
-        row.put(Root.COLUMN_MIME_TYPES, "text/plain\nimage/png");
+        row.put(Root.COLUMN_MIME_TYPES, "text/plain\nimage/png\napplication/octet-stream");
         row.put(Root.COLUMN_AVAILABLE_BYTES, 1024L * 1024);
         row.put(Root.COLUMN_ICON, android.R.drawable.ic_menu_upload);
         appendValues(cursor, row);

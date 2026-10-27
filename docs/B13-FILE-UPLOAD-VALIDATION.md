@@ -114,13 +114,38 @@ omni SHA为 `f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`�
 最终测试源再经 `056-final-lint.log` 验证，0 error / 22 warnings。
 这是Debug签名开发包的构建与打包证明，ARM64运行、R8运行和正式签名仍未验收；x86_64 Debug设备专项不替代这些门。
 
+## MIME扩展验收（生产仍为041ec81 / 0.5.7）
+
+新增五项真实系统筛选场景，不改生产MIME策略。测试provider增加固定10字节`opaque.bin`，含00/ff/80，
+以免混合TXT/PNG被错误的全类型放行测成绿色。
+
+| HTML accept | 实际选择与过滤证据 |
+| --- | --- |
+| 无accept属性 | 系统真实多选TXT、PNG、BIN，三份名称/类型/大小与各自POST字节一致。 |
+| text/plain | 真实TXT上传；PNG/BIN在完整列表中隐藏或实际不可选。 |
+| text/plain,image/png | 真实多选TXT+PNG，BIN负例不可选，二份实际字节校验。 |
+| image/* | 真实PNG上传，TXT/BIN负例不可选。 |
+| .png | 真实PNG上传，TXT/BIN负例不可选。 |
+
+首轮`057-mime-viewport-device.log`为17/19（264.645秒）：Core6、原上传8及NONE/TXT/MIXED通过，
+两个图片场景在root文件行识别阶段失败。固定AOSP [GridPhotoHolder](https://android.googlesource.com/platform/packages/apps/DocumentsUI/+/refs/tags/aml_doc_351113060/src/com/android/documentsui/dirlist/GridPhotoHolder.java#195)
+图片tile仅把名称设到contentDescription；驱动现统一识别dir_list内真实document row，支持文本/描述并按实际行去重。
+没有降低同名两份、文件数、过滤或网络字节断言。
+
+`057-mime-grid-behavior-build.log`重编测试/lint成功；PNG两项在同批定向运行中通过。
+最终`057-mime-complete-device.log`上传整类 **13/13（146.829秒）**，包含全部原8项；
+本轮主APK为0.5.7的`057-retained-ready-binaries/debug.apk`，SHA-256
+`d368d9c6196631327ca2cead58634843c08903f9bf794c75ea82ee2793ae0c7b`；
+测试APK另存`057-grid-behavior-binaries/androidTest.apk`，精确摘要见`057-grid-behavior-input.json`及`057-mime-complete-input.json`。
+这些是扩展测试包的直接证据，不把旧106项回归改写成新测试包全绿；capture/目录与完整公网站点矩阵仍待。
+
 ## 尚未完成的门
 
-- 首批仅覆盖 text/plain 的单选/同名多选元数据与实际字节；完整 MIME 筛选矩阵与跨请求同名仍待。
+- 已覆盖五种accept的受控TXT/PNG/BIN系统筛选；其他MIME/提供方、公网站点与跨请求同名矩阵仍待。
 - 实际拍照、录像、录音及相机方向、拒绝/取消/无处理器；目录选择后的二次确认与 relativePath 完整上传。
 - 私密成功/取消、单 owner 与最后 context 关闭、IO 取消、导航/关 tab/换 session 后的旧结果隔离。
 - Bundle / saved-state / Room / preferences / session / logs / 专属 cache 与 URI grant 的直接取证；进程死亡和遗留清扫。
-- 完整常规四项失败及其根因；其余页面提示（选项/日期/颜色等）、权限/站点矩阵仍待，已通过的页面提示不替代这些缺项。
+- 历史完整回归失败及当前三项问题的后续证据；其余页面提示（选项/日期/颜色等）、权限/站点矩阵仍待，已通过的页面提示不替代这些缺项。
 - 初始 about:blank / opener document.write / popup / WebExtension 新 session 的真实文档握手及文件交付。
   固定 Progress 模块明确不保证最初 blank 的 location 事件，不能把未收到事件的 generation 0 当成有效文档。
 - 本批R8实际运行、ARM64实际运行、正式签名及真机矩阵；已通过的构建/体积/打包不替代这些门。

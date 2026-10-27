@@ -400,6 +400,234 @@ class FileUploadIntegrationTest {
         }
     }
 
+    @Test fun absentAcceptAllowsRealTextPngAndOpaqueBinaryFiles() = runMimeCase(
+        acceptedTypes = null, multiple = true,
+        expected = listOf(textFixture(), pngFixture(), opaqueFixture()), blocked = emptyList(),
+    )
+
+    @Test fun textPlainAcceptFiltersPngAndOpaqueBinaryBeforeRealTextUpload() = runMimeCase(
+        acceptedTypes = "text/plain", multiple = false,
+        expected = listOf(textFixture()), blocked = listOf(pngFixture(), opaqueFixture()),
+    )
+
+    @Test fun mixedTextAndPngAcceptSelectsBothRealFilesAndExcludesOpaqueBinary() = runMimeCase(
+        acceptedTypes = "text/plain,image/png", multiple = true,
+        expected = listOf(textFixture(), pngFixture()), blocked = listOf(opaqueFixture()),
+    )
+
+    @Test fun imageWildcardAcceptFiltersTextAndOpaqueBinaryBeforeRealPngUpload() = runMimeCase(
+        acceptedTypes = "image/*", multiple = false,
+        expected = listOf(pngFixture()), blocked = listOf(textFixture(), opaqueFixture()),
+    )
+
+    @Test fun pngExtensionAcceptFiltersTextAndOpaqueBinaryBeforeRealPngUpload() = runMimeCase(
+        acceptedTypes = ".png", multiple = false,
+        expected = listOf(pngFixture()), blocked = listOf(textFixture(), opaqueFixture()),
+    )
+
+    private data class ExpectedUpload(val documentId: String, val name: String, val mime: String, val bytes: ByteArray)
+    private fun textFixture() = ExpectedUpload("single", UploadFixtureDocumentsProvider.SINGLE_NAME,
+        "text/plain", UploadFixtureDocumentsProvider.SINGLE_BYTES)
+    private fun pngFixture() = ExpectedUpload("image", UploadFixtureDocumentsProvider.PNG_NAME,
+        "image/png", UploadFixtureDocumentsProvider.PNG_BYTES)
+    private fun opaqueFixture() = ExpectedUpload("opaque", UploadFixtureDocumentsProvider.OPAQUE_NAME,
+        "application/octet-stream", UploadFixtureDocumentsProvider.OPAQUE_BYTES)
+
+    private fun runMimeCase(acceptedTypes: String?, multiple: Boolean,
+        expected: List<ExpectedUpload>, blocked: List<ExpectedUpload>) {
+        UploadOrigin(acceptedTypes).use { origin ->
+            val owner = page(origin, multiple = multiple)
+            val request = beginSelection(owner)
+            assertEquals("The actual native request must retain the HTML multiple choice", multiple, request.fileMultiple)
+            assertEquals("The real DocumentsUI launch must retain the HTML multiple choice", multiple, pickerMultipleFlag.get())
+            openFixtureRoot(expected.first().name)
+            assertActualPickerFilter(origin, request, expected.map { it.name }, blocked.map { it.name })
+            if(multiple) selectNamedMultipleFiles(expected.map { it.name })
+            else {
+                clickDocument(expected.single().name)
+                finishPickerSelection(required = false)
+            }
+            val report = awaitReport(origin, 1)
+            assertEquals("Only the real accepted file selection may generate a change", "change", report.label)
+            assertEquals(expected.size, report.files.size)
+            assertEquals("Every actual selected name must match the precise accepted set",
+                expected.map { it.name }.toSet(), report.files.map { it.name }.toSet())
+            report.files.forEachIndexed { index, file ->
+                val wanted = expected.single { it.name == file.name }
+                assertFile(file, wanted.name, wanted.bytes, origin.upload(1, index), expectedMime = wanted.mime)
+            }
+            assertEquals("MIME filtering must not relaunch the picker", 1, pickerStarts())
+            assertEquals(1, origin.reportCount("change"))
+            assertNull(browser.prompts.prompt.value)
+            awaitReceiverFinishedAndTemporaryGrantReleased(expected.map { it.documentId })
+        }
+    }
+
+    private fun selectNamedMultipleFiles(names: List<String>) {
+        require(names.size > 1 && names.distinct().size == names.size)
+        performDocumentRowAction(names.first(), index = 0, action = AccessibilityNodeInfo.ACTION_LONG_CLICK)
+        awaitNamedDocumentSelection(names.associateWith { it == names.first() })
+        names.drop(1).forEachIndexed { index, name ->
+            performDocumentRowAction(name, index = 0, action = AccessibilityNodeInfo.ACTION_CLICK)
+            val selected = names.take(index + 2).toSet()
+            awaitNamedDocumentSelection(names.associateWith { it in selected })
+        }
+        finishPickerSelection(required = true)
+    }
+
+    private fun awaitNamedDocumentSelection(expected: Map<String, Boolean>) {
+        var observed = emptyMap<String, DocumentRowSelection?>()
+        try {
+            waitFor("The actual DocumentsUI selection must match every named MIME fixture") {
+                observed = withDocumentsRoot { root -> expected.mapValues { (name, _) ->
+                    withDocumentRow(root, name, index = 0) { row ->
+                        DocumentRowSelection(row.isSelected, row.isCheckable && row.isChecked,
+                            row.collectionItemInfo?.isSelected == true,
+                            row.actionList.any { it.id == AccessibilityNodeInfo.ACTION_LONG_CLICK })
+                    }
+                } }.orEmpty()
+                observed.keys == expected.keys && expected.all { (name, selected) ->
+                    val state = observed[name]
+                    state != null && (state.selected || state.checked || state.collectionSelected) == selected
+                }
+            }
+        } catch(failure: AssertionError) {
+            throw AssertionError("Named fixture selection: pickerVisible=${documentsUiVisible()}, states=$observed", failure)
+        }
+        assertTrue("Real multiple selection must keep DocumentsUI open until confirmation", documentsUiVisible())
+    }
+
+    private data class PickerRowAvailability(val enabled: Boolean, val clickAction: Boolean,
+        val longClickAction: Boolean, val selected: Boolean) {
+        val selectable get() = enabled && (clickAction || longClickAction)
+    }
+    private data class PickerInventory(val rows: Map<String, List<PickerRowAvailability>>, val unresolved: Set<String>)
+
+    private fun assertActualPickerFilter(origin: UploadOrigin, request: BrowserPromptState,
+        allowed: List<String>, blocked: List<String>) {
+        val inventory = enumerateActualFixtureDirectory()
+        assertTrue("Visible fixture rows must resolve to real DocumentsUI document ancestors: ${inventory.unresolved}",
+            inventory.unresolved.isEmpty())
+        allowed.forEach { name ->
+            val rows = inventory.rows[name].orEmpty()
+            assertTrue("Matching synthetic document must be truly visible and selectable: $name rows=$rows",
+                rows.any { it.selectable })
+            android.util.Log.i("MiruUploadAcceptance", "mimeFilter file=$name visible=true selectable=true")
+        }
+        assertTrue("A new real picker must start with no fixture already selected",
+            inventory.rows.values.flatten().none { it.selected })
+        blocked.forEach { name ->
+            val rows = inventory.rows[name].orEmpty()
+            if(rows.isEmpty()) {
+                // Enumeration scrolled the actual directory to its end, then back to its start.
+                // This is an absent entry, not a name that happened to be below the viewport.
+                android.util.Log.i("MiruUploadAcceptance", "mimeFilter file=$name visible=false selectable=false")
+            } else {
+                assertTrue("A displayed nonmatching synthetic document must be disabled or have no activation action: $name rows=$rows",
+                    rows.none { it.selectable })
+                touchRejectedFixture(name)
+                awaitDocumentsPickerIdle()
+                assertTrue("A real tap on a nonmatching file must leave DocumentsUI open: $name", documentsUiVisible())
+                assertEquals("A nonmatching file must not finish or replace the original native request",
+                    request.token, browser.prompts.prompt.value?.token)
+                assertEquals("A nonmatching file must generate no website file-change report", 0, origin.reportCount("change"))
+                val afterTap = enumerateActualFixtureDirectory()
+                assertTrue("A rejected row tap must not select another fixture", afterTap.rows.values.flatten().none { it.selected })
+                android.util.Log.i("MiruUploadAcceptance", "mimeFilter file=$name visible=true selectable=false tapKeptPicker=true selectionUnchanged=true received=false")
+            }
+        }
+    }
+
+    /** Enumerate the real list to its actual forward boundary. Bounded scrolling fails closed
+     * rather than treating offscreen rows or an unknown list widget as a hidden MIME negative.
+     */
+    private fun enumerateActualFixtureDirectory(): PickerInventory {
+        awaitDocumentsPickerIdle()
+        scrollFixtureDirectoryToStart()
+        val observed = mutableMapOf<String, MutableList<PickerRowAvailability>>()
+        val unresolved = mutableSetOf<String>()
+        var reachedEnd = false
+        for(page in 0 until 8) {
+            withDocumentsRoot { root ->
+                for(name in SYNTHETIC_DOCUMENT_NAMES) {
+                    val rows = actualDocumentRows(root, name)
+                    try {
+                        for(node in rows) {
+                            val row = PickerRowAvailability(node.isEnabled,
+                                node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK },
+                                node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_LONG_CLICK },
+                                node.isSelected || (node.isCheckable && node.isChecked) || node.collectionItemInfo?.isSelected == true)
+                            observed.getOrPut(name) { mutableListOf() } += row
+                        }
+                        if(rows.isEmpty() && withActualFileLists(root) { lists -> lists.any {
+                            fixtureLabelEvidence(it, name, visibleOnly = true).matches
+                        } }) unresolved += name
+                    } finally { rows.forEach { it.recycle() } }
+                }
+            } ?: throw AssertionError("DocumentsUI must remain the actual foreground directory while enumerating fixtures")
+            if(!scrollActualFixtureDirectory(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
+                reachedEnd = true
+                break
+            }
+        }
+        assertTrue("The complete synthetic directory must reach a real scroll boundary within eight pages", reachedEnd)
+        scrollFixtureDirectoryToStart()
+        return PickerInventory(observed.mapValues { it.value.toList() }, unresolved.toSet())
+    }
+
+    private fun scrollFixtureDirectoryToStart() {
+        for(page in 0 until 8) {
+            if(!scrollActualFixtureDirectory(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) return
+        }
+        throw AssertionError("The synthetic directory must reach its actual beginning within eight pages")
+    }
+
+    private fun scrollActualFixtureDirectory(action: Int): Boolean {
+        val moved = withDocumentsRoot { root ->
+            for(namespace in DOCUMENTS_UI_PACKAGES) {
+                // AOSP DocumentsUI DirectoryFragment's actual RecyclerView, not its roots drawer.
+                val nodes = root.findAccessibilityNodeInfosByViewId("$namespace:id/dir_list")
+                try {
+                    val list = nodes.firstOrNull { it.isVisibleToUser } ?: continue
+                    if(list.actionList.none { it.id == action }) return@withDocumentsRoot false
+                    assertTrue("The actual file list advertised a scroll action but rejected it", list.performAction(action))
+                    return@withDocumentsRoot true
+                } finally { nodes.forEach { it.recycle() } }
+            }
+            throw AssertionError("The actual DocumentsUI file-list widget must be observable")
+        } ?: throw AssertionError("The actual DocumentsUI directory must remain open while scrolling")
+        if(moved) awaitDocumentsPickerIdle()
+        return moved
+    }
+
+    private fun awaitDocumentsPickerIdle() {
+        try { instrumentation.uiAutomation.waitForIdle(200, 5_000) }
+        catch(failure: java.util.concurrent.TimeoutException) {
+            throw AssertionError("The actual synthetic DocumentsUI directory did not become idle", failure)
+        }
+    }
+
+    private fun touchRejectedFixture(name: String) {
+        scrollFixtureDirectoryToStart()
+        var bounds: Rect? = null
+        for(page in 0 until 8) {
+            bounds = withDocumentsRoot { root -> withDocumentRow(root, name, 0) { row ->
+                Rect().also(row::getBoundsInScreen).takeIf { !it.isEmpty }
+            } }
+            if(bounds != null) break
+            if(!scrollActualFixtureDirectory(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) break
+        }
+        val target = bounds ?: throw AssertionError("The displayed synthetic negative must remain physically observable: $name")
+        val down = SystemClock.uptimeMillis()
+        for(action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+            val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action,
+                target.exactCenterX(), target.exactCenterY(), 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+            try { assertTrue(instrumentation.uiAutomation.injectInputEvent(event, true)) }
+            finally { event.recycle() }
+            if(action == MotionEvent.ACTION_DOWN) SystemClock.sleep(60)
+        }
+    }
+
     private fun page(origin: UploadOrigin, multiple: Boolean, isPrivate: Boolean = false): String {
         var owner = ""
         compose.runOnIdle {
@@ -452,9 +680,9 @@ class FileUploadIntegrationTest {
         return checkNotNull(origin.report(round))
     }
 
-    private fun assertFile(file: WebsiteFile, name: String, bytes: ByteArray, uploaded: ByteArray?) {
+    private fun assertFile(file: WebsiteFile, name: String, bytes: ByteArray, uploaded: ByteArray?, expectedMime: String = "text/plain") {
         assertEquals(name, file.name)
-        assertEquals("text/plain", file.mime)
+        assertEquals(expectedMime, file.mime)
         assertEquals(bytes.size.toLong(), file.size)
         assertEquals(uploadHash(bytes), uploadHash(checkNotNull(uploaded)))
     }
@@ -499,20 +727,22 @@ class FileUploadIntegrationTest {
         }
     }
 
-    private fun awaitReceiverFinishedAndTemporaryGrantReleased() {
-        val uri = DocumentsContract.buildDocumentUri(UploadFixtureDocumentsProvider.AUTHORITY, "single")
+    private fun awaitReceiverFinishedAndTemporaryGrantReleased(documentIds: List<String> = listOf("single")) {
+        val uris = documentIds.map { DocumentsContract.buildDocumentUri(UploadFixtureDocumentsProvider.AUTHORITY, it) }
         val context = instrumentation.targetContext
-        fun permission(flags: Int) = context.checkUriPermission(uri, Process.myPid(), Process.myUid(), flags)
+        fun permission(uri: android.net.Uri, flags: Int) = context.checkUriPermission(uri, Process.myPid(), Process.myUid(), flags)
+        fun allDenied(flags: Int) = uris.all { permission(it, flags) == PackageManager.PERMISSION_DENIED }
         waitFor("The real receiving activity must finish and Android must release its temporary read and write grants") {
             liveActivities().none { it is UploadPickerActivity } &&
-                permission(Intent.FLAG_GRANT_READ_URI_PERMISSION) == PackageManager.PERMISSION_DENIED &&
-                permission(Intent.FLAG_GRANT_WRITE_URI_PERMISSION) == PackageManager.PERMISSION_DENIED
+                allDenied(Intent.FLAG_GRANT_READ_URI_PERMISSION) && allDenied(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         }
         assertTrue("No real upload receiver may retain the selection grant", liveActivities().none { it is UploadPickerActivity })
-        assertEquals("The selected source URI must no longer be readable through a temporary grant",
-            PackageManager.PERMISSION_DENIED, permission(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-        assertEquals("The selected source URI must not retain a temporary write grant",
-            PackageManager.PERMISSION_DENIED, permission(Intent.FLAG_GRANT_WRITE_URI_PERMISSION))
+        uris.forEach { uri ->
+            assertEquals("The selected source URI must no longer be readable through a temporary grant",
+                PackageManager.PERMISSION_DENIED, permission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION))
+            assertEquals("The selected source URI must not retain a temporary write grant",
+                PackageManager.PERMISSION_DENIED, permission(uri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION))
+        }
     }
 
     private fun uploadLeaseDirectories(): Set<File> =
@@ -550,18 +780,22 @@ class FileUploadIntegrationTest {
         }
     }
 
-    private fun openFixtureRoot() {
-        if (exactDocumentRows(UploadFixtureDocumentsProvider.SINGLE_NAME) > 0) return
-        if (!clickSystemText(UploadFixtureDocumentsProvider.ROOT_LABEL)) {
-            waitFor("DocumentsUI must expose its actual roots navigation control") {
-                withDocumentsRoot(::openRootsDrawer) == true
+    private fun openFixtureRoot(expectedName: String = UploadFixtureDocumentsProvider.SINGLE_NAME) {
+        try {
+            if (exactDocumentRows(expectedName) > 0) return
+            if (!clickSystemText(UploadFixtureDocumentsProvider.ROOT_LABEL)) {
+                waitFor("DocumentsUI must expose its actual roots navigation control") {
+                    withDocumentsRoot(::openRootsDrawer) == true
+                }
+                waitFor("DocumentsUI must list the synthetic provider root") {
+                    clickSystemText(UploadFixtureDocumentsProvider.ROOT_LABEL)
+                }
             }
-            waitFor("DocumentsUI must list the synthetic provider root") {
-                clickSystemText(UploadFixtureDocumentsProvider.ROOT_LABEL)
+            waitFor("The selected synthetic root must show its real file rows") {
+                exactDocumentRows(expectedName) > 0
             }
-        }
-        waitFor("The selected synthetic root must show its real file rows") {
-            exactDocumentRows(UploadFixtureDocumentsProvider.SINGLE_NAME) > 0
+        } catch(failure: AssertionError) {
+            throw AssertionError("Synthetic picker root expected=$expectedName; ${pickerFixtureDiagnostics()}", failure)
         }
     }
 
@@ -601,18 +835,16 @@ class FileUploadIntegrationTest {
         var touchBounds: Rect? = null
         waitFor("Missing selectable fixture document row: $name") {
             withDocumentsRoot { root ->
-                val nodes = root.findAccessibilityNodeInfosByText(name)
-                try {
-                    val matches = nodes.filter { it.text?.toString() == name && it.isVisibleToUser }
-                    matches.getOrNull(index)?.let { node ->
-                        if (longClick) {
-                            val bounds = Rect()
-                            node.getBoundsInScreen(bounds)
-                            if (bounds.width() <= 0 || bounds.height() <= 0) false
-                            else { touchBounds = bounds; true }
-                        } else clickAncestor(node)
-                    } == true
-                } finally { nodes.forEach { it.recycle() } }
+                withDocumentRow(root, name, index) { node ->
+                    if (longClick) {
+                        val bounds = Rect()
+                        node.getBoundsInScreen(bounds)
+                        if (bounds.width() <= 0 || bounds.height() <= 0) false
+                        else { touchBounds = bounds; true }
+                    } else node.isEnabled && node.isVisibleToUser &&
+                        node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK } &&
+                        node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                } == true
             } ?: false
         }
         if (longClick) {
@@ -631,9 +863,8 @@ class FileUploadIntegrationTest {
     }
 
     private fun exactDocumentRows(name: String): Int = withDocumentsRoot { root ->
-        val nodes = root.findAccessibilityNodeInfosByText(name)
-        try { nodes.count { it.text?.toString() == name && it.isVisibleToUser } }
-        finally { nodes.forEach { it.recycle() } }
+        val rows = actualDocumentRows(root, name)
+        try { rows.size } finally { rows.forEach { it.recycle() } }
     } ?: 0
 
     /** DocumentsUI adds this action through its RecyclerView delegate without setting the
@@ -678,23 +909,93 @@ class FileUploadIntegrationTest {
     private data class DocumentRowSelection(val selected: Boolean, val checked: Boolean,
         val collectionSelected: Boolean, val longClickAction: Boolean)
 
+    private data class FixtureLabelEvidence(val textExact: Boolean, val descriptionContains: Boolean) {
+        val matches get() = textExact || descriptionContains
+    }
+
+    /** GridPhotoHolder exposes filename/size/date as the real row's contentDescription rather
+     * than a visible title TextView. Match only known synthetic labels inside dir_list, and
+     * keep a single actual row when both its own description and a child title match.
+     */
+    private fun actualDocumentRows(root: AccessibilityNodeInfo, name: String): List<AccessibilityNodeInfo> {
+        require(name in SYNTHETIC_DOCUMENT_NAMES) { "Only fixed synthetic document labels may be matched" }
+        val result = mutableListOf<AccessibilityNodeInfo>()
+        fun visit(node: AccessibilityNodeInfo, depth: Int) {
+            if(depth > 24 || !node.isVisibleToUser) return
+            val documentRow = node.collectionItemInfo != null ||
+                node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_LONG_CLICK }
+            if(documentRow) {
+                if(fixtureLabelEvidence(node, name).matches && result.none { it == node })
+                    result += AccessibilityNodeInfo.obtain(node)
+                // Child title/preview nodes are labels or actions of this same row, not files.
+                return
+            }
+            for(index in 0 until node.childCount) {
+                val child = node.getChild(index) ?: continue
+                try { visit(child, depth + 1) } finally { child.recycle() }
+            }
+        }
+        withActualFileLists(root) { lists -> lists.forEach { list ->
+            for(index in 0 until list.childCount) {
+                val child = list.getChild(index) ?: continue
+                try { visit(child, 0) } finally { child.recycle() }
+            }
+        } }
+        return result
+    }
+
+    private fun fixtureLabelEvidence(node: AccessibilityNodeInfo, name: String,
+        visibleOnly: Boolean = false): FixtureLabelEvidence {
+        var textExact = false
+        var descriptionContains = false
+        fun visit(candidate: AccessibilityNodeInfo, depth: Int) {
+            if(depth > 24 || (visibleOnly && !candidate.isVisibleToUser)) return
+            textExact = textExact || candidate.text?.toString() == name
+            descriptionContains = descriptionContains || candidate.contentDescription?.toString()?.contains(name) == true
+            for(index in 0 until candidate.childCount) {
+                val child = candidate.getChild(index) ?: continue
+                try { visit(child, depth + 1) } finally { child.recycle() }
+            }
+        }
+        visit(node, 0)
+        return FixtureLabelEvidence(textExact, descriptionContains)
+    }
+
+    private fun <T> withActualFileLists(root: AccessibilityNodeInfo,
+        block: (List<AccessibilityNodeInfo>) -> T): T {
+        val nodes = DOCUMENTS_UI_PACKAGES.flatMap { root.findAccessibilityNodeInfosByViewId("$it:id/dir_list") }
+        try { return block(nodes.filter { it.isVisibleToUser }) }
+        finally { nodes.forEach { it.recycle() } }
+    }
+
+    private fun pickerFixtureDiagnostics(): String = withDocumentsRoot { root ->
+        val labels = withActualFileLists(root) { lists ->
+            "fileListVisible=${lists.isNotEmpty()}, " + SYNTHETIC_DOCUMENT_NAMES.joinToString { name ->
+                val text = lists.any { fixtureLabelEvidence(it, name).textExact }
+                val description = lists.any { fixtureLabelEvidence(it, name).descriptionContains }
+                "$name(textExact=$text,descriptionContains=$description)"
+            }
+        }
+        val rows = SYNTHETIC_DOCUMENT_NAMES.joinToString { name ->
+            val matches = actualDocumentRows(root, name)
+            try { "$name=" + matches.joinToString(prefix = "[", postfix = "]") { row ->
+                val label = fixtureLabelEvidence(row, name)
+                val bounds = Rect().also(row::getBoundsInScreen)
+                "(textExact=${label.textExact},descriptionContains=${label.descriptionContains}," +
+                    "enabled=${row.isEnabled},click=${row.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }}," +
+                    "longClick=${row.actionList.any { it.id == AccessibilityNodeInfo.ACTION_LONG_CLICK }},bounds=$bounds)"
+            } } finally { matches.forEach { it.recycle() } }
+        }
+        // Never dump arbitrary node text, descriptions, URLs, source URIs or private page state.
+        "pickerVisible=true, $labels, rows={$rows}"
+    } ?: "pickerVisible=false"
+
     private fun <T> withDocumentRow(root: AccessibilityNodeInfo, name: String, index: Int,
         block: (AccessibilityNodeInfo) -> T): T? {
-        val nodes = root.findAccessibilityNodeInfosByText(name)
+        val rows = actualDocumentRows(root, name)
         try {
-            val text = nodes.filter { it.text?.toString() == name && it.isVisibleToUser }.getOrNull(index) ?: return null
-            var candidate: AccessibilityNodeInfo? = AccessibilityNodeInfo.obtain(text)
-            try {
-                repeat(8) {
-                    val row = candidate ?: return null
-                    if (row.collectionItemInfo != null ||
-                        row.actionList.any { it.id == AccessibilityNodeInfo.ACTION_LONG_CLICK }) return block(row)
-                    candidate = row.parent
-                    row.recycle()
-                }
-                return null
-            } finally { candidate?.recycle() }
-        } finally { nodes.forEach { it.recycle() } }
+            return rows.getOrNull(index)?.let(block)
+        } finally { rows.forEach { it.recycle() } }
     }
 
     private fun finishPickerSelection(required: Boolean) {
@@ -808,6 +1109,9 @@ class FileUploadIntegrationTest {
 
     companion object {
         private val DOCUMENTS_UI_PACKAGES = setOf("com.android.documentsui", "com.google.android.documentsui")
+        private val SYNTHETIC_DOCUMENT_NAMES = listOf(UploadFixtureDocumentsProvider.SINGLE_NAME,
+            UploadFixtureDocumentsProvider.SAME_NAME, UploadFixtureDocumentsProvider.PNG_NAME,
+            UploadFixtureDocumentsProvider.OPAQUE_NAME)
     }
 }
 
@@ -817,7 +1121,7 @@ private fun uploadHash(bytes: ByteArray): String = MessageDigest.getInstance("SH
     .joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
 /** Reads actual HTTP bodies as bytes, without a Reader consuming ahead into the binary payload. */
-private class UploadOrigin : Closeable {
+private class UploadOrigin(private val acceptedTypes: String? = "text/plain") : Closeable {
     private val server = ServerSocket(0, 12, InetAddress.getByName("127.0.0.1"))
     private val running = AtomicBoolean(true)
     private val sockets = ConcurrentHashMap.newKeySet<Socket>()
@@ -830,6 +1134,9 @@ private class UploadOrigin : Closeable {
     val url = "http://127.0.0.1:${server.localPort}"
 
     init {
+        require(acceptedTypes in setOf(null, "text/plain", "text/plain,image/png", "image/*", ".png")) {
+            "Only the fixed synthetic accept matrix may be rendered"
+        }
         thread(isDaemon = true, name = "miru-file-upload-origin") {
             while (running.get()) {
                 val socket = try { server.accept() } catch (_: Exception) { break }
@@ -911,7 +1218,7 @@ private class UploadOrigin : Closeable {
         <!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Upload ready</title>
         <style>body{margin:0}button{display:block;width:220px;height:100px;border:0;color:white;background:#13579b}#inspect{margin-top:10px;background:#246824}</style>
         <button id="pick">Choose fixture</button><button id="inspect">Inspect selected files</button>
-        <input id="files" type="file" accept="text/plain" ${if (multiple) "multiple" else ""} hidden>
+        <input id="files" type="file" ${acceptedTypes?.let { "accept=\"$it\"" }.orEmpty()} ${if (multiple) "multiple" else ""} hidden>
         <script>
         const files=document.getElementById('files');let round=0;
         async function report(label){
