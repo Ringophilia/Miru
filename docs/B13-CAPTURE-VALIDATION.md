@@ -1,4 +1,4 @@
-# B13 拍照与录像上传（0.5.8首批）
+# B13 拍照与录像上传（0.5.8）
 
 生产与测试基于`ae73654`后的本批源码，versionCode16 / 0.5.8，API35/x86_64受控只读模拟器`emulator-5598`。
 全B13、录音、目录、物理机及发行门继续待验。本批不使用伪造ActivityResult、FileList、PromptRequest或native callback。
@@ -36,6 +36,24 @@ Camera2实际UID的READ/WRITE由有权变无权，成功document lease仍保存�
 测试APK SHA-256 `1573cb83c84d531a8b3d2170e296b786cfbd1138925ccfb792b0f62d52247970`，
 二进制保存在`058-camera-first-binaries/`，完整命令见`058-camera-first-input.json`及`058-upload-complete-input.json`。
 
+## 真实捕获生命周期专项
+
+在生产提交`924c97a`之后仅扩展测试，主APK仍为上述`e1be…aad9`。
+`058-capture-lifecycle-build.log`测试APK构建与lint通过（1分47秒）；
+`058-capture-lifecycle-first-device.log`三项 **3/3通过（65.015秒）**：
+
+- 先由真实DocumentsUI选PNG，再拍照并在Camera2 review取消；网页再次POST的仍是原PNG元数据与字节，change仍只有一次；新capture文件、整个输出租约和外部UID读写grant删除，旧文档租约保留至关页。
+- 真实录像到review后关闭原owner，先验证文件/租约与grant回收、native请求退休，但只含opaque tombstone的receiver仍等待；真实Done返回后丢弃旧结果并排空slot。预先加载的下一owner实际FileList为空，随后自己的DocumentsUI选择与POST正常。
+- Camera2录制至少两秒时真实重建MainActivity与UploadPickerActivity；要求两个新实例、原token/URI/FD/grant、原网页单次GET与继续增长的录制时钟，真实Stop/Done后只有一次网页交付且字节一致。
+
+没有注入系统结果或延迟生产删除。输入、运行日志、终态分别见同前缀`-input.json`、`-runtime.log`、`-result.json`；
+测试APK保存在`058-capture-lifecycle-first-binaries/androidTest.apk`，SHA-256
+`469015d65347cf1b4a39ba8736c7117f892d92bd0ad524c0e86834739be3629d`。
+原15项测试保留；同一新测试APK随后运行上传整类，
+`058-upload-lifecycle-complete-device.log` **18/18通过（199.276秒）**，
+输入与终态见同前缀`-input.json`和`-result.json`。这是同一次18项真实执行，不是拼接独立轮次；
+完整应用回归及发行运行门仍待。
+
 DEBUG结果日志只记录布尔/计数，没有URI、文件名、Intent对象或私密值。
 实际拍照为`dataIntentPresent=true, dataUriPresent=false`，录像两者均true；
 不能把这轮写成“RESULT_OK且整个Intent为null已设备通过”。代码使用预建output回退，但空Intent分支仍缺相应真实handler证据。
@@ -45,7 +63,7 @@ DEBUG结果日志只记录布尔/计数，没有URI、文件名、Intent对象�
 
 接收器Cancel和Back均交给manager决定结束，不再无条件finish绕过等待旧系统结果的receiver保留；
 取消中的操作仍先退休native请求/IO/文件与grant，已启动OS通道仅保留opaque tombstone至真实结果排空。
-整类原取消/旧结果及私密清理通过，不扩大为所有捕获取消、捕获中重建、进程死亡或私密捕获已完成。
+整类原取消/旧结果及私密清理通过；上述专项又覆盖普通拍照review取消、录像review关owner迟到结果和录制中重建，不扩大为所有handler/生命周期、进程死亡或私密捕获已完成。
 
-后续仍需真实capture取消保留原FileList、review中关owner的迟到结果、录制中重建、CAMERA拒绝/永久拒绝、
+后续仍需CAMERA拒绝/永久拒绝、完整取消/重建/迟到结果矩阵、进程死亡与私密捕获、
 其他相机/录音handler、空Intent、前摄与物理机、R8/ARM64运行和完整回归；目录与其他页面提示另列。

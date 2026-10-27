@@ -142,7 +142,7 @@ omni SHA为 `f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`�
 ## 尚未完成的门
 
 - 已覆盖五种accept的受控TXT/PNG/BIN系统筛选；其他MIME/提供方、公网站点与跨请求同名矩阵仍待。
-- 拍照/录像首批见`B13-CAPTURE-VALIDATION.md`；录音、其他方向/handler、拒绝/取消/生命周期及目录二次确认/relativePath仍待。
+- 拍照/录像及普通拍照review取消、录像review关owner迟到结果、录制中重建见`B13-CAPTURE-VALIDATION.md`，最新上传整类18/18（199.276秒）；录音、其他方向/handler、其余拒绝/取消/生命周期及目录二次确认/relativePath仍待。
 - 私密成功/取消、单 owner 与最后 context 关闭、IO 取消、导航/关 tab/换 session 后的旧结果隔离。
 - Bundle / saved-state / Room / preferences / session / logs / 专属 cache 与 URI grant 的直接取证；进程死亡和遗留清扫。
 - 历史完整回归失败及当前三项问题的后续证据；其余页面提示（选项/日期/颜色等）、权限/站点矩阵仍待，已通过的页面提示不替代这些缺项。

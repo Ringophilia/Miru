@@ -37,6 +37,7 @@ import androidx.test.runner.lifecycle.Stage
 import app.miru.browser.engine.BrowserPromptKind
 import app.miru.browser.engine.BrowserPromptState
 import app.miru.browser.engine.BrowserFileCapture
+import app.miru.browser.engine.BrowserUploadPhase
 import java.io.Closeable
 import java.io.File
 import java.io.FileInputStream
@@ -464,13 +465,136 @@ class FileUploadIntegrationTest {
 
     @Test fun realCameraVideoReachesTheWebsiteWithItsOriginalRecordedBytes() = runCaptureCase(video = true)
 
+    @Test fun cameraReviewCancelPreservesTheOldWebsiteFileAndReleasesItsNewOutput() {
+        UploadOrigin("image/*", captureMode = "environment").use { origin ->
+            val baseline = uploadLeaseDirectories()
+            val owner = page(origin, multiple = false)
+            beginSelection(owner)
+            openFixtureRoot(UploadFixtureDocumentsProvider.PNG_NAME)
+            clickDocument(UploadFixtureDocumentsProvider.PNG_NAME)
+            finishPickerSelection(required = false)
+            val initial = awaitReport(origin, 1)
+            assertEquals("change", initial.label)
+            assertEquals(1, initial.files.size)
+            assertFile(initial.files.single(), UploadFixtureDocumentsProvider.PNG_NAME,
+                UploadFixtureDocumentsProvider.PNG_BYTES, origin.upload(1, 0), "image/png")
+            awaitReceiverFinishedAndTemporaryGrantReleased(listOf("image"))
+            val originalLeases = awaitNewUploadLeases(baseline)
+            assertNamedLeaseBytes(originalLeases, UploadFixtureDocumentsProvider.PNG_NAME, UploadFixtureDocumentsProvider.PNG_BYTES)
+
+            val capture = beginActualCapture(owner, video = false, expectedDocumentLaunches = 1)
+            val descriptor = checkNotNull(instrumentation.targetContext.contentResolver.openFileDescriptor(capture.output, "r"))
+            ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { source ->
+                clickActualCameraControl("shutter_button")
+                awaitActualCameraControl("cancel_button")
+                assertTrue("The real photo review must expose its actual Done control too", actualCameraControlAvailable("done_button"))
+                assertEquals("Review must leave the previous website selection untouched", 1, origin.reportCount("change"))
+                assertEquals(capture.request.token, browser.prompts.prompt.value?.token)
+                assertCaptureGrant(capture.output, capture.cameraUid, granted = true)
+                android.util.Log.i("MiruUploadAcceptance", "photoCancelReview originalOutputNonEmpty=${source.channel.size() > 0}")
+                clickActualCameraControl("cancel_button")
+                awaitCaptureRetired(capture)
+                assertNull("The real camera cancellation must finish the native file request", browser.prompts.prompt.value)
+                assertTrue("Cancelling capture must preserve its document's previous lease",
+                    uploadLeaseDirectories() - baseline == originalLeases)
+                assertNamedLeaseBytes(originalLeases, UploadFixtureDocumentsProvider.PNG_NAME, UploadFixtureDocumentsProvider.PNG_BYTES)
+
+                // This real DOM action uploads the retained old FileList. It does not inject a
+                // replacement selection, and a cancelled capture must not cause another change.
+                touchWebButton(yDp = 145f)
+                val retained = awaitReport(origin, 2)
+                assertEquals("inspect", retained.label)
+                assertEquals(1, retained.files.size)
+                assertFile(retained.files.single(), UploadFixtureDocumentsProvider.PNG_NAME,
+                    UploadFixtureDocumentsProvider.PNG_BYTES, origin.upload(2, 0), "image/png")
+                assertEquals(1, origin.reportCount("change"))
+                assertEquals(1, captureLaunchCount.get())
+                assertEquals(1, pickerStarts())
+                assertEquals("Capture cancellation must not reload the website", 1, origin.pageRequests.get())
+                compose.runOnIdle { browser.closeTab(owner) }
+                awaitUploadLeasesDeleted(originalLeases)
+            }
+        }
+    }
+
+    @Test fun closingTheVideoCaptureOwnerDrainsTheRealLateResultBeforeTheNextOwnerUploads() {
+        UploadOrigin("video/*", captureMode = "environment").use { retiredOrigin ->
+            UploadOrigin().use { nextOrigin ->
+                val baseline = uploadLeaseDirectories()
+                // Both real documents complete their rAF beacons while the app is foreground.
+                val nextOwner = page(nextOrigin, multiple = false)
+                val retiredOwner = page(retiredOrigin, multiple = false)
+                val capture = beginActualCapture(retiredOwner, video = true)
+                val descriptor = checkNotNull(instrumentation.targetContext.contentResolver.openFileDescriptor(capture.output, "r"))
+                ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { source ->
+                    recordRealVideoToReview()
+                    assertRecordedVideoFormat(source)
+                    val originalBytes = readOriginalCaptureBytes(source)
+                    val receiver = liveActivities().filterIsInstance<UploadPickerActivity>().single()
+                    assertCaptureGrant(capture.output, capture.cameraUid, granted = true)
+                    assertEquals(0, retiredOrigin.reportCount("change"))
+                    compose.runOnIdle {
+                        browser.closeTab(retiredOwner)
+                        browser.selectTab(nextOwner)
+                    }
+                    waitFor("Retiring the capture owner must delete its source and revoke grants while retaining the real result receiver") {
+                        browser.state.value.tabs.none { it.id == retiredOwner } && browser.prompts.prompt.value == null &&
+                            !capture.file.exists() && !captureLeaseDirectory(capture.file).exists() &&
+                            captureGrantDenied(capture.output, capture.cameraUid) &&
+                            liveActivities().any { it === receiver && !it.isFinishing && !it.isDestroyed }
+                    }
+                    assertEquals("The launched old system result must retain its opaque picking slot", BrowserUploadPhase.PICKING,
+                        browser.uploads.state.value.phase)
+                    assertNull("The abandoned slot must not expose a live owner's token", browser.uploads.state.value.token)
+                    assertTrue("The real recorded-video review must remain open for the old result", actualCameraControlAvailable("done_button"))
+                    assertTrue("An abandoned capture must not create a document-owned delivered lease", uploadLeaseDirectories() - baseline == emptySet<File>())
+                    assertEquals(0, nextOrigin.reportCount("change"))
+
+                    // VideoModule returns its real recorded URI here. No ActivityResult or
+                    // native completion is fabricated even though its original owner is gone.
+                    clickActualCameraControl("done_button")
+                    awaitCaptureRetired(capture)
+                    assertEquals("The retained original recording inode must remain unchanged after the real late result",
+                        uploadHash(originalBytes), uploadHash(readOriginalCaptureBytes(source)))
+                    assertEquals(0, retiredOrigin.reportCount("change"))
+                    assertEquals(0, nextOrigin.reportCount("change"))
+                    assertEquals(BrowserUploadPhase.IDLE, browser.uploads.state.value.phase)
+                    assertTrue("Discarding the real late capture must leave no delivered upload lease", uploadLeaseDirectories() - baseline == emptySet<File>())
+
+                    touchWebButton(yDp = 145f)
+                    val empty = awaitReport(nextOrigin, 1)
+                    assertEquals("inspect", empty.label)
+                    assertTrue("The next website's actual FileList must still be empty", empty.files.isEmpty())
+                    beginSelection(nextOwner)
+                    openFixtureRoot()
+                    selectSingle()
+                    val own = awaitReport(nextOrigin, 2)
+                    assertEquals("change", own.label)
+                    assertEquals(1, own.files.size)
+                    assertFile(own.files.single(), UploadFixtureDocumentsProvider.SINGLE_NAME,
+                        UploadFixtureDocumentsProvider.SINGLE_BYTES, nextOrigin.upload(2, 0))
+                    awaitReceiverFinishedAndTemporaryGrantReleased()
+                    assertEquals(0, retiredOrigin.reportCount("change"))
+                    assertEquals("Only the next owner's own actual selection may deliver a file", 1, nextOrigin.reportCount("change"))
+                    assertEquals(1, captureLaunchCount.get())
+                    assertEquals(1, pickerStarts())
+                    assertEquals("The next real document must not be reloaded by the late result", 1, nextOrigin.pageRequests.get())
+                    assertCaptureGrant(capture.output, capture.cameraUid, granted = false)
+                }
+            }
+        }
+    }
+
+    @Test fun recreationWhileCameraRecordsKeepsTheOriginalOutputAndDeliversOnlyOnce() =
+        runCaptureCase(video = true, recreateWhileRecording = true)
+
     /** Only process-memory evidence from the actual system launch. Never log the output URI. */
     private class CaptureLaunch(val action: String, val output: Uri?, val readWriteFlags: Boolean,
         val outputClip: Boolean, val backFacingHint: Boolean) {
         override fun toString() = "CaptureLaunch(outputPresent=${output != null}, readWrite=$readWriteFlags, clip=$outputClip)"
     }
 
-    private fun runCaptureCase(video: Boolean) {
+    private fun runCaptureCase(video: Boolean, recreateWhileRecording: Boolean = false) {
         val acceptedTypes = if(video) "video/*" else "image/*"
         val expectedName = if(video) "capture.mp4" else "capture.jpg"
         val expectedMime = if(video) "video/mp4" else "image/jpeg"
@@ -520,6 +644,24 @@ class FileUploadIntegrationTest {
                         allowCapturePermissionIfShown()
                         actualCameraRecordingSeconds()?.let { it >= 2 } == true
                     }
+                    if(recreateWhileRecording) {
+                        val beforeRecreation = checkNotNull(actualCameraRecordingSeconds())
+                        recreateCameraUploadHostsWhileRecording()
+                        val retainedRequest = checkNotNull(browser.prompts.prompt.value)
+                        assertEquals(request.token, retainedRequest.token)
+                        assertEquals(owner, retainedRequest.tabId)
+                        assertEquals(BrowserPromptKind.FILE, retainedRequest.kind)
+                        assertEquals(BrowserFileCapture.BACK_CAMERA, retainedRequest.fileCapture)
+                        assertEquals("Recreating the two app hosts must not relaunch the external recorder", 1, captureLaunchCount.get())
+                        assertTrue("Recreation must retain the actual original output URI", captureLaunch.get()?.output == outputUri)
+                        assertTrue("Recreation must retain the actual original output path", originalFile.isFile)
+                        assertCaptureGrant(outputUri, cameraUid, granted = true)
+                        waitFor("The same actual Camera2 recording clock must continue after app-host recreation", 20_000) {
+                            actualCameraRecordingSeconds()?.let { it > beforeRecreation } == true
+                        }
+                        assertEquals("App-host recreation must retain the original webpage document", 1, origin.pageRequests.get())
+                        assertEquals("No capture may arrive before its actual Stop and Done actions", 0, origin.reportCount("change"))
+                    }
                     clickActualCameraControl("shutter_button")
                 }
                 awaitActualCameraControl("done_button")
@@ -556,6 +698,103 @@ class FileUploadIntegrationTest {
                 awaitUploadLeasesDeleted(leases)
                 assertCaptureGrant(outputUri, cameraUid, granted = false)
             } // Finally closes the original read-only descriptor even after a failed assertion.
+        }
+    }
+
+    private class StartedCapture(val request: BrowserPromptState, val output: Uri, val file: File, val cameraUid: Int)
+
+    private fun beginActualCapture(owner: String, video: Boolean, expectedDocumentLaunches: Int = 0): StartedCapture {
+        val outputsBefore = captureOutputFiles()
+        val request = openFilePrompt(owner)
+        assertFalse(request.isPrivate)
+        assertEquals(BrowserFileCapture.BACK_CAMERA, request.fileCapture)
+        assertEquals("Each lifecycle fixture must begin one new actual capture", 0, captureLaunchCount.get())
+        captureRequested = true
+        compose.onNodeWithTag(if(video) "page_prompt_capture_video" else "page_prompt_capture_photo")
+            .assertIsDisplayed().performClick()
+        awaitActualCameraControl("shutter_button")
+        assertEquals(1, captureLaunchCount.get())
+        assertEquals(expectedDocumentLaunches, pickerStarts())
+        val launch = checkNotNull(captureLaunch.get())
+        assertEquals(if(video) MediaStore.ACTION_VIDEO_CAPTURE else MediaStore.ACTION_IMAGE_CAPTURE, launch.action)
+        assertTrue(launch.readWriteFlags)
+        assertTrue(launch.outputClip)
+        assertTrue(launch.backFacingHint)
+        val uri = checkNotNull(launch.output)
+        assertEquals("content", uri.scheme)
+        assertEquals("${instrumentation.targetContext.packageName}.uploads", uri.authority)
+        var outputFile: File? = null
+        val expectedName = if(video) "capture.mp4" else "capture.jpg"
+        waitFor("The real capture must create exactly its own original output resource") {
+            outputFile = (captureOutputFiles() - outputsBefore).singleOrNull { it.name == expectedName }
+            outputFile != null
+        }
+        val file = checkNotNull(outputFile)
+        assertTrue("The original file must match the actual capture Intent output URI",
+            FileProvider.getUriForFile(instrumentation.targetContext,
+                "${instrumentation.targetContext.packageName}.uploads", file) == uri)
+        val uid = actualCameraUid()
+        assertNotEquals(Process.myUid(), uid)
+        assertCaptureGrant(uri, uid, granted = true)
+        return StartedCapture(request, uri, file, uid)
+    }
+
+    private fun recordRealVideoToReview() {
+        clickActualCameraControl("shutter_button")
+        waitFor("The real recorder's own clock must advance before Stop", 20_000) {
+            allowCapturePermissionIfShown()
+            actualCameraRecordingSeconds()?.let { it >= 2 } == true
+        }
+        clickActualCameraControl("shutter_button")
+        awaitActualCameraControl("done_button")
+    }
+
+    private fun captureLeaseDirectory(file: File): File {
+        val lease = checkNotNull(file.parentFile?.parentFile)
+        val root = File(instrumentation.targetContext.cacheDir, "miru-upload-capture").canonicalFile
+        assertTrue("Observe only the new capture's restricted lease directory",
+            lease.canonicalFile.parentFile == root && lease.name.startsWith("upload-lease-"))
+        return lease
+    }
+
+    private fun awaitCaptureRetired(capture: StartedCapture) {
+        waitFor("The real system capture result must retire its receiver, whole output lease and external grants") {
+            !capture.file.exists() && !captureLeaseDirectory(capture.file).exists() &&
+                captureGrantDenied(capture.output, capture.cameraUid) &&
+                liveActivities().none { it is UploadPickerActivity } &&
+                withCameraRoot { true } != true && browser.uploads.state.value.phase == BrowserUploadPhase.IDLE
+        }
+        assertCaptureGrant(capture.output, capture.cameraUid, granted = false)
+    }
+
+    private fun assertNamedLeaseBytes(leases: Set<File>, expectedName: String, expectedBytes: ByteArray) {
+        val files = leases.flatMap { it.walkTopDown().filter(File::isFile).toList() }
+        assertEquals("The original selected document must retain exactly one file", 1, files.size)
+        assertEquals(expectedName, files.single().name)
+        assertEquals("A later cancelled capture must not change the old selected bytes",
+            uploadHash(expectedBytes), uploadHash(files.single().readBytes()))
+    }
+
+    private fun recreateCameraUploadHostsWhileRecording() {
+        var previousMain: MainActivity? = null
+        var previousReceiver: UploadPickerActivity? = null
+        waitFor("The actual browser and upload receiver must both exist behind the recorder") {
+            val activities = liveActivities()
+            previousMain = activities.filterIsInstance<MainActivity>().singleOrNull()
+            previousReceiver = activities.filterIsInstance<UploadPickerActivity>().singleOrNull()
+            previousMain != null && previousReceiver != null && actualCameraRecordingSeconds() != null
+        }
+        val oldMain = checkNotNull(previousMain)
+        val oldReceiver = checkNotNull(previousReceiver)
+        instrumentation.runOnMainSync {
+            oldMain.recreate()
+            oldReceiver.recreate()
+        }
+        waitFor("Both real application hosts must be replaced while the actual same Camera2 recording stays foreground") {
+            val activities = liveActivities()
+            activities.any { it is MainActivity && it !== oldMain && !it.isFinishing && !it.isDestroyed } &&
+                activities.any { it is UploadPickerActivity && it !== oldReceiver && !it.isFinishing && !it.isDestroyed } &&
+                actualCameraRecordingSeconds() != null
         }
     }
 

@@ -183,7 +183,8 @@
 
 - 真实HTML capture=environment→Miru按钮→Camera2拍照/录像/review→网页POST。测试从真实EXTRA_OUTPUT原FD验证JPEG/视频轨/尺寸/duration及原字节，Done后capture原文件和外部UID读写grant消失、document lease仍完整，关owner后删除。不用staging冒充相机源，也不伪造ActivityResult。
 - `058-camera-first-device.log`2/2（46.552秒）；`058-upload-complete-device.log`整类15/15（170.368秒），包含原8和MIME5。JVM141项及lint0错误/22警告通过。
-- 拍照实际Intent存在但data URI为空，录像有URI；空Intent、私密/取消/重建/迟到capture、音频处理器、前摄/物理机、目录及完整回归仍待。Cancel/Back均交manager处理，避免直接finish绕过等待旧结果策略。详见`B13-CAPTURE-VALIDATION.md`；0.5.8尚无release打包/运行声明。
+- 拍照实际Intent存在但data URI为空，录像有URI；空Intent、私密capture、完整拒绝/生命周期矩阵、音频处理器、前摄/物理机、目录及完整回归仍待。Cancel/Back均交manager处理，避免直接finish绕过等待旧结果策略。详见`B13-CAPTURE-VALIDATION.md`；0.5.8尚无release打包/运行声明。
+- `924c97a`后仅扩展三项真实capture生命周期：拍照review取消保留网页原FileList与字节、录像review关owner后真实迟到Done排空且下一owner独立上传、录制中实际重建Main/receiver仍保留原输出并交付一次。测试构建/lint通过（1分47秒），独立3/3（65.015秒），随后同一新测试APK上传整类**18/18通过（199.276秒）**。主APK仍为E1BE，新测试SHA `469015d65347cf1b4a39ba8736c7117f892d92bd0ad524c0e86834739be3629d`；证据`058-capture-lifecycle-first-*`、`058-upload-lifecycle-complete-*`，未合并冒充完整应用回归。
 
 ## M3 尚待推进
 
