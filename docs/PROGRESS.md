@@ -177,6 +177,7 @@
 - ARM64开发包108,011,752字节，SHA `74e95bc52ef4bf7186f2a852ca1017392a5c36aff21060ddec714d74816d867e`，1518payload/对齐/同Debug证书/17库/4077+2+5资源通过。完整回归、真实旧GEO迁移与进程崩溃、多轮真机、R8/ARM64运行及正式发行仍待，见`M1-057-STARTUP-VALIDATION.md`。
 - 已提交`041ec81`固定APK完整106终态**103通过/3失败（883.116秒）**，uBO/定位/页面提示/上传通过；余底栏新文档页顶判断、图片复制后重开菜单、QUALITY收帧超时。QUALITY实测45秒仅45有效帧且renderer正常，未降低门槛。新增浏览器诊断和五项MIME验收仅在测试源推进，尚未编译/设备验证。
 - MIME扩展已重编并真实运行：首轮17/19含两项图片网格行识别失败，适配系统contentDescription后，上传整类**13/13（146.829秒）**通过（原8+新增NONE/TXT/MIXED/image通配/.png五项），全部实际文件元数据和POST字节校验，TXT/PNG/BIN完整列表过滤负例。仅测试代码增加，生产0.5.7未改；不将它写成整套回归全绿。拍照/录像handler已发现，录音handler在各audio MIME均不存在，成功capture仍待。
+- 新deep行为实测新doc DOM/visual/flow都0且实际刷新成功，SDK canUp仍true；已将原底栏测试的陈旧缓存门替换为当前doc真实页顶证明，保留原手势/GET/8与15秒时限。`057-viewport-observed-top-device.log`Core整类7/7（66.105秒）通过，生产未改，旧菜单重开及完整回归失败仍保留。扩展测试尚需整合回归，见`BROWSER-CORE-VALIDATION.md`。
 
 ## M3 尚待推进
 

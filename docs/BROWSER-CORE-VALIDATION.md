@@ -338,3 +338,22 @@ lint XML为 **0 error、22 warning**。原AGP包111,081,525字节，SHA-256
 普通/私密prompt专项另11/11（49.725秒），ARM64开发包107,987,120字节及打包验证通过。
 旧0.5.3的77/79与所有失败继续保留；新通过不证明原时序根因已定位或16ms性能门完成，
 也不覆盖整个B13/B10/B11/B20、完整网站矩阵、ARM64运行或正式发行。
+
+## 0.5.7 扩展测试：真实页顶与SDK缓存
+
+`041ec81`固定APK完整106为103通过/3失败（883.116秒），详见`M1-057-STARTUP-VALIDATION.md`。
+底栏失败在新文档页顶的SDK canScrollUp门，不在已通过的隐藏/恢复；图片用例已复制并校验原字节，随后重开菜单失败。
+原始失败与QUALITY超时均保留，没有把隔离通过拼成完整全绿。
+
+新增行为回归只用真实swipe深滚，再导航唯一文档；fixture双rAF通过HTTP上报真实window.scrollY/visualViewport.pageTop，不驱动位置。
+`057-grid-behavior-runtime.log`实际记录：旧页flow=2514且SDK canUp=true；新doc2的URL/owner正确、DOM/visual/flow均为0，
+SDK仍canUp=true；随后实际下拉使该doc GET及新绘制从1变2，SDK仍为true。此处直接证明SDK缓存可陈旧，真实Miru刷新并未被阻断。
+
+原底栏测试现将新导航门加强为owner/URL/title/!loading/新GET，并在原8秒门读取该doc双rAF真实页顶；
+原15秒刷新GET、手势、隐藏/恢复和新deep行为项保留。没有改生产、sleep、SDK或画质/时间门，SDK数值继续作诊断。
+`057-viewport-observed-top-build.log`测试/lint构建成功；`057-viewport-observed-top-device.log`整类**7/7通过，66.105秒**。
+生产仍为0.5.7 `041ec81`，主APK SHA
+`d368d9c6196631327ca2cead58634843c08903f9bf794c75ea82ee2793ae0c7b`，测试APK SHA
+`1c8d300b98ae0f0e5be53e930da00793cf21022db95c91afa50da24240374030`。
+输入/运行数值/结果见`057-viewport-observed-top-input.json`、同前缀`runtime.log`和`result.json`。
+菜单重开这轮通过不证明原整套失败的根因消失；真实网站/键盘/固定元素和完整矩阵仍待。

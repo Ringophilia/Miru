@@ -7,10 +7,12 @@ import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.SystemClock
+import android.util.Log
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -25,8 +27,16 @@ import java.net.ServerSocket
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import mozilla.components.concept.engine.EngineView
 import org.junit.Assert.*
@@ -151,7 +161,7 @@ class BrowserCoreIntegrationTest {
 
     @Test fun genuineLongPressCopiesLinkTextAndImageBytesAndOpensAPrivateTab() {
         CoreOrigin().use { origin ->
-            page("${origin.url}/context", "Core context", private = false)
+            val owner = page("${origin.url}/context", "Core context", private = false)
             longPressCss(70f, 45f)
             compose.waitUntil(8_000) { browser.contextMenus.state.value?.linkUrl == "${origin.url}/target" }
             compose.onNodeWithTag("context_copy_text").performScrollTo().performClick()
@@ -167,7 +177,11 @@ class BrowserCoreIntegrationTest {
             assertArrayEquals(origin.image, context.contentResolver.openInputStream(uri)!!.use { it.readBytes() })
             assertFalse("Image sharing must not persist private or ordinary bytes", java.io.File(context.cacheDir, "context-images").exists())
             longPressCss(70f, 45f)
-            compose.waitUntil(8_000) { browser.contextMenus.state.value != null }
+            try { compose.waitUntil(8_000) { browser.contextMenus.state.value != null } }
+            catch(error: Throwable) {
+                throw AssertionError("Reopening the real link context menu failed; " +
+                    contextMenuReopenDiagnostic(owner, "${origin.url}/context", clipboard), error)
+            }
             compose.onNodeWithTag("context_private_tab").performClick()
             compose.waitUntil(15_000) { browser.state.value.selectedTab?.let { it.isPrivate && it.url == "${origin.url}/target" && it.title == "Core target" } == true }
             assertNull(browser.contextMenus.state.value)
@@ -178,6 +192,49 @@ class BrowserCoreIntegrationTest {
             compose.waitUntil(20_000) { compose.runOnIdle { copied = clipboard.primaryClip?.description?.extras?.getBoolean(android.content.ClipDescription.EXTRA_IS_SENSITIVE) == true }; copied }
             assertArrayEquals(origin.image, context.contentResolver.openInputStream(clipboard.primaryClip!!.getItemAt(0).uri)!!.use { it.readBytes() })
         }
+    }
+
+    private fun contextMenuReopenDiagnostic(owner: String, fixtureUrl: String, clipboard: ClipboardManager): String {
+        fun nodes(matcher: SemanticsMatcher): String = runCatching {
+            val collection = compose.onAllNodes(matcher, useUnmergedTree = true)
+            val count = collection.fetchSemanticsNodes().size
+            val displayed = (0 until count).count { collection[it].isDisplayed() }
+            "count=$count,displayed=$displayed"
+        }.getOrDefault("UNOBSERVED")
+        val panes = nodes(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle,
+            context.getString(androidx.compose.material3.R.string.m3c_bottom_sheet_pane_title)))
+        val scrim = nodes(hasContentDescription(context.getString(androidx.compose.ui.R.string.close_sheet)))
+        val linkActions = nodes(hasTestTag("context_private_tab"))
+        val imageActions = nodes(hasTestTag("context_copy_image"))
+        var actualState = "mainObserved=false"
+        runCatching {
+            compose.runOnIdle {
+                val snapshot = browser.state.value
+                val selected = snapshot.selectedTab
+                val menu = browser.contextMenus.state.value
+                val actualEngine = runCatching { engineView().asView() }.getOrNull()
+                val clip = runCatching { clipboard.primaryClip }.getOrNull()
+                val clipUri = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+                actualState = "mainObserved=true ownerPresent=${snapshot.tabs.any { it.id == owner }} " +
+                    "ownerSelected=${snapshot.selectedTabId == owner} selectedPrivate=${selected?.isPrivate} " +
+                    "fixtureMatches=${selected?.url == fixtureUrl} loading=${selected?.loading} " +
+                    "titleCategory=${when { selected?.title.isNullOrEmpty() -> "EMPTY"; selected?.title == "Core context" -> "CORE_CONTEXT"; else -> "OTHER" }} " +
+                    "menuPresent=${menu != null} menuKind=${menu?.kind} menuPrivate=${menu?.isPrivate} " +
+                    "menuOwnerMatches=${menu?.tabId == owner} menuPageMatches=${menu?.pageUrl == fixtureUrl} " +
+                    "menuCurrent=${menu?.let(browser.contextMenus::isCurrent)} " +
+                    "menuHasLink=${menu?.linkUrl != null} menuHasImage=${menu?.imageUrl != null} menuHasVideo=${menu?.videoUrl != null} " +
+                    "engineObserved=${actualEngine != null} engineAttached=${actualEngine?.isAttachedToWindow} " +
+                    "engineShown=${actualEngine?.isShown} engineVisibility=${actualEngine?.visibility} " +
+                    "engineWindowVisibility=${actualEngine?.windowVisibility} engineWindowFocus=${actualEngine?.hasWindowFocus()} " +
+                    "engineInputFocus=${actualEngine?.hasFocus()} activityWindowFocus=${compose.activity.window.decorView.hasWindowFocus()} " +
+                    "clipboardObserved=${clip != null} clipboardHasUri=${clipUri != null} " +
+                    "clipboardOwnImageUri=${clipUri?.authority == "${context.packageName}.context-images"}"
+            }
+        }
+        val result = "stage=LINK_MENU_REOPEN_FAILED elapsedMs=${SystemClock.elapsedRealtime()} $actualState " +
+            "bottomSheetPane=[$panes] closeSheetScrim=[$scrim] privateTabAction=[$linkActions] copyImageAction=[$imageActions]"
+        Log.i("MiruContextMenuTest", result)
+        return result
     }
 
     @Test fun realGeckoScrollHidesAndRestoresToolbarAndTopPullRefreshes() {
@@ -203,12 +260,75 @@ class BrowserCoreIntegrationTest {
     @Test fun bottomToolbarFollowsTheSameGeckoScrollAndRefreshesAtTop() {
         val original = runBlocking { container.settings.settings.first().toolbarPosition }
         runBlocking { container.settings.setToolbarPosition(ToolbarPosition.BOTTOM) }
+        val diagnosticScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         try { CoreOrigin().use { origin ->
-            page("${origin.url}/long", "Core long", private = false)
+            val owner = page("${origin.url}/long", "Core long", private = false)
             compose.waitForIdle()
-            val initial = compose.onNodeWithTag("browser-viewport-toolbar").fetchSemanticsNode().boundsInRoot
+            val initialNode = compose.onNodeWithTag("browser-viewport-toolbar").fetchSemanticsNode()
+            val initial = initialNode.boundsInRoot
+            val initialRawTop = initialNode.positionInRoot.y
             assertTrue("The requested bottom toolbar must actually be below the web content", initial.top > engineBounds().height() / 2)
             val before = origin.longLoads.get()
+            val destinationDocument = (System.nanoTime() and Int.MAX_VALUE.toLong()).toInt().coerceAtLeast(1)
+            var observedEngine: EngineView? = null
+            var scrollPosition: Float? = null
+            var scrollObservations = 0L
+            var scrollObservedAt = 0L
+            var scrollObservationFailed = false
+            var destination: String? = null
+            compose.runOnIdle {
+                val actualEngine = engineView()
+                observedEngine = actualEngine
+                diagnosticScope.launch {
+                    try {
+                        actualEngine.verticalScrollPosition.collect { position ->
+                            scrollPosition = position
+                            scrollObservations++
+                            scrollObservedAt = SystemClock.elapsedRealtime()
+                        }
+                    } catch(cancelled: CancellationException) { throw cancelled }
+                    catch(_: Exception) { scrollObservationFailed = true }
+                }
+            }
+            fun diagnostic(stage: String): String {
+                val node = runCatching { compose.onNodeWithTag("browser-viewport-toolbar").fetchSemanticsNode() }.getOrNull()
+                val beacons = origin.viewportObservations(destinationDocument)
+                val beacon = beacons.lastOrNull()
+                var state = "mainObserved=false"
+                runCatching {
+                    compose.runOnIdle {
+                        val snapshot = browser.state.value
+                        val selected = snapshot.selectedTab
+                        val actualEngine = runCatching { engineView() }.getOrNull()
+                        val canScroll = actualEngine?.let { runCatching { it.canScrollVerticallyUp() }.getOrNull() }
+                        val now = SystemClock.elapsedRealtime()
+                        // Only controlled booleans, numeric positions and fixed title categories.
+                        // Do not log URLs, user titles, private tab IDs or native SDK internals.
+                        state = "mainObserved=true ownerPresent=${snapshot.tabs.any { it.id == owner }} " +
+                            "ownerSelected=${snapshot.selectedTabId == owner} selectedPresent=${selected != null} " +
+                            "selectedPrivate=${selected?.isPrivate} destinationAssigned=${destination != null} " +
+                            "destinationMatches=${destination != null && selected?.url == destination} loading=${selected?.loading} " +
+                            "titleCategory=${when { selected?.title.isNullOrEmpty() -> "EMPTY"; selected?.title == "Core long" -> "CORE_LONG"; else -> "OTHER" }} " +
+                            "engineObserved=${actualEngine != null} sameEngine=${actualEngine != null && actualEngine === observedEngine} " +
+                            "canScrollObserved=${canScroll != null} canScrollUp=$canScroll " +
+                            "flowObserved=${scrollObservations > 0} flowCount=$scrollObservations flowPosition=$scrollPosition " +
+                            "flowObservedAtMs=$scrollObservedAt flowAgeMs=${if(scrollObservedAt == 0L) -1L else now - scrollObservedAt} " +
+                            "flowFailed=$scrollObservationFailed"
+                    }
+                }
+                val result = "stage=$stage elapsedMs=${SystemClock.elapsedRealtime()} loads=${origin.longLoads.get()} " +
+                    "loadsSinceInitial=${origin.longLoads.get() - before} $state " +
+                    "destinationDoc=$destinationDocument documentGets=${origin.documentRequestCount(destinationDocument)} " +
+                    "beaconCount=${beacons.size} domObserved=${beacon != null} domScrollY=${beacon?.scrollY} " +
+                    "visualPageTop=${beacon?.visualViewportPageTop} " +
+                    "toolbarObserved=${node != null} toolbarBounds=${node?.boundsInRoot} " +
+                    "toolbarRawTop=${node?.positionInRoot?.y} toolbarHeight=${node?.size?.height} " +
+                    "toolbarRawOffsetFromInitial=${node?.positionInRoot?.y?.minus(initialRawTop)} " +
+                    "initialBounds=$initial initialRawTop=$initialRawTop clipping=UNOBSERVED maximumToolbarHeight=UNOBSERVED"
+                Log.i("MiruViewportTest", result)
+                return result
+            }
+            diagnostic("INITIAL")
             swipe(.75f, .25f)
             try { compose.waitUntil(8_000) { compose.onNodeWithTag("browser-viewport-toolbar").fetchSemanticsNode().let { it.positionInRoot.y + it.size.height } > initial.bottom + initial.height * .6f } }
             catch(error: Throwable) {
@@ -217,15 +337,120 @@ class BrowserCoreIntegrationTest {
                 throw AssertionError("Bottom toolbar not hidden; initial=$initial, now=${node.boundsInRoot}, position=${node.positionInRoot}, size=${node.size}", error)
             }
             assertEquals(before, origin.longLoads.get())
+            diagnostic("HIDDEN")
             swipe(.25f, .8f)
             compose.waitUntil(8_000) { compose.onNodeWithTag("browser-viewport-toolbar").fetchSemanticsNode().boundsInRoot.top <= initial.top + 2f }
-            compose.runOnIdle { browser.navigate("${origin.url}/long?top=${System.nanoTime()}") }
-            compose.waitUntil(15_000) { browser.state.value.selectedTab?.loading == false && origin.longLoads.get() > before }
-            compose.waitUntil(8_000) { var top = false; compose.runOnIdle { top = !engineView().canScrollVerticallyUp() }; top }
+            diagnostic("RESTORED")
+            destination = "${origin.url}/long?viewportDoc=$destinationDocument"
+            diagnostic("BEFORE_NAVIGATION")
+            compose.runOnIdle { browser.navigate(checkNotNull(destination)) }
+            compose.waitUntil(15_000) {
+                browser.state.value.selectedTab?.let {
+                    it.id == owner && it.url == destination && it.title == "Core long" && !it.loading
+                } == true && origin.longLoads.get() > before && origin.documentRequestCount(destinationDocument) > 0
+            }
+            diagnostic("LOAD_GATE_PASSED")
+            try {
+                // 057-grid-behavior proved DOM/visual/compositor zero and successful real refresh
+                // while SDK canScrollUp remained true. Keep 8s, but verify the new document itself.
+                compose.waitUntil(8_000) {
+                    browser.state.value.selectedTab?.let {
+                        it.id == owner && it.url == destination && it.title == "Core long" && !it.loading
+                    } == true && origin.viewportObservations(destinationDocument).any {
+                        it.scrollY == 0.0 && it.visualViewportPageTop == 0.0
+                    }
+                }
+            } catch(error: Throwable) {
+                throw AssertionError("Bottom toolbar page-top gate failed; ${diagnostic("TOP_GATE_FAILED")}", error)
+            }
+            diagnostic("TOP_GATE_PASSED")
             val atTop = origin.longLoads.get()
             swipe(.18f, .8f, duration = 700)
             compose.waitUntil(15_000) { origin.longLoads.get() > atTop && browser.state.value.selectedTab?.loading == false }
-        } } finally { runBlocking { container.settings.setToolbarPosition(original) } }
+            diagnostic("REFRESH_GATE_PASSED")
+        } } finally {
+            diagnosticScope.cancel()
+            runBlocking { container.settings.setToolbarPosition(original) }
+        }
+    }
+
+    @Test fun bottomToolbarCanActuallyRefreshANewDocumentAfterThePreviousDocumentWasDeeplyScrolled() {
+        val original = runBlocking { container.settings.settings.first().toolbarPosition }
+        runBlocking { container.settings.setToolbarPosition(ToolbarPosition.BOTTOM) }
+        val observationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        try { CoreOrigin().use { origin ->
+            val oldDocument = 1
+            val newDocument = 2
+            val oldUrl = "${origin.url}/long?viewportDoc=$oldDocument"
+            val destination = "${origin.url}/long?viewportDoc=$newDocument"
+            val owner = page(oldUrl, "Core long", private = false)
+            val scrollPosition = AtomicReference<Float?>(null)
+            compose.runOnIdle {
+                val actualEngine = engineView()
+                observationScope.launch { actualEngine.verticalScrollPosition.collect(scrollPosition::set) }
+            }
+            fun atObservedTop(document: Int): Boolean = origin.viewportObservations(document).any {
+                it.scrollY == 0.0 && it.visualViewportPageTop == 0.0
+            }
+            fun diagnostic(stage: String, document: Int): String {
+                val observations = origin.viewportObservations(document)
+                val beacon = observations.lastOrNull()
+                var actual = "mainObserved=false"
+                compose.runOnIdle {
+                    val snapshot = browser.state.value
+                    val selected = snapshot.selectedTab
+                    actual = "mainObserved=true ownerSelected=${snapshot.selectedTabId == owner} " +
+                        "destinationMatches=${selected?.url == destination} loading=${selected?.loading} " +
+                        "titleReady=${selected?.title == "Core long"} canScrollUp=${engineView().canScrollVerticallyUp()}"
+                }
+                val value = "stage=$stage elapsedMs=${SystemClock.elapsedRealtime()} doc=$document " +
+                    "documentGets=${origin.documentRequestCount(document)} beaconCount=${observations.size} " +
+                    "domObserved=${beacon != null} domScrollY=${beacon?.scrollY} visualPageTop=${beacon?.visualViewportPageTop} " +
+                    "flowObserved=${scrollPosition.get() != null} flowPosition=${scrollPosition.get()} $actual"
+                Log.i("MiruViewportBehavior", value)
+                return value
+            }
+            compose.waitUntil(15_000) { origin.documentRequestCount(oldDocument) == 1 && atObservedTop(oldDocument) }
+            swipe(.80f, .20f)
+            swipe(.80f, .20f)
+            compose.waitUntil(8_000) {
+                var deep = false
+                compose.runOnIdle {
+                    deep = (scrollPosition.get() ?: 0f) > 0f && engineView().canScrollVerticallyUp()
+                }
+                deep
+            }
+            diagnostic("OLD_DOCUMENT_DEEPLY_SCROLLED", oldDocument)
+
+            compose.runOnIdle { browser.navigate(destination) }
+            compose.waitUntil(15_000) {
+                browser.state.value.selectedTab?.let {
+                    it.id == owner && it.url == destination && it.title == "Core long" && !it.loading
+                } == true && origin.documentRequestCount(newDocument) == 1 && atObservedTop(newDocument)
+            }
+            // DOM's two real rAFs prove the new document's viewport is at zero. The SDK's
+            // independent cached canScrollUp and compositor flow are diagnostics, not gates.
+            diagnostic("NEW_DOCUMENT_OBSERVED_AT_TOP", newDocument)
+            val beforeRefresh = origin.documentRequestCount(newDocument)
+            val beforeBeacons = origin.viewportObservations(newDocument).size
+            swipe(.18f, .8f, duration = 700)
+            try {
+                compose.waitUntil(15_000) {
+                    origin.documentRequestCount(newDocument) > beforeRefresh &&
+                        origin.viewportObservations(newDocument).size > beforeBeacons &&
+                        browser.state.value.selectedTab?.let {
+                            it.id == owner && it.url == destination && it.title == "Core long" && !it.loading
+                        } == true
+                }
+            } catch(error: Throwable) {
+                throw AssertionError("Real pull-to-refresh after replacing a deeply scrolled document failed; " +
+                    diagnostic("REAL_REFRESH_FAILED", newDocument), error)
+            }
+            diagnostic("REAL_REFRESH_PASSED", newDocument)
+        } } finally {
+            observationScope.cancel()
+            runBlocking { container.settings.setToolbarPosition(original) }
+        }
     }
 
     private fun page(url: String, title: String, private: Boolean? = null): String {
@@ -309,6 +534,8 @@ class BrowserCoreIntegrationTest {
     }
 }
 
+private data class CoreViewportObservation(val document: Int, val scrollY: Double, val visualViewportPageTop: Double?)
+
 private class CoreOrigin : Closeable {
     private val server = ServerSocket(0, 12, InetAddress.getByName("127.0.0.1"))
     private val running = AtomicBoolean(true)
@@ -318,6 +545,10 @@ private class CoreOrigin : Closeable {
     val privateCookie = "miru_core_private_${System.nanoTime()}"
     val privateNewCookie = "miru_core_private_new_${System.nanoTime()}"
     val longLoads = AtomicInteger()
+    private val documentRequests = CopyOnWriteArrayList<Int>()
+    private val viewportBeacons = CopyOnWriteArrayList<CoreViewportObservation>()
+    fun documentRequestCount(document: Int): Int = documentRequests.count { it == document }
+    fun viewportObservations(document: Int): List<CoreViewportObservation> = viewportBeacons.filter { it.document == document }
     val image = ByteArrayOutputStream().use { out ->
         val bitmap = Bitmap.createBitmap(12, 12, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.BLUE) }
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, out); bitmap.recycle(); out.toByteArray()
@@ -329,11 +560,27 @@ private class CoreOrigin : Closeable {
                 thread(isDaemon = true) { socket.use { client -> runCatching {
                     client.soTimeout = 5_000
                     val reader = client.getInputStream().bufferedReader()
-                    val path = reader.readLine()?.split(' ')?.getOrNull(1)?.substringBefore('?').orEmpty()
+                    val target = reader.readLine()?.split(' ')?.getOrNull(1).orEmpty()
+                    val path = target.substringBefore('?')
+                    val query = target.substringAfter('?', "").split('&').associate {
+                        it.substringBefore('=') to it.substringAfter('=', "")
+                    }
                     while(!reader.readLine().isNullOrEmpty()) { }
-                    if(path == "/long") longLoads.incrementAndGet()
+                    val viewportDocument = query["viewportDoc"]?.toIntOrNull()?.takeIf { it > 0 }
+                    if(path == "/long") {
+                        longLoads.incrementAndGet()
+                        viewportDocument?.let(documentRequests::add)
+                    }
+                    if(path == "/viewport-beacon") {
+                        val document = query["doc"]?.toIntOrNull()?.takeIf { it > 0 }
+                        val scrollY = query["y"]?.toDoubleOrNull()?.takeIf(Double::isFinite)
+                        val pageTop = query["pageTop"]?.toDoubleOrNull()?.takeIf(Double::isFinite)
+                        if(document != null && scrollY != null)
+                            viewportBeacons += CoreViewportObservation(document, scrollY, pageTop)
+                    }
                     val body = when(path) {
                         "/image.png" -> image
+                        "/viewport-beacon" -> "ok".toByteArray()
                         else -> ("<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'><style>body{margin:0}a{display:block;height:100px;padding:10px}img{display:block;width:120px;height:100px}button{height:90px}</style>" + when(path) {
                             "/seed-old" -> "<title>Core old cookie</title>"
                             "/seed-new" -> "<title>Core new cookie</title>"
@@ -343,7 +590,16 @@ private class CoreOrigin : Closeable {
                             "/storage-check" -> "<script>document.title='Core storage '+(localStorage.getItem('miru-core')||'empty')</script>"
                             "/forms" -> "<button style='background:#13579b;color:white;width:180px;border:0' onclick=\"document.querySelector('input').value='secret';document.title='Core form filled'\">Fill form</button><input autocomplete=off><script>requestAnimationFrame(()=>requestAnimationFrame(()=>{document.title='Core form '+(document.querySelector('input').value?'filled':'empty')}))</script>"
                             "/context" -> "<title>Core context</title><a href='/target'>Miru context target</a><img src='/image.png'>"
-                            "/long" -> "<title>Core long</title><div style='height:12000px;background:linear-gradient(white,lightblue)'>Miru long document</div>"
+                            "/long" -> "<title>Core long</title><div style='height:12000px;background:linear-gradient(white,lightblue)'>Miru long document</div>" +
+                                (viewportDocument?.let { document -> """
+                                    <script>
+                                    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+                                      const top=window.visualViewport?.pageTop;
+                                      fetch('/viewport-beacon?doc=$document&y='+String(window.scrollY)+
+                                        '&pageTop='+(typeof top==='number'?String(top):'unobserved'),{cache:'no-store'});
+                                    }));
+                                    </script>
+                                """.trimIndent() } ?: "")
                             else -> "<title>Core target</title>Core target"
                         }).toByteArray()
                     }
