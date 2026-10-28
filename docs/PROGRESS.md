@@ -187,6 +187,7 @@
 - `924c97a`后仅扩展三项真实capture生命周期：拍照review取消保留网页原FileList与字节、录像review关owner后真实迟到Done排空且下一owner独立上传、录制中实际重建Main/receiver仍保留原输出并交付一次。测试构建/lint通过（1分47秒），独立3/3（65.015秒），随后同一新测试APK上传整类**18/18通过（199.276秒）**。主APK仍为E1BE，新测试SHA `469015d65347cf1b4a39ba8736c7117f892d92bd0ad524c0e86834739be3629d`；证据`058-capture-lifecycle-first-*`、`058-upload-lifecycle-complete-*`，未合并冒充完整应用回归。
 - 上述测试/文档已提交`dbddaed`。其ARM64 R8/shrink release构建成功（2分50秒），开发包**108,011,752字节**、SHA `bf92e7a4f4b69893f25632e4057b5d80f7777a27f3fbcc27a58a541c1ecd062c`；1518payload完整、对齐/同Debug证书、17个ARM64库和4077+2+5 Gecko资源均验证通过。固定归档流水线与`058-release-*`证据保留；正式签名及R8/ARM64运行继续待验。
 - 打包证据已提交`30b9f42`；其固定主/测试APK在新受控5600实际常规完整回归**117/117通过（907.736秒）**，详见`058-full-*`及`B13-CAPTURE-VALIDATION.md`。两个浏览器旧失败和QUALITY本轮通过，三档60帧实际202.9/271.6/477.3ms，保留历史失败和物理GPU门。清单发现117不计执行证据，也不把本轮当作uBO真正首次启动专项。仍排除两个外部重启类及需独立fixture的真实系统权限类，未记通过。
+- 117项证据已提交`517f708`；另启5602确认安装前无Miru、安装后首次instrumentation前无目标进程且不先跑清单，uBO真正首次启动1/1（36.811秒），随后真实系统权限独立3/3（33.353秒）通过。实际camera拒绝、camera/mic允许与coarse-only近似定位，无pm grant/预授权；`058-startup-fresh-*`与`058-runtime-fresh-*`独立保留，不合并进117。hostmic在安装前console关闭并获OK，启用音频不代表物理拾音验收。
 
 ## M3 尚待推进
 

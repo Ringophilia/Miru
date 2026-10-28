@@ -101,4 +101,18 @@ omni仍为16,459,282字节、SHA `f0531a43b294533f7929afc74a03d265a1e8c2a93076c0
 三档benchmark实际完成60有效帧，平均FAST202.9、BALANCED271.6、QUALITY477.3ms/帧，
 四条Anime4K/FSR渲染链也完成60帧，故不能据本轮推定物理GPU性能门已通过。
 仍按既有边界排除`DownloadRestartTest`、`OfflineRestartTest`和需独立fixture的
-`RuntimeSitePermissionIntegrationTest`；前两类重启、当前版本独立系统权限、真机/发行门仍须各自证据。
+`RuntimeSitePermissionIntegrationTest`；前两类重启、真机/发行门仍须各自证据，当前版本系统权限另见下节。
+
+## 独立首次启动与真实系统权限
+
+另启API35/x86_64只读实例`emulator-5602`，启用虚拟音频并在安装任何应用前通过实际console
+`avd hostmicoff`获得OK（`058-audio-hostmic-off.log`）；本节不验证物理拾音。
+安装前无Miru，安装固定E1BE/469015包后确认目标进程尚不存在，未先跑清单发现。
+
+- `058-startup-fresh-device.log`真正首次目标进程运行uBO专项 **1/1（36.811秒）**，真实默认规则、网页请求与全局切换；early handoff本轮仍为present=false，不能扩称竞争分支已覆盖。
+- 随后新的instrumentation进程独立运行`RuntimeSitePermissionIntegrationTest`，
+  `058-runtime-fresh-device.log` **3/3（33.353秒）**：真实系统摄像头拒绝、摄像头/麦克风允许仍要求网站同意、仅coarse的近似定位。
+  类自身断言权限从未授予开始，真实点击PermissionController，无pm grant、预授权或伪造回调。
+
+每轮同前缀input/result/runtime日志独立保留，不将1+3拼入常规117计数，也不替代系统永久拒绝、
+完整私密/重建/迟到结果、真机、旧GEO持久化迁移或两类外部重启验收。

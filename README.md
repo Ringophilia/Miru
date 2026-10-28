@@ -103,7 +103,7 @@ Miru 的取舍遵循产品规范 [MIRU-SPEC.md](MIRU-SPEC.md)（唯一需求来�
 
 最新已验证打包为 **0.5.8 ARM64开发包，108,011,752字节**，仍使用Android Debug签名；拍摄与打包范围见[0.5.8记录](docs/B13-CAPTURE-VALIDATION.md)，启动修复及历史门见[0.5.7记录](docs/M1-057-STARTUP-VALIDATION.md)，完整上传范围见[上传验收记录](docs/B13-FILE-UPLOAD-VALIDATION.md)。
 
-同版固定Debug包已在API35/x86_64模拟器完成常规回归 **117/117**；两个外部重启类、独立系统权限专项、ARM64运行与真机性能仍按[验收矩阵](docs/ACCEPTANCE.md)分别记录。
+同版固定Debug包已在API35/x86_64模拟器完成常规回归 **117/117**，另有首次启动uBO **1/1**、真实系统权限独立 **3/3**；两个外部重启类、ARM64运行与真机性能仍按[验收矩阵](docs/ACCEPTANCE.md)分别记录。
 
 <details>
 <summary><b>历史已验证打包：0.5.4（ARM64 开发包）</b></summary>
