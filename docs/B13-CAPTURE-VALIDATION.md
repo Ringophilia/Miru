@@ -52,7 +52,7 @@ Camera2实际UID的READ/WRITE由有权变无权，成功document lease仍保存�
 原15项测试保留；同一新测试APK随后运行上传整类，
 `058-upload-lifecycle-complete-device.log` **18/18通过（199.276秒）**，
 输入与终态见同前缀`-input.json`和`-result.json`。这是同一次18项真实执行，不是拼接独立轮次；
-完整应用回归及发行运行门仍待。
+后续常规完整回归见下；排除类及发行运行门仍待。
 
 DEBUG结果日志只记录布尔/计数，没有URI、文件名、Intent对象或私密值。
 实际拍照为`dataIntentPresent=true, dataUriPresent=false`，录像两者均true；
@@ -66,7 +66,7 @@ DEBUG结果日志只记录布尔/计数，没有URI、文件名、Intent对象�
 整类原取消/旧结果及私密清理通过；上述专项又覆盖普通拍照review取消、录像review关owner迟到结果和录制中重建，不扩大为所有handler/生命周期、进程死亡或私密捕获已完成。
 
 后续仍需CAMERA拒绝/永久拒绝、完整取消/重建/迟到结果矩阵、进程死亡与私密捕获、
-其他相机/录音handler、空Intent、前摄与物理机、R8/ARM64运行和完整回归；目录与其他页面提示另列。
+其他相机/录音handler、空Intent、前摄与物理机、R8/ARM64运行及排除类；目录与其他页面提示另列。
 
 ## ARM64开发包构建与打包
 
@@ -84,3 +84,21 @@ SDK对齐、签名与原Android Debug证书一致，严格小于110,000,000字�
 omni仍为16,459,282字节、SHA `f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`。
 
 这些是本版构建/打包证据；正式签名、R8实际运行、ARM64实际运行及完整发行验收继续待验。
+
+## 固定0.5.8常规完整回归
+
+原受控5598进程已确认不存在后，另启API35/x86_64只读实例`emulator-5600`，
+安装前实际查询没有Miru；仅安装同一E1BE主APK和469015测试APK，未修改生产或测试源。
+`058-full-ready-discovery.log`只列出117项（0.506秒），不计执行通过；该清单运行可能已初始化应用，
+因此本轮不单独充当“uBO首次应用启动”专项。
+
+`058-full-device.log`实际一次执行 **117/117通过（907.736秒）**，
+输入、终态及运行日志见`058-full-input.json`、`058-full-result.json`、`058-full-runtime.log`。
+源提交`30b9f42`，主目录在开始时干净；运行中无Gradle/R8、录屏或其他设备驱动并发。
+包括原上传8、MIME5、拍照/录像2及捕获生命周期3，和其余浏览器/权限/页面提示/下载/媒体/离线/超分用例。
+0.5.7整套失败的两个浏览器用例及QUALITY benchmark本轮均通过；旧失败不删除，单轮通过不证明历史超时根因已消失。
+
+三档benchmark实际完成60有效帧，平均FAST202.9、BALANCED271.6、QUALITY477.3ms/帧，
+四条Anime4K/FSR渲染链也完成60帧，故不能据本轮推定物理GPU性能门已通过。
+仍按既有边界排除`DownloadRestartTest`、`OfflineRestartTest`和需独立fixture的
+`RuntimeSitePermissionIntegrationTest`；前两类重启、当前版本独立系统权限、真机/发行门仍须各自证据。

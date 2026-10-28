@@ -145,7 +145,7 @@ omni SHA为 `f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`�
 - 拍照/录像及普通拍照review取消、录像review关owner迟到结果、录制中重建见`B13-CAPTURE-VALIDATION.md`，最新上传整类18/18（199.276秒）；录音、其他方向/handler、其余拒绝/取消/生命周期及目录二次确认/relativePath仍待。
 - 私密成功/取消、单 owner 与最后 context 关闭、IO 取消、导航/关 tab/换 session 后的旧结果隔离。
 - Bundle / saved-state / Room / preferences / session / logs / 专属 cache 与 URI grant 的直接取证；进程死亡和遗留清扫。
-- 历史完整回归失败及当前三项问题的后续证据；其余页面提示（选项/日期/颜色等）、权限/站点矩阵仍待，已通过的页面提示不替代这些缺项。
+- 历史完整回归失败保留；0.5.8固定包随后常规完整117/117（907.736秒）通过，见`B13-CAPTURE-VALIDATION.md`，不推定历史超时根因已解决。排除的重启类、独立系统权限及其余页面提示（选项/日期/颜色等）、权限/站点矩阵仍待。
 - 初始 about:blank / opener document.write / popup / WebExtension 新 session 的真实文档握手及文件交付。
   固定 Progress 模块明确不保证最初 blank 的 location 事件，不能把未收到事件的 generation 0 当成有效文档。
 - 本批R8实际运行、ARM64实际运行、正式签名及真机矩阵；已通过的构建/体积/打包不替代这些门。
