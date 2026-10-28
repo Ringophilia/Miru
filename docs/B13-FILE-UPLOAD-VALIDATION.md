@@ -3,12 +3,13 @@
 此记录对应 `B13-FILE-UPLOAD-PLAN.md`。首批八项真实系统选择器测试已通过，完整 B13 与上传验收门仍未关闭。
 原计划中的“尚未实现”是方案审查时的历史状态；本批已有生产实现及真实系统选择器测试。
 0.5.5 的 98/98 常规回归、ARM64 包和摘要仍单独保留，不套用于本批源码。
+后续0.5.8文件/capture整类18/18、0.5.9目录首批5/5及跨模块49/49证据分别见下文；目录完整生命周期、特殊元数据和整个B13仍待。
 
 ## 实现与依赖边界
 
 - 固定 Android Components 158.0.2 / Gecko 158.0.20261021001945；实际解析 AndroidX Activity 1.13.0。
 - Java 兼容层调用实际 AAR 中的 Kotlin internal JVM getter 和 Gecko package ABI，属于固定版本内部兼容层。
-  不称为官方公开 AC API；升级必须重新核对。只替换 SINGLE / MULTIPLE File 的 native delegate 分支，其他提示保留原 delegate。
+  不称为官方公开 AC API；升级必须重新核对。0.5.6只替换 SINGLE / MULTIPLE File 分支；0.5.9另接入真实FOLDER及FolderUploadPrompt，沿用原生二次确认，范围见目录记录。
 - IO 阶段读取系统 provider、保留原 DISPLAY_NAME、按请求与文件分别暂存，避免同批同名覆盖；native confirm/dismiss 在 Main 完成一次。
 - 最终 canonical / 可读文件检查在 IO 产生绑定真实 FileRecord 的一次性 capability；Main 只核验所有者和该 capability，
   仍经原共享 single/multiple 回调交付。任意未经准备的 URI 不能绕过 IO。provider 取消、stream-close 取消及 capture grant 撤销也从 IO 执行。
@@ -137,17 +138,26 @@ omni SHA为 `f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`�
 本轮主APK为0.5.7的`057-retained-ready-binaries/debug.apk`，SHA-256
 `d368d9c6196631327ca2cead58634843c08903f9bf794c75ea82ee2793ae0c7b`；
 测试APK另存`057-grid-behavior-binaries/androidTest.apk`，精确摘要见`057-grid-behavior-input.json`及`057-mime-complete-input.json`。
-这些是扩展测试包的直接证据，不把旧106项回归改写成新测试包全绿；capture/目录与完整公网站点矩阵仍待。
+这些是扩展测试包的直接证据，不把旧106项回归改写成新测试包全绿；当轮未覆盖的capture/目录后续证据分别记录，不代表完整公网站点矩阵。
+
+## 目录上传首批（0.5.9）
+
+详见[B13-FOLDER-UPLOAD-VALIDATION.md](B13-FOLDER-UPLOAD-VALIDATION.md)。真实DocumentsUI TREE临时grant→可取消IO完整复制真实根→公开单个本地根提交→Gecko真正FolderUploadPrompt二次确认→网页FileList/POST原bytes，未走旧Java深度5同步helper。目录整类 **5/5（50.447秒）** 覆盖深8层、根名/相对路径、不同路径同名、Unicode、空目录及零字节、name/type/size、私密owner关闭与grant回基线、空根ALLOW后的真实空FileList/change、真实native DENY和显式MIME无法保真的整体失败。
+
+首轮Use/Allow共用button1的驱动失败及XML保留，修正后原方法1/1（21.03秒）。跨模块首轮48/49（338.146秒）的唯一旧顶栏SDK页顶门失败也保留；测试显式TOP/位置与新doc真实页顶、GET/刷新判据修正后，Core7/7（150.868秒），同一最终包重新单次集成 **49/49（602.313秒）**，其中含目录5及原文件/capture18。主APK SHA `6616ef8afcc4cf29b97e457943f59f9e3704efcd369a4cca76be433cbe51130b`，最终测试SHA `3585f319bc85b1c94058207798515a21b4a003cc759ce9f5353dbde796d16230`；日志/输入/结果在`artifacts/folder-upload/059-*`。这不是完整应用常规回归。
+
+此批engine90/90含树复制10/10，最终Debug lint0错误/22警告；只有API35/x86_64受控provider证据。公开root路线对同级重复DISPLAY_NAME、显式MIME与basename冲突等明确整组失败；不能据正常树通过关闭metadata保真或其他provider的验收门。
 
 ## 尚未完成的门
 
 - 已覆盖五种accept的受控TXT/PNG/BIN系统筛选；其他MIME/提供方、公网站点与跨请求同名矩阵仍待。
-- 拍照/录像及普通拍照review取消、录像review关owner迟到结果、录制中重建见`B13-CAPTURE-VALIDATION.md`，最新上传整类18/18（199.276秒）；录音、其他方向/handler、其余拒绝/取消/生命周期及目录二次确认/relativePath仍待。
+- 拍照/录像及普通拍照review取消、录像review关owner迟到结果、录制中重建见`B13-CAPTURE-VALIDATION.md`，0.5.8上传整类18/18（199.276秒）；录音、空Intent、私密capture、其他方向/handler及其余拒绝/取消/生命周期仍待。
+- 目录首批真实二次确认/relativePath已有上述证据；TREE取消或native拒绝保留已有FileList/lease、两阶段重建、IO中owner作废、真实系统/native迟到事务、预算/故障provider、进程死亡和私密持久化取证仍待。特殊MIME/metadata、同级重名及其他provider支持未闭合。
 - 私密成功/取消、单 owner 与最后 context 关闭、IO 取消、导航/关 tab/换 session 后的旧结果隔离。
 - Bundle / saved-state / Room / preferences / session / logs / 专属 cache 与 URI grant 的直接取证；进程死亡和遗留清扫。
 - 历史完整回归失败保留；0.5.8固定包随后常规完整117/117（907.736秒）通过，见`B13-CAPTURE-VALIDATION.md`，不推定历史超时根因已解决。排除的重启类、独立系统权限及其余页面提示（选项/日期/颜色等）、权限/站点矩阵仍待。
 - 初始 about:blank / opener document.write / popup / WebExtension 新 session 的真实文档握手及文件交付。
   固定 Progress 模块明确不保证最初 blank 的 location 事件，不能把未收到事件的 generation 0 当成有效文档。
-- 本批R8实际运行、ARM64实际运行、正式签名及真机矩阵；已通过的构建/体积/打包不替代这些门。
+- 0.5.9尚无完整常规回归、R8/release构建、ARM64打包/运行或正式签名证据；最新已验证ARM64包仍是0.5.8。既有构建/体积/打包不替代本版运行、真机及发行门。
 
 以上仍按 `ACCEPTANCE.md` 的 B13、PRIV、DEV、REL 各门逐项记录，不将安全取消当作该功能支持。

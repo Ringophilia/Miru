@@ -19,6 +19,7 @@ import org.mozilla.gecko.util.EventCallback
 import org.mozilla.gecko.util.GeckoBundle
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.MiruGeckoSessionBridge
 
 /** A weak, opaque native document identity; combine it with the application's tab/context owner. */
@@ -50,7 +51,7 @@ internal class PreparedNativeFiles internal constructor(
 }
 
 /**
- * File-only native delegate adapter for the pinned AC/GeckoView 158.0.2 build.
+ * Upload native delegate adapter for the pinned AC/GeckoView 158.0.2 build.
  *
  * MiruGeckoSessionBridge explicitly uses internal JVM/package ABIs, not official public AC APIs.
  * The matching omni overlay emits top-level Miru:DocumentLocation(sameDocument: Boolean) before
@@ -92,12 +93,38 @@ object NativeFilePrompts {
         }
     }
 
-    fun isManaged(request: PromptRequest.File): Boolean = recordFor(request) != null
+    fun isManaged(request: PromptRequest): Boolean = recordFor(request) != null
 
-    fun documentOwner(request: PromptRequest.File): NativeUploadDocument? = recordFor(request)?.document
+    fun documentOwner(request: PromptRequest): NativeUploadDocument? = recordFor(request)?.document
 
     /** Remains readable while the request is retained by its caller, without retaining it globally. */
-    fun wasConfirmed(request: PromptRequest.File): Boolean = recordFor(request)?.confirmed == true
+    fun wasConfirmed(request: PromptRequest): Boolean = recordFor(request)?.confirmed == true
+
+    internal fun confirmsFolder(selection: PromptRequest.Folder, confirmation: PromptRequest.FolderUploadPrompt): Boolean {
+        val parent = recordFor(selection) ?: return false
+        return recordFor(confirmation)?.folderParent === parent
+    }
+
+    @WorkerThread
+    internal fun prepareFolder(request: PromptRequest.Folder, directory: File): PreparedNativeFiles? {
+        check(!isNativePromptMainThread()) { "Folder paths must be validated off Main" }
+        val record = recordFor(request) ?: return null
+        val root = File(record.applicationContext.cacheDir, "miru-folder-staging").canonicalFile
+        val selected = directory.canonicalFile
+        if(!selected.path.startsWith(root.path + File.separator) || !selected.isDirectory || !selected.canRead()) return null
+        return PreparedNativeFiles(record, arrayOf(Uri.fromFile(selected)))
+    }
+
+    @MainThread
+    internal fun selectPreparedFolder(request: PromptRequest.Folder, prepared: PreparedNativeFiles): Boolean {
+        check(isNativePromptMainThread())
+        val record = recordFor(request) ?: return false
+        if(record.ended || !prepared.belongsTo(record)) return false
+        record.prepared = prepared
+        try { request.onSelected(record.applicationContext, prepared.uris().single()) }
+        finally { record.prepared = null }
+        return record.confirmed
+    }
 
     /** All path resolution and filesystem checks finish on IO before native completion is possible. */
     @WorkerThread
@@ -137,7 +164,7 @@ object NativeFilePrompts {
         return record.confirmed
     }
 
-    private fun recordFor(request: PromptRequest.File): FileRecord? = synchronized(records) {
+    private fun recordFor(request: PromptRequest): FileRecord? = synchronized(records) {
         records.removeAll { it.request?.get() == null }
         records.firstOrNull { it.request?.get() === request }
     }
@@ -146,8 +173,9 @@ object NativeFilePrompts {
         mutableDocumentChanges.value += 1L
     }
 
-    private class FileRecord(val document: NativeUploadDocument, val applicationContext: Context) {
-        var request: WeakReference<PromptRequest.File>? = null
+    private class FileRecord(val document: NativeUploadDocument, val applicationContext: Context,
+        val folderParent: FileRecord? = null) {
+        var request: WeakReference<PromptRequest>? = null
         var ended = false // Main only: claims completion before calling native code or observers.
         @Volatile var confirmed = false
         var prepared: PreparedNativeFiles? = null // Only held during the synchronous selection callback.
@@ -164,15 +192,19 @@ object NativeFilePrompts {
         private var documentGeneration = 0L
         private var protocolValid = true
         private var documentLocationSeen = false
+        // Native's folder-upload message has no parent ID. Serialize actual root submissions
+        // until their genuine second message drains this slot. Cancellation never guesses it away.
+        // This tombstone retains no path, source URI, lease or strong request/callback reference.
+        private var pendingFolderConfirmation: FileRecord? = null
 
         val promptDelegate: GeckoSession.PromptDelegate = object : ForwardingGeckoPromptDelegate(original) {
             override fun onFilePrompt(
                 session: GeckoSession,
                 prompt: GeckoSession.PromptDelegate.FilePrompt,
             ): GeckoResult<GeckoSession.PromptDelegate.PromptResponse>? {
-                // Folder retains AC's behavior and separate FolderUploadPrompt confirmation.
                 if (prompt.type != GeckoSession.PromptDelegate.FilePrompt.Type.SINGLE &&
-                    prompt.type != GeckoSession.PromptDelegate.FilePrompt.Type.MULTIPLE) {
+                    prompt.type != GeckoSession.PromptDelegate.FilePrompt.Type.MULTIPLE &&
+                    prompt.type != GeckoSession.PromptDelegate.FilePrompt.Type.FOLDER) {
                     return super.onFilePrompt(session, prompt)
                 }
                 val result = GeckoResult<GeckoSession.PromptDelegate.PromptResponse>()
@@ -182,7 +214,10 @@ object NativeFilePrompts {
                     return result
                 }
                 val record = FileRecord(document(), applicationContext)
-                val request = PromptRequest.File(
+                val request: PromptRequest = if(prompt.type == GeckoSession.PromptDelegate.FilePrompt.Type.FOLDER) PromptRequest.Folder(
+                    onSelected = { _, uri -> finish(record, prompt, result, arrayOf(uri)) },
+                    onDismiss = { finish(record, prompt, result, null) },
+                ) else PromptRequest.File(
                     mimeTypes = prompt.mimeTypes?.copyOf() ?: emptyArray(),
                     isMultipleFilesSelection = prompt.type == GeckoSession.PromptDelegate.FilePrompt.Type.MULTIPLE,
                     captureMode = when (prompt.capture) {
@@ -215,6 +250,38 @@ object NativeFilePrompts {
                 }
                 // One wrapper and its callback objects are shared by every observer.
                 engineOwner.notifyObservers { onPromptRequest(request) }
+                return result
+            }
+
+            override fun onFolderUploadPrompt(session: GeckoSession,
+                prompt: GeckoSession.PromptDelegate.FolderUploadPrompt): GeckoResult<GeckoSession.PromptDelegate.PromptResponse> {
+                val result = GeckoResult<GeckoSession.PromptDelegate.PromptResponse>()
+                val owner = engine.get()
+                val parent = pendingFolderConfirmation.also { pendingFolderConfirmation = null }
+                if(session !== native.get() || owner == null || !isInstalled() || parent == null || !parent.document.isCurrent()) {
+                    if(!prompt.isComplete) result.complete(prompt.confirm(AllowOrDeny.DENY))
+                    return result
+                }
+                val record = FileRecord(parent.document, applicationContext, parent)
+                fun answer(allow: Boolean) {
+                    check(isNativePromptMainThread())
+                    if(record.ended || prompt.isComplete) return
+                    record.ended = true
+                    val accepted = allow && record.document.isCurrent()
+                    result.complete(prompt.confirm(if(accepted) AllowOrDeny.ALLOW else AllowOrDeny.DENY))
+                    record.confirmed = accepted
+                }
+                val request = PromptRequest.FolderUploadPrompt(prompt.directoryName.orEmpty(), { answer(true) }, { answer(false) })
+                record.request = WeakReference(request)
+                synchronized(records) { records.removeAll { it.request?.get() == null }; records += record }
+                prompt.delegate = object : GeckoSession.PromptDelegate.PromptInstanceDelegate {
+                    override fun onPromptDismiss(dismissed: GeckoSession.PromptDelegate.BasePrompt) {
+                        if(record.ended) return
+                        record.ended = true
+                        engine.get()?.notifyObservers { onPromptDismissed(request) }
+                    }
+                }
+                owner.notifyObservers { onPromptRequest(request) }
                 return result
             }
         }
@@ -264,6 +331,14 @@ object NativeFilePrompts {
                 if (prepared == null) {
                     result.complete(prompt.dismiss())
                 } else {
+                    if(prompt.type == GeckoSession.PromptDelegate.FilePrompt.Type.FOLDER) {
+                        if(pendingFolderConfirmation != null) {
+                            result.complete(prompt.dismiss())
+                            return
+                        }
+                        // Set before public confirm can asynchronously issue FolderUploadPrompt.
+                        pendingFolderConfirmation = record
+                    }
                     result.complete(prompt.confirm(applicationContext, prepared))
                     record.confirmed = true
                 }

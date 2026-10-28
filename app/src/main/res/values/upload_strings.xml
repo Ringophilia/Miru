@@ -1,5 +1,11 @@
 <resources>
     <string name="upload_title">上传文件</string>
+    <string name="upload_folder_title">上传文件夹</string>
+    <string name="upload_folder_choose">选择文件夹</string>
+    <string name="upload_folder_confirm_title">允许上传文件夹内容？</string>
+    <string name="upload_folder_confirm_detail">网页将能够读取“%1$s”内的文件及其目录名称。</string>
+    <string name="upload_folder_allow">允许上传</string>
+    <string name="upload_folder_unavailable">无法完整准备这个文件夹。请选择其他文件夹；若仍失败，请关闭此标签页并在新标签页中重试。</string>
     <string name="upload_choose">选择文件</string>
     <string name="upload_photo">拍照</string>
     <string name="upload_video">录像</string>

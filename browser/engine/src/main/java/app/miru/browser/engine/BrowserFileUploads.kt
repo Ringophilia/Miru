@@ -13,9 +13,11 @@ import android.os.CancellationSignal
 import android.os.Process
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import android.provider.DocumentsContract
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
 import java.io.File
+import java.io.Closeable
 import java.lang.ref.WeakReference
 import java.util.Locale
 import java.util.UUID
@@ -26,6 +28,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
@@ -34,24 +37,34 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
 
+internal sealed class BrowserUploadSelection(val token: Long, val isPrivate: Boolean,
+    val pending: () -> Boolean, val documentAlive: () -> Boolean, val cancel: () -> Unit)
+
 internal class BrowserFileSelection(
-    val token: Long,
+    token: Long,
     val mimeTypes: List<String>,
     val multiple: Boolean,
-    val isPrivate: Boolean,
+    isPrivate: Boolean,
     val capture: BrowserFileCapture,
-    val pending: () -> Boolean,
-    val documentAlive: () -> Boolean,
+    pending: () -> Boolean,
+    documentAlive: () -> Boolean,
     val prepare: (List<File>) -> PreparedNativeFiles?,
     val deliver: (PreparedNativeFiles) -> Boolean,
-    val cancel: () -> Unit,
-) {
+    cancel: () -> Unit,
+) : BrowserUploadSelection(token, isPrivate, pending, documentAlive, cancel) {
     override fun toString() = "BrowserFileSelection(token=$token, private=$isPrivate)"
 }
 
-enum class BrowserUploadPhase { IDLE, PERMISSION, PICKING, PREPARING }
-enum class BrowserUploadError { UNAVAILABLE, PERMISSION_DENIED, UNREADABLE, TOO_MANY_FILES, BUSY }
-enum class BrowserUploadSource { DOCUMENT, PHOTO, VIDEO, AUDIO }
+internal class BrowserFolderSelection(token: Long, isPrivate: Boolean, pending: () -> Boolean,
+    documentAlive: () -> Boolean, val flowCurrent: () -> Boolean,
+    val prepare: (File) -> PreparedNativeFiles?,
+    val deliver: (PreparedNativeFiles, String, () -> Unit, (Boolean) -> Unit) -> Boolean,
+    cancel: () -> Unit,
+) : BrowserUploadSelection(token, isPrivate, pending, documentAlive, cancel)
+
+enum class BrowserUploadPhase { IDLE, PERMISSION, PICKING, PREPARING, CONFIRMING }
+enum class BrowserUploadError { UNAVAILABLE, PERMISSION_DENIED, UNREADABLE, TOO_MANY_FILES, BUSY, FOLDER_UNAVAILABLE }
+enum class BrowserUploadSource { DOCUMENT, PHOTO, VIDEO, AUDIO, FOLDER }
 data class BrowserUploadState(val token: Long? = null, val phase: BrowserUploadPhase = BrowserUploadPhase.IDLE)
 
 /** Application-lifetime, process-memory-only system result ownership and document file leases. */
@@ -68,18 +81,21 @@ class BrowserFileUploads internal constructor(
         const val PICKER_TOKEN_EXTRA = "miru.upload.request"
         const val MAX_FILES = 512
         private const val DISK_RESERVE = 64L * 1024 * 1024
+        private const val FOLDER_CONFIRM_APPEAR_TIMEOUT_MS = 30_000L
     }
 
     private val stagingRoot by lazy { File(context.cacheDir, "miru-upload-staging") }
     private val captureRoot by lazy { File(context.cacheDir, "miru-upload-capture") }
     private val staging by lazy { UploadStagingStore(stagingRoot) }
     private val captures by lazy { UploadStagingStore(captureRoot) }
-    private val initialized = scope.async(Dispatchers.IO) { staging.clearOrphans(); captures.clearOrphans() }
+    private val folderRoot by lazy { File(context.cacheDir, "miru-folder-staging") }
+    private val folders by lazy { UploadTreeStagingStore(folderRoot) }
+    private val initialized = scope.async(Dispatchers.IO) { staging.clearOrphans(); captures.clearOrphans(); folders.clearOrphans() }
     private var host = WeakReference<Activity>(null)
     private var pickerActivityClass: Class<out Activity>? = null
     private var pickerHost = WeakReference<Activity>(null)
     private var pickerHostToken: String? = null
-    private class Operation(val ticket: BrowserFileSelection, val source: BrowserUploadSource) {
+    private class Operation(val ticket: BrowserUploadSelection, val source: BrowserUploadSource) {
         val channel = UUID.randomUUID().toString()
         var phase = BrowserUploadPhase.PREPARING
         @Volatile var abandoned = false
@@ -90,9 +106,11 @@ class BrowserFileUploads internal constructor(
         var captureFile: File? = null
         var captureUri: Uri? = null
         var systemIntent: Intent? = null
-        @Volatile var selectionLease: UploadStagingLease? = null
+        @Volatile var selectionLease: Closeable? = null
     }
-    private class Delivered(val documentAlive: () -> Boolean, val lease: UploadStagingLease)
+    private class Delivered(val documentAlive: () -> Boolean, val lease: Closeable)
+    private class AwaitingFolder(val ticket: BrowserFolderSelection, val lease: Closeable) { var appearanceDeadline: Job? = null }
+    private var awaitingFolder: AwaitingFolder? = null
     private class SystemSlot(val operation: Operation?, val phase: BrowserUploadPhase,
         val token: String = checkNotNull(operation).channel, var systemStarted: Boolean = false)
     private val delivered = mutableListOf<Delivered>()
@@ -119,6 +137,7 @@ class BrowserFileUploads internal constructor(
             host.clear()
             if(activity.isFinishing) {
                 operation?.let(::abandon)
+                awaitingFolder?.ticket?.cancel?.invoke()
                 publish()
             }
         }
@@ -180,13 +199,16 @@ class BrowserFileUploads internal constructor(
 
     fun choose(token: Long, source: BrowserUploadSource = BrowserUploadSource.DOCUMENT) {
         reconcile()
-        if(launched != null || operation != null) { errorChannel.trySend(BrowserUploadError.BUSY); return }
-        val ticket = prompts.fileSelection(token) ?: return
+        if(launched != null || operation != null || awaitingFolder != null) { errorChannel.trySend(BrowserUploadError.BUSY); return }
+        val ticket = prompts.fileSelection(token) ?: prompts.folderSelection(token) ?: return
         val activity = host.get()?.takeUnless { it.isFinishing || it.isDestroyed }
         if(activity == null) { ticket.cancel(); errorChannel.trySend(BrowserUploadError.UNAVAILABLE); return }
-        val op = Operation(ticket, source)
+        val actualSource = if(ticket is BrowserFolderSelection) BrowserUploadSource.FOLDER else source
+        val op = Operation(ticket, actualSource)
         operation = op
-        if(source != BrowserUploadSource.DOCUMENT && source !in captureSources(ticket.mimeTypes)) {
+        if(ticket is BrowserFileSelection && source == BrowserUploadSource.FOLDER) { fail(op, BrowserUploadError.UNAVAILABLE); return }
+        if(actualSource != BrowserUploadSource.FOLDER && source != BrowserUploadSource.DOCUMENT &&
+            source !in captureSources((ticket as BrowserFileSelection).mimeTypes)) {
             fail(op, BrowserUploadError.UNAVAILABLE); return
         }
         val permission = when(source) {
@@ -227,11 +249,17 @@ class BrowserFileUploads internal constructor(
         val op = slot.operation ?: run { finishPickerHost(token); publish(); return true }
         if(op.abandoned || !op.ticket.pending()) { abandon(op); return true }
         if(resultCode != Activity.RESULT_OK) { cancel(op); return true }
+        if(op.source == BrowserUploadSource.FOLDER) {
+            val uri = data?.data
+            if(uri == null || data.clipData?.itemCount?.let { it > 1 } == true) fail(op, BrowserUploadError.UNREADABLE)
+            else prepareFolder(op, uri)
+            return true
+        }
         val uris = if(op.captureUri != null) listOf(checkNotNull(op.captureUri)) else buildList {
             data?.clipData?.let { clip -> for(index in 0 until clip.itemCount) add(clip.getItemAt(index).uri) }
             data?.data?.let(::add)
         }.distinct()
-        if(uris.isEmpty() || (!op.ticket.multiple && uris.size != 1)) { fail(op, BrowserUploadError.UNREADABLE); return true }
+        if(uris.isEmpty() || (!(op.ticket as BrowserFileSelection).multiple && uris.size != 1)) { fail(op, BrowserUploadError.UNREADABLE); return true }
         if(uris.size > MAX_FILES) { fail(op, BrowserUploadError.TOO_MANY_FILES); return true }
         prepare(op, uris)
         return true
@@ -245,7 +273,8 @@ class BrowserFileUploads internal constructor(
                 initialized.await()
                 if(!current(op)) { abandon(op); return@launch }
                 val intent = when(op.source) {
-                    BrowserUploadSource.DOCUMENT -> documentIntent(op.ticket)
+                    BrowserUploadSource.DOCUMENT -> documentIntent(op.ticket as BrowserFileSelection)
+                    BrowserUploadSource.FOLDER -> Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     BrowserUploadSource.AUDIO -> Intent(MediaStore.Audio.Media.RECORD_SOUND_ACTION)
                     BrowserUploadSource.PHOTO, BrowserUploadSource.VIDEO -> {
                         val (file, uri) = withContext(Dispatchers.IO) {
@@ -263,7 +292,7 @@ class BrowserFileUploads internal constructor(
                             putExtra(MediaStore.EXTRA_OUTPUT, uri)
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                             clipData = ClipData.newRawUri("capture", uri)
-                            if(op.ticket.capture == BrowserFileCapture.FRONT_CAMERA) {
+                            if((op.ticket as BrowserFileSelection).capture == BrowserFileCapture.FRONT_CAMERA) {
                                 putExtra("android.intent.extras.CAMERA_FACING", 1)
                                 putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
                             } else if(op.ticket.capture == BrowserFileCapture.BACK_CAMERA) putExtra("android.intent.extras.CAMERA_FACING", 0)
@@ -291,6 +320,7 @@ class BrowserFileUploads internal constructor(
     }
 
     private fun prepare(op: Operation, uris: List<Uri>) {
+        val ticket = op.ticket as BrowserFileSelection
         op.phase = BrowserUploadPhase.PREPARING
         val captureFile = op.captureFile
         val captureUri = op.captureUri
@@ -319,17 +349,74 @@ class BrowserFileUploads internal constructor(
                             }
                         } finally { if(op.signal === signal) op.signal = null }
                     }
-                    op.ticket.prepare(files) ?: throw java.io.IOException("Upload validation failed")
+                    ticket.prepare(files) ?: throw java.io.IOException("Upload validation failed")
                 }
                 if(!current(op) || !op.ticket.documentAlive()) { abandon(op); return@launch }
                 // retire() publishes prompt=null synchronously. Do not interpret our own
                 // successful native completion as a user cancellation in reconcile().
                 op.delivering = true
-                val accepted = op.ticket.deliver(prepared)
+                val accepted = ticket.deliver(prepared)
                 if(accepted && op.ticket.documentAlive()) {
                     delivered += Delivered(op.ticket.documentAlive, checkNotNull(op.selectionLease))
                     op.selectionLease = null
                 } else errorChannel.trySend(BrowserUploadError.UNREADABLE)
+                finish(op)
+            } catch(cancelled: CancellationException) { throw cancelled }
+            catch(_: Exception) { if(!op.abandoned) fail(op, BrowserUploadError.UNREADABLE) }
+        }.also { watchCancellation(op, it) }
+    }
+
+    private fun prepareFolder(op: Operation, tree: Uri) {
+        val ticket = op.ticket as BrowserFolderSelection
+        op.phase = BrowserUploadPhase.PREPARING
+        publish()
+        op.job = scope.launch(Dispatchers.Main.immediate) {
+            try {
+                initialized.await()
+                if(!current(op)) { abandon(op); return@launch }
+                val (directory, prepared) = withContext(Dispatchers.IO) {
+                    if(!DocumentsContract.isTreeUri(tree) || !readableResultUri(null, tree))
+                        throw java.io.IOException("Unavailable folder selection")
+                    val signal = CancellationSignal()
+                    op.signal = signal
+                    try {
+                        coroutineContext.ensureActive()
+                        if(op.abandoned) throw CancellationException("Folder owner ended")
+                        val lease = folders.createLease((folderRoot.usableSpace - DISK_RESERVE).coerceAtLeast(0), MAX_FILES)
+                        op.selectionLease = lease
+                        val directory = lease.copy(AndroidUploadTreeSource(context, tree, signal))
+                        directory to (ticket.prepare(directory) ?: throw java.io.IOException("Folder validation failed"))
+                    } finally { if(op.signal === signal) op.signal = null }
+                }
+                if(!current(op) || !ticket.flowCurrent()) { abandon(op); return@launch }
+                val waiting = AwaitingFolder(ticket, checkNotNull(op.selectionLease))
+                op.selectionLease = null
+                awaitingFolder = waiting // The real first callback may immediately issue its confirmation.
+                waiting.appearanceDeadline = scope.launch {
+                    delay(FOLDER_CONFIRM_APPEAR_TIMEOUT_MS)
+                    if(awaitingFolder === waiting) {
+                        waiting.ticket.cancel()
+                        if(awaitingFolder === waiting) { awaitingFolder = null; dispose(waiting.lease) }
+                        errorChannel.trySend(BrowserUploadError.FOLDER_UNAVAILABLE)
+                        publish()
+                    }
+                }
+                op.delivering = true
+                val accepted = ticket.deliver(prepared, directory.name, { waiting.appearanceDeadline?.cancel() }) { allowed ->
+                    if(awaitingFolder === waiting) {
+                        waiting.appearanceDeadline?.cancel()
+                        awaitingFolder = null
+                        if(allowed && ticket.documentAlive()) delivered += Delivered(ticket.documentAlive, waiting.lease)
+                        else dispose(waiting.lease)
+                        publish()
+                    }
+                }
+                if(!accepted) {
+                    if(awaitingFolder === waiting) { waiting.appearanceDeadline?.cancel(); awaitingFolder = null; dispose(waiting.lease) }
+                    errorChannel.trySend(BrowserUploadError.FOLDER_UNAVAILABLE)
+                }
+                // Its receiver now releases only this result's temporary tree grant owner.
+                // Do not revoke the URI globally: it may also be a user's persisted download folder.
                 finish(op)
             } catch(cancelled: CancellationException) { throw cancelled }
             catch(_: Exception) { if(!op.abandoned) fail(op, BrowserUploadError.UNREADABLE) }
@@ -354,6 +441,11 @@ class BrowserFileUploads internal constructor(
 
     private fun reconcile() {
         operation?.takeIf { !it.delivering && !it.ticket.pending() }?.let(::abandon)
+        awaitingFolder?.takeUnless { it.ticket.flowCurrent() }?.let { waiting ->
+            waiting.appearanceDeadline?.cancel()
+            waiting.ticket.cancel()
+            if(awaitingFolder === waiting) { awaitingFolder = null; dispose(waiting.lease) }
+        }
         delivered.toList().filterNot { it.documentAlive() }.forEach { value ->
             delivered.remove(value)
             dispose(value.lease)
@@ -382,7 +474,7 @@ class BrowserFileUploads internal constructor(
 
     private fun cancel(op: Operation) { if(operation === op) operation = null; op.ticket.cancel(); finish(op) }
     private fun fail(op: Operation, error: BrowserUploadError) {
-        errorChannel.trySend(error)
+        errorChannel.trySend(if(op.source == BrowserUploadSource.FOLDER) BrowserUploadError.FOLDER_UNAVAILABLE else error)
         if(operation === op) operation = null
         op.ticket.cancel()
         finish(op)
@@ -413,7 +505,7 @@ class BrowserFileUploads internal constructor(
         if(pickerHostToken == token) pickerHost.get()?.finish()
     }
 
-    private fun dispose(lease: UploadStagingLease) { scope.launch(Dispatchers.IO) { runCatching { lease.close() } } }
+    private fun dispose(lease: Closeable) { scope.launch(Dispatchers.IO) { runCatching { lease.close() } } }
     private fun watchCancellation(op: Operation, job: Job) {
         job.invokeOnCompletion { cause ->
             if(cause != null) scope.launch(Dispatchers.Main.immediate) {
@@ -423,7 +515,8 @@ class BrowserFileUploads internal constructor(
     }
     private fun publish() {
         val active = operation ?: launched?.operation
-        mutableState.value = BrowserUploadState(active?.ticket?.token, active?.phase ?: launched?.phase ?: BrowserUploadPhase.IDLE)
+        mutableState.value = BrowserUploadState(active?.ticket?.token ?: awaitingFolder?.ticket?.token,
+            active?.phase ?: launched?.phase ?: if(awaitingFolder != null) BrowserUploadPhase.CONFIRMING else BrowserUploadPhase.IDLE)
     }
 
     private fun documentIntent(ticket: BrowserFileSelection): Intent {

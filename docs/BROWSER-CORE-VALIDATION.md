@@ -357,3 +357,24 @@ SDK仍canUp=true；随后实际下拉使该doc GET及新绘制从1变2，SDK仍�
 `1c8d300b98ae0f0e5be53e930da00793cf21022db95c91afa50da24240374030`。
 输入/运行数值/结果见`057-viewport-observed-top-input.json`、同前缀`runtime.log`和`result.json`。
 菜单重开这轮通过不证明原整套失败的根因消失；真实网站/键盘/固定元素和完整矩阵仍待。
+
+## 0.5.9 目录集成中的显式顶栏与真实刷新
+
+证据路径均在`artifacts/folder-upload/`。固定0.5.9/code17主APK SHA
+`6616ef8afcc4cf29b97e457943f59f9e3704efcd369a4cca76be433cbe51130b`，API35/x86_64受控5600。
+`059-native-prompt-regression-device.log`跨模块首轮 **48/49（338.146秒）**：目录5、文件/capture18、页面提示11、站点及权限生命周期8和Core中6项通过；
+唯一失败是`realGeckoScrollHidesAndRestoresToolbarAndTopPullRefreshes` L253原SDK canScrollUp在8秒内须变false的门。原input/result/runtime及失败日志保留；不能据本轮失败断言生产刷新失效，旧门也没有独立DOM证据证明当时的实际页顶。
+
+只改该TOP测试：显式设置TOP，断言工具栏确实位于上半屏，在finally恢复原偏好；真实swipe隐藏/恢复和未刷新GET断言保留。
+导航唯一正整数doc后，在原15秒门内核对owner/URL/title/!loading/该doc GET，在原8秒门内核对同doc双rAF的window.scrollY与visualViewport.pageTop均0。
+随后原真实下拉手势必须在原15秒内产生该doc新GET和新beacon，并仍是同owner/URL/标题且加载结束。SDK canUp/verticalScrollPosition继续记录诊断，不作实际页顶真值。
+没有改生产、手势、sleep或8/15秒期限；`059-top-positioned-static-scope.json`记录范围与测试源码SHA。
+
+`059-top-positioned-build.log`测试APK/lint **1分57秒成功**，lint0错误/22警告；最终测试APK
+`059-top-positioned-binaries/androidTest.apk` SHA
+`3585f319bc85b1c94058207798515a21b4a003cc759ce9f5353dbde796d16230`，主APK哈希未改。
+`059-top-positioned-core-device.log` **7/7通过（150.868秒）**；该轮TOP的真实新doc/DOM/visual/flow均0、SDK canUp也为false，实际刷新GET及beacon各1→2。
+独立深滚行为项另记录旧文档flow≈2514，新doc DOM/visual/flow为0而SDK仍true，随后真实刷新成功；它继续证明缓存可能陈旧，不能把其数值写成TOP用例也复现了SDK true。
+
+最终同一主/测试APK的`059-native-prompt-regression-fixed-device.log`重新单次运行上述7类，**49/49通过（602.313秒）**；对应input/result/runtime保留命令、哈希及真实观测。
+这不是隔离结果拼接首轮48/49，也不是0.5.9完整常规回归。该版尚无R8/release或ARM64打包/运行、正式签名证据；其他网站/嵌套滚动/键盘/固定元素/真机矩阵仍待。

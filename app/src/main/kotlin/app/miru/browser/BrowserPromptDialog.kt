@@ -40,6 +40,7 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
         when(state.kind) {
             BrowserPromptKind.BEFORE_UNLOAD -> prompts.answerBeforeUnload(state.token, leave = false)
             BrowserPromptKind.REPOST -> prompts.answerRepost(state.token, resubmit = false)
+            BrowserPromptKind.FOLDER_CONFIRM -> prompts.answerFolderUpload(state.token, allow = false)
             else -> prompts.dismiss(state.token, allowMoreDialogs = allowMore)
         }
     }
@@ -47,6 +48,8 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
         BrowserPromptKind.BEFORE_UNLOAD -> stringResource(R.string.page_prompt_leave_title)
         BrowserPromptKind.REPOST -> stringResource(R.string.page_prompt_repost_title)
         BrowserPromptKind.FILE -> stringResource(R.string.upload_title)
+        BrowserPromptKind.FOLDER -> stringResource(R.string.upload_folder_title)
+        BrowserPromptKind.FOLDER_CONFIRM -> stringResource(R.string.upload_folder_confirm_title)
         BrowserPromptKind.AUTHENTICATION -> stringResource(if(state.authMethod == BrowserAuthMethod.PROXY)
             R.string.page_prompt_proxy_title else R.string.page_prompt_auth_title)
         else -> state.title.ifBlank { stringResource(R.string.page_prompt_title) }
@@ -54,6 +57,7 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
     val message = when(state.kind) {
         BrowserPromptKind.BEFORE_UNLOAD -> stringResource(R.string.page_prompt_leave_detail)
         BrowserPromptKind.REPOST -> stringResource(R.string.page_prompt_repost_detail)
+        BrowserPromptKind.FOLDER_CONFIRM -> stringResource(R.string.upload_folder_confirm_detail, state.folderName)
         else -> state.message
     }
     ModalBottomSheet(onDismissRequest = ::dismiss) {
@@ -83,12 +87,12 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         modifier = Modifier.fillMaxWidth().testTag("page_prompt_password"))
                 }
-                BrowserPromptKind.FILE -> {
+                BrowserPromptKind.FILE, BrowserPromptKind.FOLDER -> {
                     if(uploadBusy) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                         Text(stringResource(if(upload.phase == BrowserUploadPhase.PREPARING) R.string.upload_preparing else R.string.upload_waiting))
                     }
-                    val sources = uploads.captureSources(state.fileMimeTypes)
+                    val sources = if(state.kind == BrowserPromptKind.FILE) uploads.captureSources(state.fileMimeTypes) else emptySet()
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for(source in sources) OutlinedButton(enabled = !uploadBusy,
                             onClick = { uploads.choose(state.token, source) }, modifier = Modifier.testTag("page_prompt_capture_${source.name.lowercase()}")) {
@@ -126,7 +130,7 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
                         else -> stringResource(R.string.page_prompt_cancel)
                     })
                 }
-                FilledTonalButton(enabled = state.kind != BrowserPromptKind.FILE || !uploadBusy, onClick = {
+                FilledTonalButton(enabled = state.kind !in setOf(BrowserPromptKind.FILE, BrowserPromptKind.FOLDER) || !uploadBusy, onClick = {
                     when(state.kind) {
                         BrowserPromptKind.ALERT -> prompts.acknowledgeAlert(state.token, allowMore)
                         BrowserPromptKind.CONFIRM -> prompts.answerConfirm(state.token, BrowserPromptButton.POSITIVE, allowMore)
@@ -135,13 +139,22 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
                         BrowserPromptKind.REPOST -> prompts.answerRepost(state.token, resubmit = true)
                         BrowserPromptKind.AUTHENTICATION -> prompts.authenticate(state.token, username, password)
                         BrowserPromptKind.FILE -> uploads.choose(state.token)
+                        BrowserPromptKind.FOLDER -> uploads.choose(state.token)
+                        BrowserPromptKind.FOLDER_CONFIRM -> prompts.answerFolderUpload(state.token, allow = true)
                     }
-                }, modifier = Modifier.testTag(if(state.kind == BrowserPromptKind.FILE) "page_prompt_file_choose" else "page_prompt_confirm")) {
+                }, modifier = Modifier.testTag(when(state.kind) {
+                    BrowserPromptKind.FILE -> "page_prompt_file_choose"
+                    BrowserPromptKind.FOLDER -> "page_prompt_folder_choose"
+                    BrowserPromptKind.FOLDER_CONFIRM -> "page_prompt_folder_confirm"
+                    else -> "page_prompt_confirm"
+                })) {
                     Text(when(state.kind) {
                         BrowserPromptKind.BEFORE_UNLOAD -> stringResource(R.string.page_prompt_leave)
                         BrowserPromptKind.REPOST -> stringResource(R.string.page_prompt_resubmit)
                         BrowserPromptKind.CONFIRM -> state.positiveButtonTitle.ifBlank { stringResource(R.string.page_prompt_confirm) }
                         BrowserPromptKind.FILE -> stringResource(R.string.upload_choose)
+                        BrowserPromptKind.FOLDER -> stringResource(R.string.upload_folder_choose)
+                        BrowserPromptKind.FOLDER_CONFIRM -> stringResource(R.string.upload_folder_allow)
                         else -> stringResource(R.string.page_prompt_confirm)
                     })
                 }

@@ -1,6 +1,6 @@
 # 实现进度
 
-开始日期：2026-10-22。当前推进至 M3 超分及浏览器核心缺口批次（0.5.6上传首批已提交`56a22a1`，完整常规102/106通过、4项失败，独立系统3项与ARM64开发包打包通过）；0.5.5的98项常规回归及其他历史证据保留。完整B13、M0 / M1 / M2剩余专项及发行门仍待，iOS按规范在Android M4后开始。全部要求和证据映射见`ACCEPTANCE.md`，不以当前通过的测试替代全量验收。
+开始日期：2026-10-22。当前推进至0.5.9目录上传首批：受控目录5/5、最新跨模块单次49/49通过，尚无0.5.9完整常规回归或ARM64发布包。最新已验证ARM64打包仍为0.5.8，固定Debug包常规117/117及独立首装/系统权限证据保留。完整B13、M0 / M1 / M2 / M3剩余专项及发行门仍待，iOS按规范在Android M4后开始。全部要求和证据映射见`ACCEPTANCE.md`，不以当前通过的测试替代全量验收。
 
 ## 已实现的 M0 代码
 
@@ -188,6 +188,16 @@
 - 上述测试/文档已提交`dbddaed`。其ARM64 R8/shrink release构建成功（2分50秒），开发包**108,011,752字节**、SHA `bf92e7a4f4b69893f25632e4057b5d80f7777a27f3fbcc27a58a541c1ecd062c`；1518payload完整、对齐/同Debug证书、17个ARM64库和4077+2+5 Gecko资源均验证通过。固定归档流水线与`058-release-*`证据保留；正式签名及R8/ARM64运行继续待验。
 - 打包证据已提交`30b9f42`；其固定主/测试APK在新受控5600实际常规完整回归**117/117通过（907.736秒）**，详见`058-full-*`及`B13-CAPTURE-VALIDATION.md`。两个浏览器旧失败和QUALITY本轮通过，三档60帧实际202.9/271.6/477.3ms，保留历史失败和物理GPU门。清单发现117不计执行证据，也不把本轮当作uBO真正首次启动专项。仍排除两个外部重启类及需独立fixture的真实系统权限类，未记通过。
 - 117项证据已提交`517f708`；另启5602确认安装前无Miru、安装后首次instrumentation前无目标进程且不先跑清单，uBO真正首次启动1/1（36.811秒），随后真实系统权限独立3/3（33.353秒）通过。实际camera拒绝、camera/mic允许与coarse-only近似定位，无pm grant/预授权；`058-startup-fresh-*`与`058-runtime-fresh-*`独立保留，不合并进117。hostmic在安装前console关闭并获OK，启用音频不代表物理拾音验收。
+
+## B13 目录上传首批（0.5.9；完整矩阵未完成）
+
+- 真实ACTION_OPEN_DOCUMENT_TREE经专用receiver临时grant，在可取消IO完整复制真实根名/层级，再由公开FilePrompt.confirm提交单个本地根目录；Gecko真正FolderUploadPrompt由用户ALLOW/DENY，不使用旧Java深度5遍历，也不伪造callback/ActivityResult/FileList。
+- 树复制保留深层、不同子目录同名、Unicode、空目录/零字节；循环、非法路径、读取失败或文件/节点/实际bytes超预算须整体失败并清理。同级重复DISPLAY_NAME、显式provider MIME与basename推断冲突等尚无法忠实保留，当前明确失败，不能据此宣称完整metadata支持。
+- 第一Folder record与文档身份延续到真实第二prompt；未排空native单槽不会因取消/超时猜测释放。等待第二prompt出现最多30秒，只回收lease/BUSY，不自动ALLOW；永久异常须关闭标签在新标签恢复。真实迟到native确认、进程死亡等仍缺设备证据。
+- `build-1.log` engine **90/90**（含树复制 **10/10**），`build-2.log`的0.5.9/code17 Debug主/测试构建与lint通过（2分32秒）；最终测试/lint为`059-top-positioned-build.log`（1分57秒），lint0错误/22警告。此批未执行全工程JVM，不写成全局总数。主APK SHA `6616ef8afcc4cf29b97e457943f59f9e3704efcd369a4cca76be433cbe51130b`，最终测试SHA `3585f319bc85b1c94058207798515a21b4a003cc759ce9f5353dbde796d16230`。
+- 真实TREE首轮1方法2失败（56.136秒）为Use/Allow共用button1的驱动误判及清理超时，原日志和两阶段XML保留；按实际UI修正后完整树1/1（21.03秒），同包目录整类 **5/5（50.447秒）**，覆盖路径/name/type/size和POST原bytes、私密owner关闭/grant回基线、空根真实change、native DENY和显式MIME不保真整体失败。
+- 跨模块首轮 **48/49（338.146秒）** 保留唯一顶栏旧SDK页顶门失败。测试现显式TOP并断言实际位置/finally恢复偏好，用新doc双rAF和精确GET/真实刷新作判据，原手势与8/15秒不变；生产主包未改。`059-top-positioned-core-*` **7/7（150.868秒）**，最终同包重新单次执行`059-native-prompt-regression-fixed-*` **49/49（602.313秒）**，含Folder5/File18/页面提示11/站点及生命周期8/Core7。TOP本轮SDK canUp=false，不能与独立深滚行为项SDK仍true混写。
+- 首批仅API35/x86_64受控provider。TREE取消/拒绝保留已有FileList、两阶段重建、IO作废和系统/native迟到事务、特殊MIME/metadata、其他provider、进程死亡与完整私密持久化仍待；0.5.9完整常规回归、R8/ARM64构建/运行、正式签名及发行门未闭合。详见[B13目录记录](B13-FOLDER-UPLOAD-VALIDATION.md)与[浏览器核心记录](BROWSER-CORE-VALIDATION.md)。
 
 ## M3 尚待推进
 

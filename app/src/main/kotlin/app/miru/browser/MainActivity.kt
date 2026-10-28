@@ -496,6 +496,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
         app.miru.browser.engine.BrowserUploadError.TOO_MANY_FILES to stringResource(R.string.upload_too_many),
         app.miru.browser.engine.BrowserUploadError.BUSY to stringResource(R.string.upload_busy),
         app.miru.browser.engine.BrowserUploadError.UNREADABLE to stringResource(R.string.upload_unreadable),
+        app.miru.browser.engine.BrowserUploadError.FOLDER_UNAVAILABLE to stringResource(R.string.upload_folder_unavailable),
     ))
     LaunchedEffect(controller) { controller.uploads.errors.collect { error ->
         snackbars.showMessage(uploadMessages.getValue(error))

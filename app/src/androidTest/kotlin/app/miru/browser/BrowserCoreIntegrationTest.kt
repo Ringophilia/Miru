@@ -238,22 +238,92 @@ class BrowserCoreIntegrationTest {
     }
 
     @Test fun realGeckoScrollHidesAndRestoresToolbarAndTopPullRefreshes() {
-        CoreOrigin().use { origin ->
-            page("${origin.url}/long", "Core long", private = false)
+        val original = runBlocking { container.settings.settings.first().toolbarPosition }
+        runBlocking { container.settings.setToolbarPosition(ToolbarPosition.TOP) }
+        val diagnosticScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        try { CoreOrigin().use { origin ->
+            val owner = page("${origin.url}/long", "Core long", private = false)
+            compose.waitForIdle()
             val before = origin.longLoads.get()
             val initial = compose.onNodeWithTag("browser-viewport-toolbar").fetchSemanticsNode().boundsInRoot
+            assertTrue("The requested top toolbar must actually be visible in the upper half of the viewport",
+                initial.height > 0f && initial.top < engineBounds().height() / 2)
+            val destinationDocument = (System.nanoTime() and Int.MAX_VALUE.toLong()).toInt().coerceAtLeast(1)
+            val destination = "${origin.url}/long?viewportDoc=$destinationDocument"
+            val scrollPosition = AtomicReference<Float?>(null)
+            var observedEngine: EngineView? = null
+            compose.runOnIdle {
+                val actualEngine = engineView()
+                observedEngine = actualEngine
+                diagnosticScope.launch { actualEngine.verticalScrollPosition.collect(scrollPosition::set) }
+            }
+            fun diagnostic(stage: String): String {
+                val observations = origin.viewportObservations(destinationDocument)
+                val beacon = observations.lastOrNull()
+                var actual = "mainObserved=false"
+                compose.runOnIdle {
+                    val snapshot = browser.state.value
+                    val selected = snapshot.selectedTab
+                    val actualEngine = engineView()
+                    actual = "mainObserved=true ownerSelected=${snapshot.selectedTabId == owner} " +
+                        "destinationMatches=${selected?.url == destination} loading=${selected?.loading} " +
+                        "titleReady=${selected?.title == "Core long"} sameEngine=${actualEngine === observedEngine} " +
+                        "canScrollUp=${actualEngine.canScrollVerticallyUp()}"
+                }
+                val value = "stage=TOP_$stage elapsedMs=${SystemClock.elapsedRealtime()} doc=$destinationDocument " +
+                    "loads=${origin.longLoads.get()} documentGets=${origin.documentRequestCount(destinationDocument)} " +
+                    "beaconCount=${observations.size} domObserved=${beacon != null} domScrollY=${beacon?.scrollY} " +
+                    "visualPageTop=${beacon?.visualViewportPageTop} " +
+                    "flowObserved=${scrollPosition.get() != null} flowPosition=${scrollPosition.get()} $actual"
+                Log.i("MiruViewportTest", value)
+                return value
+            }
             swipe(.75f, .25f)
             compose.waitUntil(8_000) { compose.onNodeWithTag("browser-viewport-toolbar").fetchSemanticsNode().boundsInRoot.top < initial.top - initial.height * .6f }
             assertEquals("Scrolling within the page must not refresh it", before, origin.longLoads.get())
+            diagnostic("HIDDEN")
             swipe(.25f, .8f)
             compose.waitUntil(8_000) { compose.onNodeWithTag("browser-viewport-toolbar").fetchSemanticsNode().boundsInRoot.top >= initial.top - 2f }
-            // Reload deterministically returns to page top without a fake DOM scrolling signal.
-            compose.runOnIdle { browser.navigate("${origin.url}/long?top=${System.nanoTime()}") }
-            compose.waitUntil(15_000) { browser.state.value.selectedTab?.let { !it.loading && it.title == "Core long" } == true && origin.longLoads.get() > before }
-            compose.waitUntil(8_000) { var top = false; compose.runOnIdle { top = !engineView().canScrollVerticallyUp() }; top }
+            diagnostic("RESTORED")
+            compose.runOnIdle { browser.navigate(destination) }
+            compose.waitUntil(15_000) {
+                browser.state.value.selectedTab?.let {
+                    it.id == owner && it.url == destination && it.title == "Core long" && !it.loading
+                } == true && origin.longLoads.get() > before && origin.documentRequestCount(destinationDocument) > 0
+            }
+            try {
+                // As in the bottom-toolbar regression, a new document's real double-rAF beacon
+                // proves its DOM/visual page top. The independent SDK scroll cache may be stale.
+                compose.waitUntil(8_000) {
+                    browser.state.value.selectedTab?.let {
+                        it.id == owner && it.url == destination && it.title == "Core long" && !it.loading
+                    } == true && origin.viewportObservations(destinationDocument).lastOrNull()?.let {
+                        it.scrollY == 0.0 && it.visualViewportPageTop == 0.0
+                    } == true
+                }
+            } catch(error: Throwable) {
+                throw AssertionError("Top toolbar page-top gate failed; ${diagnostic("PAGE_TOP_FAILED")}", error)
+            }
+            diagnostic("PAGE_TOP_PASSED")
             val atTop = origin.longLoads.get()
+            val documentGetsBeforeRefresh = origin.documentRequestCount(destinationDocument)
+            val beaconsBeforeRefresh = origin.viewportObservations(destinationDocument).size
             swipe(.18f, .8f, duration = 700)
-            compose.waitUntil(15_000) { origin.longLoads.get() > atTop && browser.state.value.selectedTab?.loading == false }
+            try {
+                compose.waitUntil(15_000) {
+                    origin.longLoads.get() > atTop && origin.documentRequestCount(destinationDocument) > documentGetsBeforeRefresh &&
+                        origin.viewportObservations(destinationDocument).size > beaconsBeforeRefresh &&
+                        browser.state.value.selectedTab?.let {
+                            it.id == owner && it.url == destination && it.title == "Core long" && !it.loading
+                        } == true
+                }
+            } catch(error: Throwable) {
+                throw AssertionError("Top toolbar real pull-to-refresh failed; ${diagnostic("REAL_REFRESH_FAILED")}", error)
+            }
+            diagnostic("REAL_REFRESH_PASSED")
+        } } finally {
+            diagnosticScope.cancel()
+            runBlocking { container.settings.setToolbarPosition(original) }
         }
     }
 

@@ -1,5 +1,11 @@
 <resources>
     <string name="upload_title">Upload files</string>
+    <string name="upload_folder_title">Upload a folder</string>
+    <string name="upload_folder_choose">Choose folder</string>
+    <string name="upload_folder_confirm_title">Allow uploading this folder?</string>
+    <string name="upload_folder_confirm_detail">The website will be able to read files and directory names inside “%1$s”.</string>
+    <string name="upload_folder_allow">Allow upload</string>
+    <string name="upload_folder_unavailable">This folder could not be prepared completely. Choose another folder; if it still fails, close this tab and try again in a new tab.</string>
     <string name="upload_choose">Choose files</string>
     <string name="upload_photo">Take photo</string>
     <string name="upload_video">Record video</string>

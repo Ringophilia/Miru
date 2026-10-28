@@ -39,6 +39,10 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
     internal val lifecycleChanges = mutableLifecycle.asStateFlow()
     private var sequence = 0L
     private var selectedTabId = store.state.selectedTabId
+    private class FolderAuthorization(val token: Long, val request: PromptRequest.Folder, val owner: Owner,
+        val document: NativeUploadDocument, val rootName: String, val onShown: () -> Unit,
+        val onResolved: (Boolean) -> Unit) { var confirmationKey: Any? = null }
+    private var folderAuthorization: FolderAuthorization? = null
 
     private class Binding(
         val tabId: String,
@@ -99,8 +103,7 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
                 binding.locationGeneration++
                 binding.suppressDialogs = false
                 cancelMatching(binding) { pending ->
-                    val file = pending.request as? PromptRequest.File
-                    file == null || NativeFilePrompts.documentOwner(file)?.isCurrent() != true
+                    !uploadRequest(pending.request) || NativeFilePrompts.documentOwner(pending.request)?.isCurrent() != true
                 }
             }
             // PageStart/loading=true precedes commit and may contain HTTP auth.
@@ -118,7 +121,7 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
         binding.attemptGeneration++
         // BeforeUnload belongs to the pending leave/stay decision, and survives
         // the navigation attempt which requested it. Hard/location changes end it.
-        cancelMatching(binding) { it.request.shouldDismissOnLoad && it.request !is PromptRequest.File }
+        cancelMatching(binding) { it.request.shouldDismissOnLoad && !uploadRequest(it.request) }
     }
 
     internal fun invalidateTab(tabId: String) { bindings[tabId]?.let(::invalidate) }
@@ -128,6 +131,7 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
         binding.hardGeneration++
         binding.suppressDialogs = false
         cancelMatching(binding) { true }
+        folderAuthorization?.takeIf { it.owner.binding === binding }?.let { cancelFolderSelection(it.token) }
     }
 
     private fun capture(binding: Binding, request: PromptRequest) {
@@ -137,7 +141,20 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
             if(pending.owner.binding === binding) addAlias(pending, request)
             return
         }
-        val pending = Pending(++sequence, request, key, Owner(binding))
+        var owner = Owner(binding)
+        if(request is PromptRequest.FolderUploadPrompt) {
+            val authorization = folderAuthorization
+            if(authorization == null || authorization.owner.binding !== binding || !folderCurrent(authorization) ||
+                request.folderName != authorization.rootName || authorization.confirmationKey != null ||
+                !NativeFilePrompts.confirmsFolder(authorization.request, request)) {
+                finishUncaptured(binding.tabId, request)
+                return
+            }
+            authorization.confirmationKey = key
+            owner = authorization.owner
+            authorization.onShown()
+        }
+        val pending = Pending(++sequence, request, key, owner)
         requests[key] = pending
         if(!supported(request) || (binding.suppressDialogs && scriptDialog(request)) ||
             requests.values.count { it.owner.binding === binding } > MAX_PENDING_PER_TAB) {
@@ -239,7 +256,10 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
         return store.state.selectedTabId == binding.tabId && bindings[binding.tabId] === binding &&
             tab.engineState.engineSession === binding.session && tab.content.private == binding.isPrivate &&
             tab.contextId == binding.contextId && binding.hardGeneration == owner.hardGeneration &&
-            (if(pending.request is PromptRequest.File) NativeFilePrompts.documentOwner(pending.request)?.isCurrent() == true
+            (if(uploadRequest(pending.request)) NativeFilePrompts.documentOwner(pending.request)?.isCurrent() == true &&
+                (pending.request !is PromptRequest.FolderUploadPrompt || folderAuthorization?.let {
+                    it.owner === owner && it.confirmationKey === pending.nativeKey && folderCurrent(it)
+                } == true)
              else binding.locationGeneration == owner.locationGeneration &&
                  (!pending.request.shouldDismissOnLoad || binding.attemptGeneration == owner.attemptGeneration))
     }
@@ -259,6 +279,7 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
             }
         }
         requests.values.toList().filterNot(::valid).forEach { pending -> finish(pending) { cancel(pending.request) } }
+        folderAuthorization?.takeUnless(::folderCurrent)?.let { cancelFolderSelection(it.token) }
         publish()
         mutableLifecycle.value++
     }
@@ -325,6 +346,12 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
         finish(pending) { request.onConfirm(userName, password) }
     }
 
+    fun answerFolderUpload(token: Long, allow: Boolean) {
+        val pending = current(token, BrowserPromptKind.FOLDER_CONFIRM) ?: return
+        val request = pending.request as PromptRequest.FolderUploadPrompt
+        finish(pending) { if(allow) request.onConfirm() else request.onDismiss() }
+    }
+
     fun dismiss(token: Long, allowMoreDialogs: Boolean = true) {
         val pending = current(token) ?: return
         if(scriptDialog(pending.request)) setScriptPolicy(pending, allowMoreDialogs)
@@ -357,6 +384,64 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
         )
     }
 
+    internal fun folderSelection(token: Long): BrowserFolderSelection? {
+        val pending = current(token, BrowserPromptKind.FOLDER) ?: return null
+        val request = pending.request as? PromptRequest.Folder ?: return null
+        val document = NativeFilePrompts.documentOwner(request) ?: return null
+        val owner = pending.owner
+        val binding = owner.binding
+        fun documentAlive(): Boolean {
+            val tab = store.state.tabs.firstOrNull { it.id == binding.tabId }
+            return tab?.engineState?.engineSession === binding.session && tab.content.private == binding.isPrivate &&
+                tab.contextId == binding.contextId && !tab.engineState.crashed && document.isCurrent()
+        }
+        return BrowserFolderSelection(token, binding.isPrivate,
+            pending = { current(token, BrowserPromptKind.FOLDER) === pending },
+            documentAlive = ::documentAlive,
+            flowCurrent = { documentAlive() && store.state.selectedTabId == binding.tabId &&
+                bindings[binding.tabId] === binding && binding.hardGeneration == owner.hardGeneration },
+            prepare = { directory -> NativeFilePrompts.prepareFolder(request, directory) },
+            deliver = { prepared, rootName, onShown, onResolved ->
+                if(current(token, BrowserPromptKind.FOLDER) !== pending || !documentAlive() || folderAuthorization != null) false
+                else {
+                    val authorization = FolderAuthorization(token, request, owner, document, rootName, onShown, onResolved)
+                    folderAuthorization = authorization // Before the real callback can trigger the second prompt.
+                    finish(pending) { NativeFilePrompts.selectPreparedFolder(request, prepared) }
+                    NativeFilePrompts.wasConfirmed(request).also { accepted ->
+                        if(!accepted) resolveFolderAuthorization(authorization, false)
+                    }
+                }
+            },
+            cancel = {
+                current(token, BrowserPromptKind.FOLDER)?.takeIf { it === pending }?.let { finish(it) { request.onDismiss() } }
+                cancelFolderSelection(token)
+            },
+        )
+    }
+
+    private fun folderCurrent(authorization: FolderAuthorization): Boolean {
+        val owner = authorization.owner
+        val binding = owner.binding
+        val tab = store.state.tabs.firstOrNull { it.id == binding.tabId } ?: return false
+        return store.state.selectedTabId == binding.tabId && bindings[binding.tabId] === binding &&
+            binding.hardGeneration == owner.hardGeneration && tab.engineState.engineSession === binding.session &&
+            tab.content.private == binding.isPrivate && tab.contextId == binding.contextId &&
+            !tab.engineState.crashed && authorization.document.isCurrent()
+    }
+
+    private fun cancelFolderSelection(token: Long) {
+        val authorization = folderAuthorization?.takeIf { it.token == token } ?: return
+        val confirmation = authorization.confirmationKey?.let { requests[it] }
+        if(confirmation != null) finish(confirmation) { cancel(confirmation.request) }
+        else resolveFolderAuthorization(authorization, false)
+    }
+
+    private fun resolveFolderAuthorization(authorization: FolderAuthorization, allow: Boolean) {
+        if(folderAuthorization !== authorization) return
+        folderAuthorization = null
+        authorization.onResolved(allow)
+    }
+
     private fun setScriptPolicy(pending: Pending, allowMore: Boolean) {
         if(allowMore) return
         val binding = pending.owner.binding
@@ -383,6 +468,9 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
         try { callback() }
         catch(_: Exception) { /* A failed native callback must not strand its store entry or retain form data. */ }
         finally {
+            if(pending.request is PromptRequest.FolderUploadPrompt) folderAuthorization?.takeIf {
+                it.confirmationKey === pending.nativeKey
+            }?.let { resolveFolderAuthorization(it, NativeFilePrompts.wasConfirmed(pending.request)) }
             if(consume) {
                 pending.storeRequest?.let { consume(pending.owner.binding.tabId, it) }
                 pending.replacedStoreRequest?.let { consume(pending.owner.binding.tabId, it) }
@@ -427,6 +515,8 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
         is PromptRequest.Repost -> request.onConfirm
         is PromptRequest.Authentication -> request.onConfirm
         is PromptRequest.File -> request.onSingleFileSelected
+        is PromptRequest.Folder -> request.onSelected
+        is PromptRequest.FolderUploadPrompt -> request.onConfirm
         is PromptRequest.CertificateRequest -> request.onComplete
         is PromptRequest.Popup -> request.onDeny
         is PromptRequest.Redirect -> request.onDeny
@@ -436,7 +526,10 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
 
     private fun supported(request: PromptRequest) = request is PromptRequest.Alert || request is PromptRequest.Confirm ||
         request is PromptRequest.TextPrompt || request is PromptRequest.BeforeUnload || request is PromptRequest.Repost ||
-        request is PromptRequest.Authentication || (request is PromptRequest.File && NativeFilePrompts.isManaged(request))
+        request is PromptRequest.Authentication || (uploadRequest(request) && NativeFilePrompts.isManaged(request))
+
+    private fun uploadRequest(request: PromptRequest) = request is PromptRequest.File || request is PromptRequest.Folder ||
+        request is PromptRequest.FolderUploadPrompt
 
     private fun scriptDialog(request: PromptRequest) = request is PromptRequest.Alert || request is PromptRequest.Confirm || request is PromptRequest.TextPrompt
 
@@ -471,6 +564,8 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
                 authLevel = BrowserAuthLevel.valueOf(request.level.name))
             is PromptRequest.File -> base.copy(fileMimeTypes = request.mimeTypes.toList(),
                 fileMultiple = request.isMultipleFilesSelection, fileCapture = BrowserFileCapture.valueOf(request.captureMode.name))
+            is PromptRequest.Folder -> base
+            is PromptRequest.FolderUploadPrompt -> base.copy(folderName = request.folderName)
             else -> error("Unsupported prompt cannot be projected")
         }
     }
@@ -483,6 +578,8 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
         is PromptRequest.Repost -> BrowserPromptKind.REPOST
         is PromptRequest.Authentication -> BrowserPromptKind.AUTHENTICATION
         is PromptRequest.File -> BrowserPromptKind.FILE
+        is PromptRequest.Folder -> BrowserPromptKind.FOLDER
+        is PromptRequest.FolderUploadPrompt -> BrowserPromptKind.FOLDER_CONFIRM
         else -> error("Unsupported prompt has no UI kind")
     }
 
