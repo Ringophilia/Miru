@@ -67,3 +67,20 @@ DEBUG结果日志只记录布尔/计数，没有URI、文件名、Intent对象�
 
 后续仍需CAMERA拒绝/永久拒绝、完整取消/重建/迟到结果矩阵、进程死亡与私密捕获、
 其他相机/录音handler、空Intent、前摄与物理机、R8/ARM64运行和完整回归；目录与其他页面提示另列。
+
+## ARM64开发包构建与打包
+
+源提交`dbddaed`（生产仍为`924c97a`，后续只有测试与文档），
+`058-release-build.log`的R8/shrink release构建成功（2分50秒）。
+原AGP包`058-release-binaries/arm64-release-stock.apk`为111,164,037字节，SHA-256
+`2ca8b4ba73bf3513388933e5bb67750e5ea4849fd3610816e7845f2fc59eac24`。
+
+同一固定工具链输出`artifacts/releases/Miru-0.5.8-arm64.apk`，**108,011,752字节**，SHA-256
+`bf92e7a4f4b69893f25632e4057b5d80f7777a27f3fbcc27a58a541c1ecd062c`。
+同名`.verification-20261027-215748-0e1e30ab/pipeline.json`记录1518个payload逐项完整、
+SDK对齐、签名与原Android Debug证书一致，严格小于110,000,000字节。
+`058-release-native-verification.json`检查全部17项原生载荷均为ELF64/AArch64；
+`058-release-omni-verification.json`验证4077项Gecko原payload保持、GEO/导航两项精确修改和5项官方新增。
+omni仍为16,459,282字节、SHA `f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`。
+
+这些是本版构建/打包证据；正式签名、R8实际运行、ARM64实际运行及完整发行验收继续待验。

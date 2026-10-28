@@ -97,11 +97,11 @@ Miru 的取舍遵循产品规范 [MIRU-SPEC.md](MIRU-SPEC.md)（唯一需求来�
 | **M1** | uBlock Origin 集成、断点下载 | 🟢 已接入 · 首装稳定性 / 自动更新待补 |
 | **M2** | 视频嗅探、Media3 播放器与接管 | 🟢 已接入 · 详见 [M2 记录](docs/M2-VALIDATION.md) |
 | **M3** | 清晰度探测、字幕音轨、离线、超分 | 🟡 主体已接入 · 缩略图与完整矩阵推进中 |
-| **B13** | 站点权限、网页提示与上传 | 🟡 权限/提示已接入 · 0.5.6上传首批专项通过，完整矩阵待验 |
+| **B13** | 站点权限、网页提示与上传 | 🟡 权限/提示已接入 · 0.5.8上传含拍照/录像与生命周期18/18，完整矩阵待验 |
 | **M4** | 动效、网站矩阵、真机性能、完整验收 | ⚪ 未开始 |
 | **iOS** | 按规范在 Android M4 之后启动 | ⚪ 未开始 |
 
-最新已验证打包为 **0.5.7 ARM64开发包，108,011,752字节**，仍使用Android Debug签名；启动修复及剩余门见[0.5.7记录](docs/M1-057-STARTUP-VALIDATION.md)，上传范围见[上传验收记录](docs/B13-FILE-UPLOAD-VALIDATION.md)。
+最新已验证打包为 **0.5.8 ARM64开发包，108,011,752字节**，仍使用Android Debug签名；拍摄与打包范围见[0.5.8记录](docs/B13-CAPTURE-VALIDATION.md)，启动修复及历史门见[0.5.7记录](docs/M1-057-STARTUP-VALIDATION.md)，完整上传范围见[上传验收记录](docs/B13-FILE-UPLOAD-VALIDATION.md)。
 
 <details>
 <summary><b>历史已验证打包：0.5.4（ARM64 开发包）</b></summary>

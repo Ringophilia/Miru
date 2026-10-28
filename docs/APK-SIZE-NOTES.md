@@ -112,3 +112,14 @@ SDK 对齐、签名和原 Android Debug 证书一致性通过，独立 Python �
 同名`.verification-20261027-061211-10e647bb/pipeline.json`记录全部步骤成功，1518payload完整、对齐及同Debug证书；
 `057-release-native-verification.json`验证17个ELF64/AArch64库，`057-release-omni-verification.json`验证4077+2+5资源。
 打包范围与运行门分开，详见[0.5.7记录](M1-057-STARTUP-VALIDATION.md)。
+
+## 2026-10-28：0.5.8拍摄上传开发包
+
+`dbddaed`的R8/shrink ARM64构建成功（2分50秒）；原AGP包111,164,037字节，SHA
+`2ca8b4ba73bf3513388933e5bb67750e5ea4849fd3610816e7845f2fc59eac24`。
+最终`artifacts/releases/Miru-0.5.8-arm64.apk`为**108,011,752字节**，SHA
+`bf92e7a4f4b69893f25632e4057b5d80f7777a27f3fbcc27a58a541c1ecd062c`。
+同名`.verification-20261027-215748-0e1e30ab/pipeline.json`证明1518payload完整、对齐和同Debug证书；
+`058-release-native-verification.json`与`058-release-omni-verification.json`分别验证17个ARM64库和4077+2+5资源。
+时间戳目录为UTC，本节日期为Asia/Shanghai。正式签名、R8/ARM64运行及完整发行门仍待，
+详见[拍摄上传记录](B13-CAPTURE-VALIDATION.md)。
