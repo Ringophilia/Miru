@@ -156,19 +156,20 @@ Miru 的取舍遵循产品规范 [MIRU-SPEC.md](MIRU-SPEC.md)（唯一需求来�
 
 ```powershell
 # JVM 单元测试与 Lint
-.\gradlew.bat testDebugUnitTest :core:common:test :app:lintDebug
+.\gradlew.bat --no-daemon testDebugUnitTest :core:common:test :app:lintDebug
 
 # 设备测试（需连接模拟器或手机）
-.\gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.notClass=app.miru.browser.DownloadRestartTest,app.miru.browser.OfflineRestartTest,app.miru.browser.RuntimeSitePermissionIntegrationTest"
+.\gradlew.bat --no-daemon :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.notClass=app.miru.browser.DownloadRestartTest,app.miru.browser.OfflineRestartTest,app.miru.browser.RuntimeSitePermissionIntegrationTest,app.miru.browser.AudioCaptureIntegrationTest"
 ```
 
 设备测试的网页由测试进程内的 loopback HTTP 服务提供；全新安装 uBO 时仍可能访问 Gecko 远程设置。独立的手动 fixture 可通过 `node tools/m1-fixture-server.mjs` 启动。
 
 > [!NOTE]
-> 上面的常规命令**排除了三类需要单独运行的专项**，排除不计为通过：
+> 上面的常规命令**排除了四类需要单独运行的专项**，排除不计为通过：
 >
 > - **`DownloadRestartTest` / `OfflineRestartTest`** — 分阶段运行，中间强制停止进程。方法见 [M1 记录](docs/M1-VALIDATION.md) 与 [离线记录](docs/M3-OFFLINE-VALIDATION.md)。
 > - **`RuntimeSitePermissionIntegrationTest`** — 在四项系统权限均未授权的 API 35 实例上顺序运行，实际点击 Android 权限弹窗。见 [运行方法](docs/B13-RUNTIME-PERMISSIONS-TEST.md)。它与使用预授权的站点权限用例验证范围不同，不能相互替代。
+> - **`AudioCaptureIntegrationTest`** — 需实际录音处理器、专用目录、音频启用与hostmic关闭的独立实例；0.5.9真实原FD/网页字节专项1/1通过。见[录音验证与运行前置](docs/B13-AUDIO-CAPTURE-VALIDATION.md)。
 >
 > 模拟器结果不能代替规范要求的真机性能、兼容性和无障碍验收。
 

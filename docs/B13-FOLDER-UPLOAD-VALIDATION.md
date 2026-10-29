@@ -1,6 +1,6 @@
 # B13 目录上传首批验证（0.5.9，完整矩阵未验收）
 
-本批在 `codex/folder-upload` 独立工作树从 `924c97a` 开始实现，首构建终态后fast-forward至主分支 `517f708`，保留目录改动并接入capture18项最新夹具；设备测试后又fast-forward至仅补0.5.8证据的 `596c8eb`，未改变固定主APK。当前0.5.9/code17工作树尚未提交。
+本批在 `codex/folder-upload` 独立工作树从 `924c97a` 开始实现，首构建终态后fast-forward至主分支 `517f708`，保留目录改动并接入capture18项最新夹具；设备测试后又fast-forward至仅补0.5.8证据的 `596c8eb`，未改变固定主APK。首批0.5.9/code17源码已提交`348b9bc`并快进至主分支。
 **真实TREE首批专项已通过；完整目录上传、B13、生命周期与最终发行仍未验收。** 当前API35/x86_64证据不能代替其他provider/系统版本、ARM64真机或正式签名发行。
 
 初次排错构建 `artifacts/folder-upload/build-1.log` 以旧code16标签执行，**BUILD SUCCESSFUL in 4m**：engine JVM **90/90**，包含树复制 **10/10**，0失败/错误/跳过；主/测试APK与Debug lint通过，lint **0 error / 22 warnings**。原XML汇总和仅供编译排错的code16 APK快照在同目录，不能冒充固定发布的0.5.8。

@@ -151,7 +151,7 @@ omni SHA为 `f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`�
 ## 尚未完成的门
 
 - 已覆盖五种accept的受控TXT/PNG/BIN系统筛选；其他MIME/提供方、公网站点与跨请求同名矩阵仍待。
-- 拍照/录像及普通拍照review取消、录像review关owner迟到结果、录制中重建见`B13-CAPTURE-VALIDATION.md`，0.5.8上传整类18/18（199.276秒）；录音、空Intent、私密capture、其他方向/handler及其余拒绝/取消/生命周期仍待。
+- 拍照/录像及普通拍照review取消、录像review关owner迟到结果、录制中重建见`B13-CAPTURE-VALIDATION.md`，0.5.8上传整类18/18（199.276秒）；录音首批原FD/provider/原文件与POST见`B13-AUDIO-CAPTURE-VALIDATION.md`，当前0.5.9独立1/1（45.525秒）。录音其余拒绝/取消/私密/生命周期、空Intent、其他方向/handler仍待。
 - 目录首批真实二次确认/relativePath已有上述证据；TREE取消或native拒绝保留已有FileList/lease、两阶段重建、IO中owner作废、真实系统/native迟到事务、预算/故障provider、进程死亡和私密持久化取证仍待。特殊MIME/metadata、同级重名及其他provider支持未闭合。
 - 私密成功/取消、单 owner 与最后 context 关闭、IO 取消、导航/关 tab/换 session 后的旧结果隔离。
 - Bundle / saved-state / Room / preferences / session / logs / 专属 cache 与 URI grant 的直接取证；进程死亡和遗留清扫。

@@ -199,6 +199,13 @@
 - 跨模块首轮 **48/49（338.146秒）** 保留唯一顶栏旧SDK页顶门失败。测试现显式TOP并断言实际位置/finally恢复偏好，用新doc双rAF和精确GET/真实刷新作判据，原手势与8/15秒不变；生产主包未改。`059-top-positioned-core-*` **7/7（150.868秒）**，最终同包重新单次执行`059-native-prompt-regression-fixed-*` **49/49（602.313秒）**，含Folder5/File18/页面提示11/站点及生命周期8/Core7。TOP本轮SDK canUp=false，不能与独立深滚行为项SDK仍true混写。
 - 首批仅API35/x86_64受控provider。TREE取消/拒绝保留已有FileList、两阶段重建、IO作废和系统/native迟到事务、特殊MIME/metadata、其他provider、进程死亡与完整私密持久化仍待；0.5.9完整常规回归、R8/ARM64构建/运行、正式签名及发行门未闭合。详见[B13目录记录](B13-FOLDER-UPLOAD-VALIDATION.md)与[浏览器核心记录](BROWSER-CORE-VALIDATION.md)。
 
+## B13 录音上传专项（独立前置，0.5.9）
+
+- 新增独立`AudioCaptureIntegrationTest`，组合复用真实上传夹具，原FileUpload18及camera helpers不变；不把需特殊前置的录音案例混入普通整类。常规设备命令新增明确排除该类，排除不记通过。
+- 固定官方Fossify1.7.3/code20，经实际hash/签名pin验证，真实MIC/通知/SAF设置和Record/Save。0.5.8实际1/1（23.74秒）；新受控5554的当前0.5.9主F097/testE4E5实际1/1（45.525秒），原URI临时READ、原FD/provider、外部原文件与网页POST三方bytes、音轨/时长/sample、grant回收及文档租约删除均通过，外部源保留。hostmic实际OFF，输入零值，不声称物理拾音。
+- 原31ef候选52.453秒失败保留；Android15实际执行入口直接分词，不处理旧helper shell引号，现通过公开Rwe真实sh stdin和有界独立stdout/stderr修正，仅测试代码改变，不放宽20s/来源证明。当前0.5.9构建3分21秒，补纯JVM common:test后共151项、0失败/错误/跳过；真实task状态缓存复用已逐项记录，lint0/22。
+- 录音取消/私密/完整生命周期、其他handler及本版完整常规/R8/ARM64运行仍待，详见[B13录音记录](B13-AUDIO-CAPTURE-VALIDATION.md)。
+
 ## M3 尚待推进
 
 - 离线已接入 Media3 DownloadManager / DownloadService、HLS / DASH 清晰度与关联音轨 / 字幕、独立非 LRU 缓存、统一下载页与 upstream-free 播放。直链 MP4 保留普通下载引擎；实现与准确验证边界见 `M3-OFFLINE-VALIDATION.md`。下载进行中进程终止、真机网络 / 重启与后台矩阵仍需专项，不能用已完成项的重启恢复代替。

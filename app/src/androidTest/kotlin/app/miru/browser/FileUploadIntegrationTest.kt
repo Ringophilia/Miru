@@ -19,6 +19,7 @@ import android.os.SystemClock
 import android.os.Process
 import android.provider.DocumentsContract
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
@@ -699,6 +700,409 @@ class FileUploadIntegrationTest {
                 assertCaptureGrant(outputUri, cameraUid, granted = false)
             } // Finally closes the original read-only descriptor even after a failed assertion.
         }
+    }
+
+    /** Run only through the separately staged AudioCaptureIntegrationTest and its controlled AVD. */
+    internal fun runRealFossifyRecordingWithOriginalAacBytes() {
+        assertEquals("Run this controlled fixture only on API35", 35, android.os.Build.VERSION.SDK_INT)
+        assertEquals("Run only on the disposable ranchu AVD", "ranchu", android.os.Build.HARDWARE)
+        val args = InstrumentationRegistry.getArguments()
+        val fixture = checkedAudioFixture(checkNotNull(args.getString("audioFixtureDirectory")) {
+            "First select a new Download/MiruAudioAcceptance-UUID directory through real Fossify/SAF UI"
+        })
+        require(args.getString("audioHostMicOff") == "true") {
+            "The orchestrator must first verify and preserve the actual targeted avd hostmicoff receipt"
+        }
+        // The argument acknowledges externally verified evidence, NOT proof that the
+        // host microphone is disabled. A fresh audio-enabled AVD and actual console reply are
+        // mandatory preconditions; this guest test cannot query the host's emulator settings.
+        val beforeFiles = audioFixtureFiles(fixture)
+        android.util.Log.i("MiruUploadAcceptance", "audioFixture existingFiles=${beforeFiles.size} shellExitVerified=true")
+        val leaseBaseline = uploadLeaseDirectories()
+        val resolver = instrumentation.targetContext.contentResolver
+        val persistedBefore = resolver.persistedUriPermissions.map { Triple(it.uri, it.isReadPermission, it.isWritePermission) }.toSet()
+        val starts = AtomicInteger()
+        val monitor = object : Instrumentation.ActivityMonitor() {
+            override fun onStartActivity(intent: Intent): Instrumentation.ActivityResult? {
+                if(intent.action == MediaStore.Audio.Media.RECORD_SOUND_ACTION) {
+                    assertNull("Miru must use the real implicit RECORD_SOUND action", intent.component)
+                    assertNull("The reviewed handler contract expects no artificial MIME override", intent.type)
+                    starts.incrementAndGet()
+                }
+                return null // Observe only; always let Android launch and return the real result.
+            }
+        }
+        instrumentation.addMonitor(monitor)
+        var failure: Throwable? = null
+        try {
+            UploadOrigin("audio/*", captureMode = "").use { origin ->
+                val owner = page(origin, multiple = false)
+                val request = openFilePrompt(owner)
+                assertTrue(request.fileMimeTypes.any { it.equals("audio/*", ignoreCase = true) })
+                android.util.Log.i("MiruUploadAcceptance", "audioCapture nativeFacing=${request.fileCapture.name}")
+                compose.onNodeWithTag("page_prompt_capture_audio").assertIsDisplayed().performClick()
+                waitFor("The genuine installed Fossify recorder must become the foreground activity", 30_000) {
+                    allowActualAudioPermissionIfShown()
+                    audioRecorderControlAvailable("toggle_recording_button")
+                }
+                assertEquals(1, starts.get())
+                assertEquals("Audio recording must not be replaced with DocumentsUI", 0, pickerStarts())
+                assertFalse("Manual setup must leave no recording already running", audioRecorderControlAvailable("save_recording_button"))
+                clickAudioRecorderControl("toggle_recording_button")
+                waitFor("Fossify's real recording clock must advance to at least three seconds", 20_000) {
+                    allowActualAudioPermissionIfShown()
+                    actualAudioRecordingSeconds()?.let { it >= 3 } == true
+                }
+                var originalPath: String? = null
+                waitFor("The real recorder must create exactly one new M4A in its dedicated directory") {
+                    val created = audioFixtureFiles(fixture) - beforeFiles
+                    originalPath = created.singleOrNull { it.lowercase(Locale.ROOT).endsWith(".m4a") }
+                    created.size == 1 && originalPath != null
+                }
+                val sourcePath = checkNotNull(originalPath)
+                val sourceName = checkedAudioLeaf(fixture, sourcePath)
+                // Pinned Fossify 1.7.3 uses Commons 7.1.3. For Download/subdir, its
+                // first-parent level is 1, so this is the dedicated subdir's actual tree form.
+                // Constructing this candidate does not manufacture a returned ActivityResult.
+                // Only observing a NEW real OS read grant AND opening the original provider FD
+                // may turn it into source evidence. A missed/different grant must fail the test.
+                val originalUri = DocumentsContract.buildDocumentUriUsingTree(
+                    DocumentsContract.buildTreeDocumentUri("com.android.externalstorage.documents", fixture.documentId),
+                    "${fixture.documentId}/$sourceName")
+                assertEquals(PackageManager.PERMISSION_DENIED, audioUriPermission(originalUri, Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                assertEquals(PackageManager.PERMISSION_DENIED, audioUriPermission(originalUri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION))
+                assertEquals(0, origin.reportCount("change"))
+                ActualAudioGrantProbe(originalUri).use { probe ->
+                    probe.start()
+                    clickAudioRecorderControl("save_recording_button")
+                    waitFor("The real result grant must expose the original external source FD and metadata", 30_000) {
+                        probe.failed()?.let { throw AssertionError("Original recording observation failed", it) }
+                        probe.hasSource()
+                    }
+                    probe.takeSource().use { evidence ->
+                        assertTrue("The observed capability must name the same real provider document", evidence.uri == originalUri)
+                        assertEquals(sourceName, evidence.name)
+                        assertTrue("The provider must describe an audio MIME", evidence.mime.startsWith("audio/"))
+                        ParcelFileDescriptor.AutoCloseInputStream(evidence.descriptor).use { original ->
+                            assertActualRecordedAudio(original)
+                            val sourceBytes = readOriginalCaptureBytes(original)
+                            assertEquals(evidence.bytes, sourceBytes.size.toLong())
+                            val shellOriginal = readAudioFixtureFile(fixture, sourcePath)
+                            assertEquals("The granted provider FD and actual persistent recorder file must contain the same original bytes",
+                                uploadHash(shellOriginal), uploadHash(sourceBytes))
+                            val report = awaitReport(origin, 1)
+                            assertEquals("change", report.label)
+                            assertEquals(1, report.files.size)
+                            assertFile(report.files.single(), evidence.name, sourceBytes, origin.upload(1, 0), evidence.mime)
+                            assertEquals(1, origin.reportCount("change"))
+                            assertEquals(1, origin.pageRequests.get())
+                            assertEquals(1, starts.get())
+                            waitFor("The receiving activity must release only Miru's temporary source permissions") {
+                                liveActivities().none { it is UploadPickerActivity } &&
+                                    browser.uploads.state.value.phase == BrowserUploadPhase.IDLE &&
+                                    audioUriPermission(originalUri, Intent.FLAG_GRANT_READ_URI_PERMISSION) == PackageManager.PERMISSION_DENIED &&
+                                    audioUriPermission(originalUri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION) == PackageManager.PERMISSION_DENIED
+                            }
+                            assertTrue("Miru must neither persist the recording grant nor disturb existing persisted grants",
+                                persistedBefore == resolver.persistedUriPermissions.map { Triple(it.uri, it.isReadPermission, it.isWritePermission) }.toSet())
+                            val leases = awaitNewUploadLeases(leaseBaseline)
+                            assertNamedLeaseBytes(leases, evidence.name, sourceBytes)
+                            compose.runOnIdle { browser.closeTab(owner) }
+                            awaitUploadLeasesDeleted(leases)
+                            assertTrue("Miru must preserve the externally owned recording", sourcePath in audioFixtureFiles(fixture))
+                            assertEquals(uploadHash(sourceBytes), uploadHash(readAudioFixtureFile(fixture, sourcePath)))
+                            android.util.Log.i("MiruUploadAcceptance", "audioOriginal readGrantObserved=true writeGrantObserved=${probe.sawWriteGrant.get()} audioTrackVerified=true sourcePreserved=true")
+                        }
+                    }
+                }
+            }
+        } catch(problem: Throwable) { failure = problem; throw problem }
+        finally {
+            instrumentation.removeMonitor(monitor)
+            try { finishActualAudioRecorderIfVisible() }
+            catch(cleanupFailure: Throwable) { failure?.addSuppressed(cleanupFailure) ?: throw cleanupFailure }
+        }
+    }
+
+    private data class AudioFixture(val directory: String, val documentId: String)
+    private fun checkedAudioFixture(directory: String): AudioFixture {
+        val prefix = "/storage/emulated/0/Download/MiruAudioAcceptance-"
+        require(directory.startsWith(prefix)) { "Only the dedicated acceptance directory is allowed" }
+        val suffix = directory.removePrefix(prefix)
+        val canonicalUuid = when {
+            suffix.matches(Regex("[0-9a-f]{32}")) -> listOf(suffix.substring(0, 8), suffix.substring(8, 12),
+                suffix.substring(12, 16), suffix.substring(16, 20), suffix.substring(20)).joinToString("-")
+            suffix.matches(Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) -> suffix
+            else -> error("Directory must end in a lowercase 128-bit UUID, canonical or 32 hexadecimal digits")
+        }
+        require(java.util.UUID.fromString(canonicalUuid).toString() == canonicalUuid)
+        require('/' !in suffix && '\\' !in suffix)
+        return AudioFixture(directory, "primary:Download/${directory.substringAfterLast('/')}")
+    }
+
+    private fun checkedAudioLeaf(fixture: AudioFixture, path: String): String {
+        require(path.startsWith(fixture.directory + "/")) { "Source must stay within the dedicated directory" }
+        val leaf = path.removePrefix(fixture.directory + "/")
+        require(leaf.isNotEmpty() && leaf != "." && leaf != ".." && '/' !in leaf && '\\' !in leaf && '\u0000' !in leaf)
+        return leaf
+    }
+
+    private fun audioShellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
+    private fun audioShellRead(command: String, maximum: Int): ByteArray {
+        // Android 15 UiAutomationConnection uses Runtime.exec(String), without shell parsing.
+        // Launch only the fixed shell program; send the checked/quoted read-only script on stdin.
+        // Rwe is public since API34 and this separately staged fixture requires API35.
+        val pipes = if(android.os.Build.VERSION.SDK_INT >= 34) {
+            instrumentation.uiAutomation.executeShellCommandRwe("/system/bin/sh")
+        } else error("The audio fixture shell bridge requires API34 or later")
+        check(pipes.size == 3) { "The shell bridge must expose stdout, stdin and stderr" }
+        val marker = "MIRU_AUDIO_READ_EXIT_" + java.util.UUID.randomUUID().toString().replace("-", "")
+        val stderr = AtomicReference<ByteArray?>()
+        val stderrFailure = AtomicReference<Throwable?>()
+        val reader = thread(isDaemon = true, name = "miru-audio-fixture-stderr") {
+            try {
+                stderr.set(ParcelFileDescriptor.AutoCloseInputStream(pipes[2]).use { readBoundedAudioObservation(it, 16 * 1024) })
+            } catch(problem: Throwable) { stderrFailure.set(problem) }
+        }
+        var failure: Throwable? = null
+        try {
+            ParcelFileDescriptor.AutoCloseOutputStream(pipes[1]).use { input ->
+                input.write((command + "\nstatus=$?\nprintf '\\n" + marker + "=%s\\n' \"\$status\" >&2\nexit \"\$status\"\n")
+                    .toByteArray(Charsets.UTF_8))
+            }
+            val output = ParcelFileDescriptor.AutoCloseInputStream(pipes[0]).use { readBoundedAudioObservation(it, maximum) }
+            reader.join(2_000)
+            check(!reader.isAlive) { "The read-only fixture stderr observer must finish" }
+            stderrFailure.get()?.let { throw AssertionError("Fixture stderr observation failed", it) }
+            val diagnostic = checkNotNull(stderr.get()).toString(Charsets.UTF_8)
+            val exits = Regex("(?m)^" + Regex.escape(marker) + "=([0-9]+)$").findAll(diagnostic).toList()
+            check(exits.size == 1) { "The read-only fixture command must report one actual exit status" }
+            check(exits.single().groupValues[1] == "0") { "The read-only fixture command failed" }
+            check(diagnostic.removeRange(exits.single().range).isBlank()) { "The read-only fixture command emitted unexpected stderr" }
+            return output // Binary cat output is untouched; status markers are only on stderr.
+        } catch(problem: Throwable) { failure = problem; throw problem }
+        finally {
+            var cleanupFailure: Throwable? = null
+            fun remember(problem: Throwable) {
+                val first = cleanupFailure
+                if(first == null) cleanupFailure = problem else if(first !== problem) first.addSuppressed(problem)
+            }
+            pipes.forEach { descriptor -> try { descriptor.close() } catch(problem: Throwable) { remember(problem) } }
+            try { reader.join(2_000); check(!reader.isAlive) { "The fixture read thread must not outlive the operation" } }
+            catch(problem: Throwable) { remember(problem) }
+            cleanupFailure?.let { problem -> failure?.addSuppressed(problem) ?: throw problem }
+        }
+    }
+
+    private fun readBoundedAudioObservation(stream: InputStream, maximum: Int): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(16 * 1024)
+        while(true) {
+            val count = stream.read(buffer)
+            if(count < 0) break
+            check(out.size() + count <= maximum) { "Read-only fixture observation exceeded its bound" }
+            out.write(buffer, 0, count)
+        }
+        return out.toByteArray()
+    }
+
+    private fun audioFixtureFiles(fixture: AudioFixture): Set<String> {
+        val listing = audioShellRead("find ${audioShellQuote(fixture.directory)} -mindepth 1 -maxdepth 1 -type f -print0", 64 * 1024)
+            .toString(Charsets.UTF_8)
+        val files = listing.split('\u0000').filter(String::isNotEmpty)
+        require(files.size <= 128) { "Use a new acceptance directory with no unrelated files" }
+        files.forEach { checkedAudioLeaf(fixture, it) }
+        return files.toSet()
+    }
+
+    private fun readAudioFixtureFile(fixture: AudioFixture, path: String): ByteArray {
+        checkedAudioLeaf(fixture, path)
+        return audioShellRead("cat -- ${audioShellQuote(path)}", CAPTURE_BODY_LIMIT)
+    }
+
+    private fun audioUriPermission(uri: Uri, flags: Int): Int = instrumentation.targetContext.checkUriPermission(
+        uri, Process.myPid(), Process.myUid(), flags)
+
+    private class AudioSourceEvidence(val uri: Uri, val name: String, val mime: String,
+        val bytes: Long, val descriptor: ParcelFileDescriptor) : Closeable {
+        override fun close() { descriptor.close() }
+    }
+
+    /** Observes ONLY the expected source document. No shell identity is adopted by Miru. */
+    private inner class ActualAudioGrantProbe(private val uri: Uri) : Closeable {
+        private val source = AtomicReference<AudioSourceEvidence?>()
+        private val problem = AtomicReference<Throwable?>()
+        private val running = AtomicBoolean()
+        private val signal = android.os.CancellationSignal()
+        private var worker: Thread? = null
+        val sawWriteGrant = AtomicBoolean()
+        fun hasSource() = source.get() != null
+        fun failed() = problem.get()
+        fun takeSource(): AudioSourceEvidence = checkNotNull(source.getAndSet(null))
+        fun start() {
+            check(running.compareAndSet(false, true))
+            worker = thread(isDaemon = true, name = "miru-audio-original-grant") {
+                val deadline = SystemClock.elapsedRealtime() + 30_000
+                while(running.get() && SystemClock.elapsedRealtime() < deadline) {
+                    var opened: ParcelFileDescriptor? = null
+                    try {
+                        if(audioUriPermission(uri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION) == PackageManager.PERMISSION_GRANTED)
+                            sawWriteGrant.set(true)
+                        if(audioUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) == PackageManager.PERMISSION_GRANTED) {
+                            val resolver = instrumentation.targetContext.contentResolver
+                            val metadata = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+                                null, null, null, signal)?.use { cursor ->
+                                check(cursor.moveToFirst() && !cursor.isNull(0) && !cursor.isNull(1))
+                                cursor.getString(0) to cursor.getLong(1)
+                            } ?: error("The granted recording must expose real provider metadata")
+                            val mime = checkNotNull(resolver.getType(uri))
+                            opened = checkNotNull(resolver.openFileDescriptor(uri, "r", signal))
+                            check(metadata.second in 1..CAPTURE_BODY_LIMIT.toLong() && opened.statSize == metadata.second)
+                            val captured = AudioSourceEvidence(uri, metadata.first, mime, metadata.second, opened)
+                            opened = null
+                            if(!running.get() || !source.compareAndSet(null, captured)) captured.close()
+                            return@thread
+                        }
+                    } catch(_: SecurityException) {
+                        // The legitimate receiver may already have finished between permission,
+                        // metadata and FD calls. Retry, but never substitute Miru staging bytes.
+                    } catch(problem: Throwable) {
+                        if(running.get()) this.problem.compareAndSet(null, problem)
+                        return@thread
+                    } finally { opened?.close() }
+                    SystemClock.sleep(1)
+                }
+            }
+        }
+        override fun close() {
+            running.set(false)
+            signal.cancel()
+            worker?.join(2_000)
+            source.getAndSet(null)?.close()
+            check(worker?.isAlive != true) { "The read-only source observation must not outlive the fixture" }
+        }
+    }
+
+    private fun assertActualRecordedAudio(original: FileInputStream) {
+        original.channel.position(0)
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(original.fd)
+            val audio = (0 until extractor.trackCount).filter {
+                extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
+            }
+            assertEquals("A genuine default AAC recording must contain one audio track", 1, audio.size)
+            val format = extractor.getTrackFormat(audio.single())
+            assertEquals("audio/mp4a-latm", format.getString(MediaFormat.KEY_MIME))
+            assertTrue(format.getInteger(MediaFormat.KEY_SAMPLE_RATE) > 0)
+            assertTrue(format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) > 0)
+            assertTrue("Clock/UI alone is insufficient; the encoded duration must be positive", format.getLong(MediaFormat.KEY_DURATION) >= 1_000_000)
+            extractor.selectTrack(audio.single())
+            assertTrue("A real encoded sample must be readable", extractor.readSampleData(ByteBuffer.allocate(256 * 1024), 0) > 0)
+            assertTrue(extractor.sampleTime >= 0)
+        } finally { extractor.release(); original.channel.position(0) }
+    }
+
+    private fun <T> withAudioRecorderRoot(block: (AccessibilityNodeInfo) -> T): T? {
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return null
+        try { return if(root.packageName?.toString() == "org.fossify.voicerecorder") block(root) else null }
+        finally { root.recycle() }
+    }
+
+    private fun audioRecorderControlAvailable(resource: String): Boolean = withAudioRecorderRoot { root ->
+        val nodes = root.findAccessibilityNodeInfosByViewId("org.fossify.voicerecorder:id/$resource")
+        try { nodes.any { it.isVisibleToUser && it.isEnabled } }
+        finally { nodes.forEach { it.recycle() } }
+    } == true
+
+    private fun clickAudioRecorderControl(resource: String) {
+        waitFor("The real Fossify control must be visible, enabled and accept its action") {
+            withAudioRecorderRoot { root ->
+                val nodes = root.findAccessibilityNodeInfosByViewId("org.fossify.voicerecorder:id/$resource")
+                try { nodes.any { it.isVisibleToUser && it.isEnabled && clickAncestor(it) } }
+                finally { nodes.forEach { it.recycle() } }
+            } == true
+        }
+    }
+
+    private fun actualAudioRecordingSeconds(): Int? = withAudioRecorderRoot { root ->
+        val nodes = root.findAccessibilityNodeInfosByViewId("org.fossify.voicerecorder:id/recording_duration")
+        try { nodes.firstNotNullOfOrNull { node ->
+            val parts = node.text?.toString()?.trim()?.split(':')?.map { it.toIntOrNull() }
+            if(!node.isVisibleToUser || parts == null || parts.any { it == null }) null
+            else when(parts.size) {
+                2 -> checkNotNull(parts[0]) * 60 + checkNotNull(parts[1])
+                3 -> checkNotNull(parts[0]) * 3600 + checkNotNull(parts[1]) * 60 + checkNotNull(parts[2])
+                else -> null
+            }
+        } } finally { nodes.forEach { it.recycle() } }
+    }
+
+    private fun allowActualAudioPermissionIfShown(): Boolean {
+        if(!permissionControllerVisible()) return false
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return false
+        try {
+            for(namespace in PERMISSION_CONTROLLER_PACKAGES) {
+                val messages = root.findAccessibilityNodeInfosByViewId("$namespace:id/permission_message")
+                val text = try { messages.joinToString(" ") { it.text?.toString().orEmpty() }.lowercase(Locale.ROOT) }
+                    finally { messages.forEach { it.recycle() } }
+                if(text.isBlank()) continue
+                // This draft targets an English API35 fixture. Fossify notification/SAF setup is
+                // completed with real UI before the run; unknown/location/camera dialogs fail.
+                check(("miru" in text || "voice recorder" in text) && ("record audio" in text || "microphone" in text) &&
+                    "location" !in text && "take pictures" !in text && "notification" !in text) { "Only the real audio permission is allowed here" }
+                for(resource in listOf("permission_allow_foreground_only_button", "permission_allow_one_time_button", "permission_allow_button")) {
+                    val buttons = root.findAccessibilityNodeInfosByViewId("$namespace:id/$resource")
+                    try { if(buttons.any { it.isVisibleToUser && it.isEnabled && it.performAction(AccessibilityNodeInfo.ACTION_CLICK) }) return true }
+                    finally { buttons.forEach { it.recycle() } }
+                }
+            }
+            return false
+        } finally { root.recycle() }
+    }
+
+    private fun finishActualAudioRecorderIfVisible() {
+        var failure: Throwable? = null
+        fun attempt(action: () -> Unit) {
+            try { action() } catch(problem: Throwable) {
+                val first = failure
+                if(first == null) failure = problem else if(first !== problem) first.addSuppressed(problem)
+            }
+        }
+        if(permissionControllerVisible()) {
+            attempt { systemBack() }
+            attempt {
+                waitFor("The real permission window must leave before checking the recorder", 10_000) { !permissionControllerVisible() }
+            }
+            attempt {
+                waitFor("The permission result must restore an actual recorder, browser or launcher window", 10_000) {
+                    val root = instrumentation.uiAutomation.rootInActiveWindow
+                    try {
+                        root?.packageName?.toString() in setOf("org.fossify.voicerecorder", instrumentation.targetContext.packageName,
+                            "com.google.android.apps.nexuslauncher", "com.android.launcher3")
+                    } finally { root?.recycle() }
+                }
+                // Verify the cross-process accessibility event stream settled, rather than sleep
+                // and immediately return while a permission callback may still start recording.
+                instrumentation.uiAutomation.waitForIdle(250, 5_000)
+            }
+        }
+        // A window/idle timeout is retained, but must not skip the best-effort real Save/Back.
+        attempt {
+            if(withAudioRecorderRoot { true } == true) {
+                if(audioRecorderControlAvailable("save_recording_button")) {
+                    clickAudioRecorderControl("save_recording_button")
+                    waitFor("Failure cleanup must stop any actual recorder before leaving it", 15_000) {
+                        withAudioRecorderRoot { true } != true || !audioRecorderControlAvailable("save_recording_button")
+                    }
+                }
+            }
+        }
+        attempt { if(withAudioRecorderRoot { true } == true) systemBack() }
+        attempt {
+            waitFor("The actual external recorder must leave the foreground", 10_000) { withAudioRecorderRoot { true } != true }
+        }
+        failure?.let { throw it }
     }
 
     private class StartedCapture(val request: BrowserPromptState, val output: Uri, val file: File, val cameraUid: Int)
@@ -1706,12 +2110,13 @@ private class UploadOrigin(private val acceptedTypes: String? = "text/plain", pr
     val url = "http://127.0.0.1:${server.localPort}"
 
     init {
-        require(acceptedTypes in setOf(null, "text/plain", "text/plain,image/png", "image/*", ".png", "video/*")) {
+        require(acceptedTypes in setOf(null, "text/plain", "text/plain,image/png", "image/*", ".png", "video/*", "audio/*")) {
             "Only the fixed synthetic accept matrix may be rendered"
         }
-        require(captureMode in setOf(null, "environment") &&
-            (captureMode == null || acceptedTypes in setOf("image/*", "video/*"))) {
-            "Only the fixed environment photo/video capture fixtures may be rendered"
+        require(captureMode == null ||
+            (captureMode == "environment" && acceptedTypes in setOf("image/*", "video/*")) ||
+            (captureMode == "" && acceptedTypes == "audio/*")) {
+            "Only the reviewed photo/video/audio capture fixtures may be rendered"
         }
         thread(isDaemon = true, name = "miru-file-upload-origin") {
             while (running.get()) {
