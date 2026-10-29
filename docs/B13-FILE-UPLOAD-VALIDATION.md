@@ -158,6 +158,6 @@ omni SHA为 `f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`�
 - 历史完整回归失败保留；0.5.8固定包随后常规完整117/117（907.736秒）通过，见`B13-CAPTURE-VALIDATION.md`，不推定历史超时根因已解决。排除的重启类、独立系统权限及其余页面提示（选项/日期/颜色等）、权限/站点矩阵仍待。
 - 初始 about:blank / opener document.write / popup / WebExtension 新 session 的真实文档握手及文件交付。
   固定 Progress 模块明确不保证最初 blank 的 location 事件，不能把未收到事件的 generation 0 当成有效文档。
-- 0.5.9尚无完整常规回归、R8/release构建、ARM64打包/运行或正式签名证据；最新已验证ARM64包仍是0.5.8。既有构建/体积/打包不替代本版运行、真机及发行门。
+- 0.5.9完整常规回归、R8/ARM64运行及正式签名仍待；本版R8构建和108,024,040字节ARM64打包见`B13-AUDIO-CAPTURE-VALIDATION.md`。构建/体积/打包不替代实际运行、真机及发行门。
 
 以上仍按 `ACCEPTANCE.md` 的 B13、PRIV、DEV、REL 各门逐项记录，不将安全取消当作该功能支持。

@@ -1,6 +1,6 @@
 # 实现进度
 
-开始日期：2026-10-22。当前推进至0.5.9目录上传首批：受控目录5/5、最新跨模块单次49/49通过，尚无0.5.9完整常规回归或ARM64发布包。最新已验证ARM64打包仍为0.5.8，固定Debug包常规117/117及独立首装/系统权限证据保留。完整B13、M0 / M1 / M2 / M3剩余专项及发行门仍待，iOS按规范在Android M4后开始。全部要求和证据映射见`ACCEPTANCE.md`，不以当前通过的测试替代全量验收。
+开始日期：2026-10-22。当前0.5.9受控目录5/5、跨模块单次49/49及独立录音1/1通过，ARM64开发包108,024,040字节已验证；本版完整常规回归与R8/ARM64运行仍待。0.5.8固定Debug包常规117/117及独立首装/系统权限证据保留。完整B13、M0 / M1 / M2 / M3剩余专项及发行门仍待，iOS按规范在Android M4后开始。全部要求和证据映射见`ACCEPTANCE.md`，不以当前通过的测试替代全量验收。
 
 ## 已实现的 M0 代码
 
@@ -197,7 +197,7 @@
 - `build-1.log` engine **90/90**（含树复制 **10/10**），`build-2.log`的0.5.9/code17 Debug主/测试构建与lint通过（2分32秒）；最终测试/lint为`059-top-positioned-build.log`（1分57秒），lint0错误/22警告。此批未执行全工程JVM，不写成全局总数。主APK SHA `6616ef8afcc4cf29b97e457943f59f9e3704efcd369a4cca76be433cbe51130b`，最终测试SHA `3585f319bc85b1c94058207798515a21b4a003cc759ce9f5353dbde796d16230`。
 - 真实TREE首轮1方法2失败（56.136秒）为Use/Allow共用button1的驱动误判及清理超时，原日志和两阶段XML保留；按实际UI修正后完整树1/1（21.03秒），同包目录整类 **5/5（50.447秒）**，覆盖路径/name/type/size和POST原bytes、私密owner关闭/grant回基线、空根真实change、native DENY和显式MIME不保真整体失败。
 - 跨模块首轮 **48/49（338.146秒）** 保留唯一顶栏旧SDK页顶门失败。测试现显式TOP并断言实际位置/finally恢复偏好，用新doc双rAF和精确GET/真实刷新作判据，原手势与8/15秒不变；生产主包未改。`059-top-positioned-core-*` **7/7（150.868秒）**，最终同包重新单次执行`059-native-prompt-regression-fixed-*` **49/49（602.313秒）**，含Folder5/File18/页面提示11/站点及生命周期8/Core7。TOP本轮SDK canUp=false，不能与独立深滚行为项SDK仍true混写。
-- 首批仅API35/x86_64受控provider。TREE取消/拒绝保留已有FileList、两阶段重建、IO作废和系统/native迟到事务、特殊MIME/metadata、其他provider、进程死亡与完整私密持久化仍待；0.5.9完整常规回归、R8/ARM64构建/运行、正式签名及发行门未闭合。详见[B13目录记录](B13-FOLDER-UPLOAD-VALIDATION.md)与[浏览器核心记录](BROWSER-CORE-VALIDATION.md)。
+- 首批仅API35/x86_64受控provider。TREE取消/拒绝保留已有FileList、两阶段重建、IO作废和系统/native迟到事务、特殊MIME/metadata、其他provider、进程死亡与完整私密持久化仍待；0.5.9完整常规回归、R8/ARM64运行、正式签名及发行门未闭合。后续构建/打包见录音专项；详见[B13目录记录](B13-FOLDER-UPLOAD-VALIDATION.md)与[浏览器核心记录](BROWSER-CORE-VALIDATION.md)。
 
 ## B13 录音上传专项（独立前置，0.5.9）
 
@@ -205,6 +205,7 @@
 - 固定官方Fossify1.7.3/code20，经实际hash/签名pin验证，真实MIC/通知/SAF设置和Record/Save。0.5.8实际1/1（23.74秒）；新受控5554的当前0.5.9主F097/testE4E5实际1/1（45.525秒），原URI临时READ、原FD/provider、外部原文件与网页POST三方bytes、音轨/时长/sample、grant回收及文档租约删除均通过，外部源保留。hostmic实际OFF，输入零值，不声称物理拾音。
 - 原31ef候选52.453秒失败保留；Android15实际执行入口直接分词，不处理旧helper shell引号，现通过公开Rwe真实sh stdin和有界独立stdout/stderr修正，仅测试代码改变，不放宽20s/来源证明。当前0.5.9构建3分21秒，补纯JVM common:test后共151项、0失败/错误/跳过；真实task状态缓存复用已逐项记录，lint0/22。
 - 录音取消/私密/完整生命周期、其他handler及本版完整常规/R8/ARM64运行仍待，详见[B13录音记录](B13-AUDIO-CAPTURE-VALIDATION.md)。
+- 录音测试与证据已提交`15c2943`；其干净源码R8/shrink release构建成功（6分31秒），最终ARM64开发包 **108,024,040字节**、SHA `2f691037ce171e9edd7df915979fc45a2915c6d587f467d73e31c06f8598265d`。1518payload、SDK对齐/同Debug证书、17个ARM64库和4077+2+5 Gecko资源均验证通过；仍非正式签名，R8/ARM64运行另待。
 
 ## M3 尚待推进
 

@@ -101,11 +101,11 @@ Miru 的取舍遵循产品规范 [MIRU-SPEC.md](MIRU-SPEC.md)（唯一需求来�
 | **M4** | 动效、网站矩阵、真机性能、完整验收 | ⚪ 未开始 |
 | **iOS** | 按规范在 Android M4 之后启动 | ⚪ 未开始 |
 
-最新已验证打包为 **0.5.8 ARM64开发包，108,011,752字节**，仍使用Android Debug签名；拍摄与打包范围见[0.5.8记录](docs/B13-CAPTURE-VALIDATION.md)，启动修复及历史门见[0.5.7记录](docs/M1-057-STARTUP-VALIDATION.md)，完整上传范围见[上传验收记录](docs/B13-FILE-UPLOAD-VALIDATION.md)。
+最新已验证打包为 **0.5.9 ARM64开发包，108,024,040字节**，仍使用Android Debug签名；打包与录音范围见[0.5.9记录](docs/B13-AUDIO-CAPTURE-VALIDATION.md)，拍摄历史见[0.5.8记录](docs/B13-CAPTURE-VALIDATION.md)，完整上传范围见[上传验收记录](docs/B13-FILE-UPLOAD-VALIDATION.md)。
 
-同版固定Debug包已在API35/x86_64模拟器完成常规回归 **117/117**，另有首次启动uBO **1/1**、真实系统权限独立 **3/3**；两个外部重启类、ARM64运行与真机性能仍按[验收矩阵](docs/ACCEPTANCE.md)分别记录。
+0.5.8固定Debug包已在API35/x86_64模拟器完成常规回归 **117/117**，另有首次启动uBO **1/1**、真实系统权限独立 **3/3**；两个外部重启类、ARM64运行与真机性能仍按[验收矩阵](docs/ACCEPTANCE.md)分别记录。
 
-0.5.9的[目录首批](docs/B13-FOLDER-UPLOAD-VALIDATION.md)已验证真实系统TREE、原生二次确认、深层相对路径与原始上传字节。目录生命周期、特殊MIME/元数据及其他provider仍待；本版49项为跨模块专项集成，尚无完整常规回归或新ARM64发布包。
+0.5.9的[目录首批](docs/B13-FOLDER-UPLOAD-VALIDATION.md)已验证真实系统TREE、原生二次确认、深层相对路径与原始上传字节。目录生命周期、特殊MIME/元数据及其他provider仍待；本版49项为跨模块专项集成，尚无完整常规回归或ARM64运行验收。
 
 <details>
 <summary><b>历史已验证打包：0.5.4（ARM64 开发包）</b></summary>

@@ -68,4 +68,4 @@
 
 完整树包含8层目录、两个不同路径same.txt、Unicode PNG、zero.txt和空子目录。通过断言覆盖全FileList name/type/size/webkitRelativePath及每份POST原bytes、真实二次确认、系统选择后未自动上传、copy后临时授权回到原基线、没有新增persisted grant、文档结束后租约消失。空目录经真正确认ALLOW后收到真实空FileList/change，拒绝为实际DENY后Inspect空选择及零bytes；不能把这些初始空选择结果扩大为“拒绝保留已有选择”已通过。
 
-设备驱动当前仅验证已观察的DocumentsUI版本/语言和受控provider；未知界面仍须实际核对。剩余系统TREE取消保留已有FileList/lease、两阶段重建、IO中owner作废、真实迟到系统结果、实际触发的旧native确认撞新同名请求、预算/故障provider、进程死亡及私密持久化取证继续待补。metadata特殊情况、完整目录生命周期、完整B13均未闭合；0.5.9尚无完整常规回归、R8/release构建、ARM64打包/运行及正式签名证据，最新已验证ARM64包仍为0.5.8。
+设备驱动当前仅验证已观察的DocumentsUI版本/语言和受控provider；未知界面仍须实际核对。剩余系统TREE取消保留已有FileList/lease、两阶段重建、IO中owner作废、真实迟到系统结果、实际触发的旧native确认撞新同名请求、预算/故障provider、进程死亡及私密持久化取证继续待补。metadata特殊情况、完整目录生命周期、完整B13均未闭合；0.5.9完整常规回归、R8/ARM64运行及正式签名仍待，后续R8构建及108,024,040字节ARM64开发包见[B13录音记录](B13-AUDIO-CAPTURE-VALIDATION.md)。

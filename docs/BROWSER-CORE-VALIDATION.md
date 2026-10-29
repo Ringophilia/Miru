@@ -377,4 +377,4 @@ SDK仍canUp=true；随后实际下拉使该doc GET及新绘制从1变2，SDK仍�
 独立深滚行为项另记录旧文档flow≈2514，新doc DOM/visual/flow为0而SDK仍true，随后真实刷新成功；它继续证明缓存可能陈旧，不能把其数值写成TOP用例也复现了SDK true。
 
 最终同一主/测试APK的`059-native-prompt-regression-fixed-device.log`重新单次运行上述7类，**49/49通过（602.313秒）**；对应input/result/runtime保留命令、哈希及真实观测。
-这不是隔离结果拼接首轮48/49，也不是0.5.9完整常规回归。该版尚无R8/release或ARM64打包/运行、正式签名证据；其他网站/嵌套滚动/键盘/固定元素/真机矩阵仍待。
+这不是隔离结果拼接首轮48/49，也不是0.5.9完整常规回归。该版后续R8构建/ARM64打包见`B13-AUDIO-CAPTURE-VALIDATION.md`，R8/ARM64运行和正式签名仍待；其他网站/嵌套滚动/键盘/固定元素/真机矩阵仍待。

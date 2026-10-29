@@ -54,6 +54,18 @@ G主包F097与目录首批C主包6616身份不同：逐payload对比仅13个自�
 归一化后全部一致，DEX/native/omni字节相同；仍分别记录APK SHA，不拼成同一个已测二进制。
 当前录音1项是独立专项，不能与目录49或旧版117合并冒充本版完整常规回归。
 
+## 0.5.9 ARM64开发包
+
+测试与证据源码已提交`15c2943`。该干净源码的`059-release-build.log`记录R8/shrink release
+**构建成功，6分31秒**。原AGP包111,174,025字节，SHA
+`6f8d7fa55df99ea48fd414090d41d1233fa8955d4fca57e261dc6fa24e4c7efc`。
+固定工具链输出`artifacts/releases/Miru-0.5.9-arm64.apk`，**108,024,040字节**，SHA
+`2f691037ce171e9edd7df915979fc45a2915c6d587f467d73e31c06f8598265d`。
+同名`.verification-20261029-182614-f33e5209/pipeline.json`验证1518项payload完整、SDK对齐、签名及原Debug证书一致，严格小于110,000,000字节。
+`artifacts/browser-core/059-release-native-verification.json`确认17个ELF64/AArch64库，
+`059-release-omni-verification.json`确认4077原项、GEO/导航两项精确修改和5项官方新增；omni SHA仍为F053。
+这些是构建/打包证据，正式签名、R8实际运行、ARM64实际运行和物理性能/完整发行仍待。
+
 ## 单独运行与剩余范围
 
 常规回归明确排除`AudioCaptureIntegrationTest`。该类要求已按上述实际步骤准备的AVD、固定处理器和参数：
