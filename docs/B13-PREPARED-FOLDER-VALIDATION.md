@@ -37,10 +37,15 @@ PromptRequest 或 FileList。主/测试安装后再核对已安装 base APK 的 
 | 同目录 `filesystem-folder-ready-complete-*`，test 9a3a | filesystem3 + metadata2 + folder8，单次 13 项 | 12/13，70.64 秒；virtual 负例及链接均通过，late TREE 下一 owner 的第二次系统 grant 观察失败 |
 | `0510-device-20261030-1348/folder-filesystem-complete-*`，test 0489 | 同 13 项，真实授权窗口过渡驱动 | 12/13，95.756 秒；late TREE 通过，virtual 负例在 page() 的网页准备阶段超时，尚未触发 TREE |
 
-同一主/test 包随后启动 `0510-device-20261030-1348/routine-complete-*` 常规完整回归，runner
-实际发现并执行 130 项。提交本记录时仍在运行，未计通过。排除 DownloadRestartTest、
+同一主/test 包随后执行 `0510-device-20261030-1348/routine-complete-*` 常规完整回归，
+**130/130 通过，734.586 秒**，无失败/跳过。`routine-complete-tests-v2.json` 按原始终态逐项
+核对：文件18、目录8、metadata2、Android文件系统3、benchmark2、GL3均包含在同次执行中；
+不是将独立轮次拼接。v1逐类收集的 OrderedDictionary 分组错误原样保留，v2修正为真实JSON行
+分组，原设备日志及130项全绿终态不受收集错误影响。排除 DownloadRestartTest、
 OfflineRestartTest、RuntimeSitePermissionIntegrationTest、AudioCaptureIntegrationTest 四个
-需要独立前置的类；排除不记通过。完整运行期间不并行 Gradle/R8、录屏或其他设备自动化。
+需要独立前置的类；排除不记通过。完整运行期间未并行 Gradle/R8、录屏或其他设备自动化。
+它不是全新首装证明，也不抵消上表三轮专项失败；最后一次 page 准备超时的具体未满足条件
+仍待增加失败快照区分。
 
 每轮包含独立 `input.json`、`device.log`、`runtime.log`、`result.json`；APK 身份不拼接，
 首轮或隔离通过不合成为整组通过。目录中的 `launch.json` 保存进程/AVD/启动参数与时间。
@@ -75,5 +80,5 @@ OfflineRestartTest、RuntimeSitePermissionIntegrationTest、AudioCaptureIntegrat
 
 仍待：真实迟到第二 native FolderUploadPrompt、选择/复制中重建与 IO owner 作废、进程死亡、
 保留已有选择时拒绝第二确认、其他 provider/网站、私密完整持久化取证、native IPC/OOM 边界、
-上游升级 ABI 复审、完整常规回归、R8 后同包 ABI/ARM64 实际运行与正式签名。本批只支持受限
+上游升级 ABI 复审、独立前置类与真机矩阵、R8 后同包 ABI/ARM64 实际运行与正式签名。本批只支持受限
 普通文件目录；virtual 转换仍明确整体拒绝，不宣称已支持。
