@@ -112,6 +112,15 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation("androidx.room:room-runtime:2.8.5")
+    // P6 capability probe only; this is not a production extraction engine decision.
+    androidTestImplementation("androidx.media3:media3-inspector-frame:1.11.1") {
+        // Compile-time annotations are already supplied by the tested application's
+        // graph. Do not upgrade its consistent runtime graph just for this probe.
+        exclude(group = "com.google.errorprone", module = "error_prone_annotations")
+    }
+    androidTestImplementation(libs.media3.okhttp) {
+        exclude(group = "com.google.errorprone", module = "error_prone_annotations")
+    }
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

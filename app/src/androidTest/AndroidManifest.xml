@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <!-- Public synthetic read-only fixture, available only while the test APK is installed. -->
+        <provider android:name="app.miru.browser.capability.SeekPreviewFixtureProvider"
+            android:authorities="app.miru.browser.test.seek-preview" android:exported="true" />
         <provider android:name="app.miru.browser.PreparedFolderDocumentsProvider"
             android:authorities="app.miru.browser.test.prepared-folders" android:exported="true"
             android:grantUriPermissions="true" android:permission="android.permission.MANAGE_DOCUMENTS">

@@ -1,0 +1,254 @@
+{
+  "generatedBy": "tools/generate-seek-preview-fixture.ps1",
+  "ffmpegVersion": "ffmpeg version n8.0.1-66-g27b8d1a017-20260228 Copyright (c) 2000-2025 the FFmpeg developers",
+  "ffmpegSha256": "6D1169549F6A67DE04DFC1D1868B514D594E365A1104FD384CBE851DED7108F8",
+  "commands": [
+    {
+      "arguments": [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=red:s=160x90:r=10:d=4",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=lime:s=160x90:r=10:d=4",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=blue:s=160x90:r=10:d=4",
+        "-filter_complex",
+        "[0:v][1:v][2:v]concat=n=3:v=1:a=0,drawbox=x=0:y=66:w=160:h=24:color=black:t=fill,drawtext=font='Consolas':text='%{pts\\:hms}':x=4:y=70:fontsize=12:fontcolor=white[v]",
+        "-map",
+        "[v]",
+        "-an",
+        "-c:v",
+        "libx264",
+        "-profile:v",
+        "baseline",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "18",
+        "-pix_fmt",
+        "yuv420p",
+        "-g",
+        "10",
+        "-keyint_min",
+        "10",
+        "-sc_threshold",
+        "0",
+        "-movflags",
+        "+faststart",
+        "-threads",
+        "2",
+        "-y",
+        "colors.mp4"
+      ],
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffmpeg.exe"
+    },
+    {
+      "arguments": [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        "colors.mp4",
+        "-c",
+        "copy",
+        "-f",
+        "hls",
+        "-hls_time",
+        "4",
+        "-hls_playlist_type",
+        "vod",
+        "-hls_segment_filename",
+        "ts-%02d.ts",
+        "-y",
+        "ts.m3u8"
+      ],
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffmpeg.exe"
+    },
+    {
+      "arguments": [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        "colors.mp4",
+        "-c",
+        "copy",
+        "-f",
+        "hls",
+        "-hls_time",
+        "4",
+        "-hls_playlist_type",
+        "vod",
+        "-hls_segment_type",
+        "fmp4",
+        "-hls_fmp4_init_filename",
+        "fmp4-init.mp4",
+        "-hls_segment_filename",
+        "fmp4-%02d.m4s",
+        "-y",
+        "fmp4.m3u8"
+      ],
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffmpeg.exe"
+    },
+    {
+      "arguments": [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        "colors.mp4",
+        "-c",
+        "copy",
+        "-f",
+        "hls",
+        "-hls_time",
+        "4",
+        "-hls_playlist_type",
+        "vod",
+        "-hls_key_info_file",
+        "key-info.tmp",
+        "-hls_segment_filename",
+        "aes-%02d.ts",
+        "-y",
+        "aes.m3u8"
+      ],
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffmpeg.exe"
+    },
+    {
+      "arguments": [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        "colors.mp4",
+        "-c",
+        "copy",
+        "-f",
+        "dash",
+        "-use_template",
+        "1",
+        "-use_timeline",
+        "1",
+        "-seg_duration",
+        "4",
+        "-init_seg_name",
+        "dash-init-$RepresentationID$.m4s",
+        "-media_seg_name",
+        "dash-$RepresentationID$-$Number%05d$.m4s",
+        "-y",
+        "dash.mpd"
+      ],
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffmpeg.exe"
+    }
+  ],
+  "files": [
+    {
+      "name": "aes-00.ts",
+      "sha256": "7AEA179AE094F285AF7140106DC6D80F3C89D71828FA6877FD5E2C16F7501293",
+      "bytes": 13552
+    },
+    {
+      "name": "aes-01.ts",
+      "sha256": "C0621B4E204C8243A3471179B42B4A14A83448862D480B1302F73F92AA684BF9",
+      "bytes": 12976
+    },
+    {
+      "name": "aes-02.ts",
+      "sha256": "454D073F155C4D7A68E9CEE6CB6D51D3060B5545D23089214F7AA0499F72674B",
+      "bytes": 12976
+    },
+    {
+      "name": "aes.key",
+      "sha256": "BE45CB2605BF36BEBDE684841A28F0FD43C69850A3DCE5FEDBA69928EE3A8991",
+      "bytes": 16
+    },
+    {
+      "name": "aes.m3u8",
+      "sha256": "A44604BD999F38E2A6B53F22FB097E2A3B27C17A8DDF252D1C97B900A9F8E6FB",
+      "bytes": 275
+    },
+    {
+      "name": "colors.mp4",
+      "sha256": "8259466BC2EC96CFD7D3866F9AE30D325192EEA48E4663BEED6B9B839F559357",
+      "bytes": 21552
+    },
+    {
+      "name": "dash-0-00001.m4s",
+      "sha256": "A7472D42DB47BCBE04C5517D6E64295D2ACA5C2D2CA121988F50134FF95E7D6B",
+      "bytes": 7610
+    },
+    {
+      "name": "dash-0-00002.m4s",
+      "sha256": "7A393AD733EF037FC72F9D06638BD0D6C3853341469FE5AD82BAE2CDD57630CC",
+      "bytes": 7054
+    },
+    {
+      "name": "dash-0-00003.m4s",
+      "sha256": "9543107A8FC76FF4F6EB88DE1613C45699041DBA1F1ABE62315373C42E44ACB4",
+      "bytes": 7024
+    },
+    {
+      "name": "dash-init-0.m4s",
+      "sha256": "F25F8BD538CEAD4BDD20511F2D07CC83E193C5FEF8E72E056B9C34945FF6CBB0",
+      "bytes": 828
+    },
+    {
+      "name": "dash.mpd",
+      "sha256": "8D72A33076030477691A58CD86E7C8EC2FA0C7C3F4632F6A8E7D5AE1B6F762DD",
+      "bytes": 1230
+    },
+    {
+      "name": "fmp4-00.m4s",
+      "sha256": "A7472D42DB47BCBE04C5517D6E64295D2ACA5C2D2CA121988F50134FF95E7D6B",
+      "bytes": 7610
+    },
+    {
+      "name": "fmp4-01.m4s",
+      "sha256": "7A393AD733EF037FC72F9D06638BD0D6C3853341469FE5AD82BAE2CDD57630CC",
+      "bytes": 7054
+    },
+    {
+      "name": "fmp4-02.m4s",
+      "sha256": "9543107A8FC76FF4F6EB88DE1613C45699041DBA1F1ABE62315373C42E44ACB4",
+      "bytes": 7024
+    },
+    {
+      "name": "fmp4-init.mp4",
+      "sha256": "37733F90BFAECFDD53B4C27A0E9B8F6D8930F7A802EBCBCFD75D9537B97A8B3B",
+      "bytes": 828
+    },
+    {
+      "name": "fmp4.m3u8",
+      "sha256": "841E3EC6FA436CAFB2967ACB29F58D7EADFA0DA127A028F0A01D767FFD20229D",
+      "bytes": 234
+    },
+    {
+      "name": "ts-00.ts",
+      "sha256": "7145F8972F1AE2B358ADE4657B7E16C266AA2BCEFE77033D297EAFE4A747E8EC",
+      "bytes": 13536
+    },
+    {
+      "name": "ts-01.ts",
+      "sha256": "344B7C023541B4F8785329A300FD375F36DB884B172B1FB36109A921E9D49667",
+      "bytes": 12972
+    },
+    {
+      "name": "ts-02.ts",
+      "sha256": "5FFE68A674ADA30A1E39C1F165820944A238B149E54FEEC7EEE95A4A47E47276",
+      "bytes": 12972
+    },
+    {
+      "name": "ts.m3u8",
+      "sha256": "25F6807E467A85D0AB9261E4613DD5AC30550099D19D644E40527C041DC929E0",
+      "bytes": 194
+    }
+  ]
+}
