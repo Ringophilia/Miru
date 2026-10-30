@@ -4,7 +4,6 @@
 package app.miru.browser.capability
 
 import android.content.Context
-import android.content.ContextWrapper
 import android.graphics.Color
 import android.os.SystemClock
 import android.util.Log
@@ -53,15 +52,7 @@ import kotlin.math.abs
 class SeekPreviewFrameExtractorCapabilityTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
-    // Effect is test-only. Its generated R.raw IDs belong to the test resource
-    // table, while URI/HTTP services must still use the real target environment.
-    // MediaCodecVideoRenderer/PlaybackVideoGraphWrapper normalize applicationContext,
-    // so preserve this resource owner through that normalization as well.
-    private val decoderContext = object : ContextWrapper(context) {
-        override fun getResources() = instrumentation.context.resources
-        override fun getAssets() = instrumentation.context.assets
-        override fun getApplicationContext(): Context = this
-    }
+    private val decoderContext by lazy { seekPreviewDecoderContext() }
 
     @Before fun explicitlyEnabled() {
         assumeTrue("Independent P6 capability probe requires explicit opt-in",
@@ -206,7 +197,7 @@ class SeekPreviewFrameExtractorCapabilityTest {
 
     private fun createProbe(url: String, mime: String, origin: SeekPreviewOrigin? = null): Probe {
         for(id in listOf(EffectR.raw.vertex_shader_transformation_es2, EffectR.raw.fragment_shader_copy_es2)) {
-            assertEquals("Effect raw ID must resolve in its test APK resource table", "raw", decoderContext.resources.getResourceTypeName(id))
+            assertEquals("Effect raw ID must resolve in its verified APK resource table", "raw", decoderContext.resources.getResourceTypeName(id))
             val shader = decoderContext.resources.openRawResource(id).bufferedReader().use { it.readText() }
             assertTrue("GL must receive shader text rather than a colliding main drawable", shader.startsWith("#version"))
             Log.i(TAG, "shader input verified: ${decoderContext.resources.getResourceName(id)}")

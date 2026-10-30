@@ -5,6 +5,7 @@ package app.miru.player
 
 import android.app.Activity
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Rect
 import android.media.AudioManager
 import android.net.Uri
@@ -17,6 +18,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.foundation.interaction.Interaction
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -31,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -38,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
@@ -47,6 +54,9 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.ui.SubtitleView
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.common.text.Cue
@@ -68,11 +78,13 @@ fun PlayerScreen(
     onLockChanged: (Boolean) -> Unit = {},
 ) {
     val state by controller.state.collectAsState()
+    val seekPreview by controller.seekPreview.state.collectAsState()
     val tracks by controller.trackOptions.collectAsState()
     val cues by controller.subtitleCues.collectAsState()
     val preferences by controller.preferences.collectAsState()
     val activity = LocalContext.current as Activity
     val configuration = LocalConfiguration.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     val portraitVideo = state.width > 0 && state.height > state.width
     val embedded = !pip && configuration.orientation != Configuration.ORIENTATION_LANDSCAPE && !portraitVideo
     var visible by remember { mutableStateOf(true) }
@@ -86,15 +98,56 @@ fun PlayerScreen(
     var split by remember { mutableFloatStateOf(.5f) }
     var output by remember { mutableStateOf(SuperResViewState()) }
     var fit by remember { mutableIntStateOf(0) }
-    var drag by remember { mutableStateOf<Float?>(null) }
+    var drag by remember(controller) { mutableStateOf<Float?>(null) }
+    var dragSourceRevision by remember(controller) { mutableStateOf<Long?>(null) }
+    var dragOwner by remember(controller) { mutableStateOf<Any?>(null) }
+    var lifecycleActive by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    val currentPip by rememberUpdatedState(pip)
+    val cancelSeek = {
+        drag = null
+        dragSourceRevision = null
+        dragOwner = null
+        controller.seekPreview.hide()
+    }
+    val canSeekNow = {
+        val current = controller.state.value
+        visible && !locked && !currentPip && lifecycleActive && !current.live &&
+            !current.error && !current.timedOut && current.duration > 0
+    }
+    val seekEnabled = canSeekNow()
+    val seekOwner = remember(controller, state.sourceRevision, embedded, configuration.orientation) { Any() }
+    val seekInteractions = remember(seekOwner) {
+        SeekSliderInteractionSource(onCancel = { if(dragOwner === seekOwner) cancelSeek() })
+    }
     var buffering by remember { mutableStateOf(false) }
     val touch = remember(controller) { PlayerTouch(activity, controller, { visible = !visible }, { overlay = it }) }
     SideEffect { touch.locked = locked }
+    SideEffect {
+        if((!seekEnabled || dragSourceRevision?.let { it != state.sourceRevision } == true) &&
+            (drag != null || controller.seekPreview.state.value.targetMs != null)) cancelSeek()
+    }
+    DisposableEffect(controller, lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            when(event) {
+                Lifecycle.Event.ON_RESUME -> lifecycleActive = true
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_DESTROY -> {
+                    lifecycleActive = false
+                    cancelSeek()
+                }
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); cancelSeek() }
+    }
+    DisposableEffect(controller, state.sourceRevision, embedded, configuration.orientation) {
+        onDispose { cancelSeek() }
+    }
     LaunchedEffect(embedded) { onEmbeddedModeChanged(embedded) }
     LaunchedEffect(locked) { onLockChanged(locked) }
     DisposableEffect(touch) { onDispose { touch.dispose() } }
     LaunchedEffect(state.buffering) { buffering = false; if(state.buffering) { delay(300); buffering = true } }
-    LaunchedEffect(visible, state.playing, locked, speedPanel, decoderPanel, tracksPanel, qualityPanel) { if(visible && state.playing && !speedPanel && !decoderPanel && !tracksPanel && !qualityPanel) { delay(3_000); visible = false } }
+    LaunchedEffect(visible, state.playing, locked, speedPanel, decoderPanel, tracksPanel, qualityPanel, drag != null) { if(visible && state.playing && drag == null && !speedPanel && !decoderPanel && !tracksPanel && !qualityPanel) { delay(3_000); if(drag == null) visible = false } }
     BackHandler { if(locked) { locked = false; visible = true } else onBack() }
     MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFFFB4AB), background = Color.Black, surface = Color(0xFF1C1B1F))) {
         Column(Modifier.fillMaxSize().background(Color.Black).then(if(embedded) Modifier.safeDrawingPadding() else Modifier)) {
@@ -130,21 +183,56 @@ fun PlayerScreen(
                         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 16.dp)) {
                             if(state.live) Row(verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.player_live), color = Color.Red); TextButton(onClick = controller::live) { Text(stringResource(R.string.player_live_edge)) } }
                             else {
-                                drag?.let { Text(playerTime(it.toLong()), Modifier.align(Alignment.CenterHorizontally), color = Color.White) }
                                 val seekLabel = stringResource(R.string.player_seek)
                                 val primary = MaterialTheme.colorScheme.primary
-                                Slider(value = drag ?: state.position.toFloat().coerceAtMost(state.duration.toFloat()), onValueChange = { drag = it }, valueRange = 0f..maxOf(1f, state.duration.toFloat()), onValueChangeFinished = { drag?.let { controller.seek(it.toLong()) }; drag = null }, enabled = state.duration > 0,
-                                    modifier = Modifier.semantics { contentDescription = seekLabel },
-                                    thumb = { Box(Modifier.size(16.dp).background(Color.White, CircleShape)) },
-                                    track = { Canvas(Modifier.fillMaxWidth().height(if(drag == null) 4.dp else 8.dp)) {
-                                        val y = size.height / 2
-                                        val total = maxOf(1f, state.duration.toFloat())
-                                        fun line(color: Color, fraction: Float) { drawLine(color, Offset(0f, y), Offset(size.width * fraction.coerceIn(0f, 1f), y), size.height, StrokeCap.Round) }
-                                        line(Color.White.copy(alpha = 0.2f), 1f)
-                                        line(Color.White.copy(alpha = 0.45f), state.buffered / total)
-                                        line(primary, (drag ?: state.position.toFloat()) / total)
-                                    } },
-                                )
+                                // Recreating only the slider cancels an old source/layout's pointer
+                                // gesture without touching the main video's output surface.
+                                key(state.sourceRevision, embedded, configuration.orientation) {
+                                    val sliderSourceRevision = state.sourceRevision
+                                    BoxWithConstraints(Modifier.fillMaxWidth().height(48.dp)) {
+                                        Slider(value = drag ?: state.position.toFloat().coerceIn(0f, maxOf(1f, state.duration.toFloat())), onValueChange = { position ->
+                                            val current = controller.state.value
+                                            if(canSeekNow() && current.sourceRevision == sliderSourceRevision) {
+                                                dragSourceRevision = sliderSourceRevision
+                                                dragOwner = seekOwner
+                                                val target = position.coerceIn(0f, current.duration.toFloat())
+                                                drag = target
+                                                controller.seekPreview.request(target.toLong())
+                                            }
+                                        }, valueRange = 0f..maxOf(1f, state.duration.toFloat()), onValueChangeFinished = {
+                                            if(dragOwner === seekOwner) {
+                                                val target = drag?.toLong()
+                                                val commit = target != null && canSeekNow() &&
+                                                    dragSourceRevision == controller.state.value.sourceRevision &&
+                                                    sliderSourceRevision == controller.state.value.sourceRevision
+                                                // Clear first: Material3 can finish both Stop and Cancel and
+                                                // repeated callbacks must never issue another seek.
+                                                cancelSeek()
+                                                if(commit) controller.seek(target!!)
+                                            }
+                                        }, enabled = seekEnabled, interactionSource = seekInteractions,
+                                            modifier = Modifier.align(Alignment.Center).testTag("player_seek_slider").semantics { contentDescription = seekLabel },
+                                            thumb = { Box(Modifier.size(16.dp).background(Color.White, CircleShape)) },
+                                            track = { Canvas(Modifier.fillMaxWidth().height(if(drag == null) 4.dp else 8.dp)) {
+                                                val y = size.height / 2
+                                                val total = maxOf(1f, state.duration.toFloat())
+                                                fun line(color: Color, fraction: Float) { drawLine(color, Offset(0f, y), Offset(size.width * fraction.coerceIn(0f, 1f), y), size.height, StrokeCap.Round) }
+                                                line(Color.White.copy(alpha = 0.2f), 1f)
+                                                line(Color.White.copy(alpha = 0.45f), state.buffered / total)
+                                                line(primary, (drag ?: state.position.toFloat()) / total)
+                                            } },
+                                        )
+                                        drag?.takeIf { seekEnabled && dragSourceRevision == state.sourceRevision }?.let { position ->
+                                            val frame = seekPreview.frame?.takeIf { seekPreview.targetMs == position.toLong() && !it.image.isRecycled }
+                                            val bubbleWidth = minOf(maxWidth, if(frame == null) 80.dp else 176.dp)
+                                            val fraction = (position / maxOf(1f, state.duration.toFloat())).coerceIn(0f, 1f)
+                                            val bubbleLeft = (maxWidth * fraction - bubbleWidth / 2f).coerceIn(0.dp, maxWidth - bubbleWidth)
+                                            SeekPreviewBubble(position.toLong(), frame,
+                                                Modifier.align(Alignment.BottomStart).offset(x = bubbleLeft, y = (-48).dp)
+                                                    .wrapContentHeight(Alignment.Bottom, unbounded = true).width(bubbleWidth))
+                                        }
+                                    }
+                                }
                             }
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text("${playerTime(state.position)} / ${playerTime(state.duration)}", Modifier.weight(1f), color = Color.White, style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"))
@@ -196,6 +284,44 @@ fun PlayerScreen(
             compare = it
             if(it) { qualityPanel = false; visible = false }
         }, onDismiss = { qualityPanel = false })
+    }
+}
+
+/** Cancellation must reach our state before Slider invokes its finish callback. */
+private class SeekSliderInteractionSource(
+    private val onCancel: () -> Unit,
+    private val delegate: MutableInteractionSource = MutableInteractionSource(),
+) : MutableInteractionSource by delegate {
+    override suspend fun emit(interaction: Interaction) {
+        cancelIfNeeded(interaction)
+        delegate.emit(interaction)
+    }
+
+    override fun tryEmit(interaction: Interaction): Boolean {
+        cancelIfNeeded(interaction)
+        return delegate.tryEmit(interaction)
+    }
+
+    private fun cancelIfNeeded(interaction: Interaction) {
+        if(interaction is DragInteraction.Cancel) onCancel()
+    }
+}
+
+@Composable
+private fun SeekPreviewBubble(targetMs: Long, frame: SeekPreviewFrame<Bitmap>?, modifier: Modifier = Modifier) {
+    Surface(modifier.testTag("player_seek_preview_bubble"), shape = MaterialTheme.shapes.small,
+        color = Color.Black.copy(alpha = .88f), contentColor = Color.White, shadowElevation = 4.dp) {
+        Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            frame?.let {
+                val ratio = it.image.width.toFloat() / it.image.height.coerceAtLeast(1)
+                val imageWidth = minOf(160f, 90f * ratio).dp
+                val imageHeight = minOf(90f, 160f / ratio).dp
+                Image(it.image.asImageBitmap(), stringResource(R.string.player_seek_preview, playerTime(targetMs)),
+                    Modifier.size(imageWidth, imageHeight).testTag("player_seek_preview_image"), contentScale = ContentScale.Fit)
+            }
+            Text(playerTime(targetMs), style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"), maxLines = 1)
+        }
     }
 }
 

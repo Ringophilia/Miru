@@ -11,13 +11,7 @@ import android.provider.OpenableColumns
 import app.miru.offline.OfflineCoordinator
 import androidx.media3.common.*
 import androidx.media3.datasource.*
-import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.exoplayer.*
-import androidx.media3.exoplayer.source.*
-import androidx.media3.exoplayer.hls.HlsMediaSource
-import androidx.media3.exoplayer.dash.DashMediaSource
-import androidx.media3.exoplayer.dash.DefaultDashChunkSource
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.session.MediaSession
 import kotlinx.coroutines.*
@@ -28,8 +22,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
-import okhttp3.OkHttpClient
-import java.net.URI
 import java.util.Locale
 import java.io.ByteArrayOutputStream
 import androidx.compose.runtime.getValue
@@ -43,6 +35,7 @@ data class PlayerSnapshot(
     val error: Boolean = false, val timedOut: Boolean = false, val resumed: Boolean = false,
     val decoder: String = "auto",
     val format: PlayerVideoInfo = PlayerVideoInfo(),
+    val sourceRevision: Long = 0,
 )
 
 data class PlayerVideoInfo(val codec: String = "", val bitrate: Int = 0, val frameRate: Float = 0f,
@@ -76,6 +69,11 @@ class PlayerController(
         } }
     }
     private var headers = request.headers
+    private var previewRevision = 0L
+    private var previewSource: PreviewSource? = null
+    private var previewAuthentication: Job? = null
+    private var previewAuthenticationRetried = false
+    val seekPreview = SeekPreviewController<android.graphics.Bitmap>(scope, ::onPreviewFailure)
     private var speedRevision = 0
     private var currentSpeed = 1f
     private val mutableTracks = MutableStateFlow(PlayerTrackOptions())
@@ -103,6 +101,7 @@ class PlayerController(
     private fun open(position: Long, decoder: String, restore: Boolean = false) {
         if(released) return
         val revision = ++sourceRevision
+        resetPreviewSource()
         authentication?.cancel(); authentication = null
         initialization?.cancel()
         startup?.cancel(); ticker?.cancel()
@@ -111,7 +110,8 @@ class PlayerController(
         embeddedSubtitleText = ""
         embeddedCues = emptyList(); mutableCues.value = emptyList()
         mutableTracks.value = mutableTracks.value.copy(audio = emptyList(), subtitles = emptyList())
-        mutable.value = mutable.value.copy(ready = false, buffering = true, error = false, timedOut = false, decoder = decoder)
+        mutable.value = mutable.value.copy(ready = false, buffering = true, error = false, timedOut = false,
+            decoder = decoder, sourceRevision = revision)
         initialization = scope.launch {
             try {
             val options = settingsRepository.settings.first()
@@ -135,20 +135,14 @@ class PlayerController(
             mediaSession = MediaSession.Builder(context, created).setId(java.util.UUID.randomUUID().toString()).build()
             // A completed offline item has an upstream-free factory for both manifests and
             // segments. Missing cache bytes fail locally instead of silently using mobile data.
-            val upstream: DataSource.Factory = offline?.dataSourceFactory ?: DefaultDataSource.Factory(context, httpFactory())
-            val partition = PlaybackPolicy.digest(headers.entries.sortedBy { it.key.lowercase() }.joinToString { "${it.key.lowercase()}=${it.value}" })
-            val cached: DataSource.Factory = if(disk == null) upstream else CacheDataSource.Factory().setCache(disk).setUpstreamDataSourceFactory(upstream)
-                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR).setCacheKeyFactory { spec -> "$partition:${PlaybackPolicy.normalizedCacheUrl(spec.uri.toString(), spec.position > 0 || spec.length != C.LENGTH_UNSET.toLong())}" }
             val item = (offline?.mediaItem?.buildUpon() ?: MediaItem.Builder().setUri(request.url))
                 .setMediaMetadata(MediaMetadata.Builder().setTitle(if(request.isPrivate) context.getString(R.string.player_title) else request.title).build())
                 .apply { request.mimeType?.let(::setMimeType) }.build()
-            val type = request.mimeType.orEmpty().lowercase()
-            val path = android.net.Uri.parse(request.url).path.orEmpty().lowercase()
-            val source = when {
-                !forceProgressive && (path.endsWith(".m3u8") || type.contains("mpegurl")) -> HlsMediaSource.Factory { dataType -> (if(dataType == C.DATA_TYPE_MANIFEST) upstream else cached).createDataSource() }.createMediaSource(item)
-                !forceProgressive && (path.endsWith(".mpd") || type.contains("dash+xml")) -> DashMediaSource.Factory(DefaultDashChunkSource.Factory(cached), upstream).createMediaSource(item)
-                else -> ProgressiveMediaSource.Factory(if(path.endsWith(".m3u8") || path.endsWith(".mpd") || type.contains("mpegurl") || type.contains("dash+xml")) upstream else cached).createMediaSource(item)
-            }
+            val source = PlaybackSourceSession(context, revision, item, headers, disk,
+                offline?.dataSourceFactory, forceProgressive).createMediaSource()
+            val preview = PreviewSource(revision, item, disk, offline?.dataSourceFactory, forceProgressive)
+            previewSource = preview
+            bindPreview(preview)
             created.addListener(object : Player.Listener {
                 override fun onEvents(player: Player, events: Player.Events) { update() }
                 override fun onTracksChanged(tracks: Tracks) {
@@ -202,19 +196,67 @@ class PlayerController(
         }
     }
 
-    private fun httpFactory(): HttpDataSource.Factory {
-        val mediaOrigin = URI(request.url).let { Triple(it.scheme?.lowercase(), it.host?.lowercase(), if(it.port >= 0) it.port else if(it.scheme == "https") 443 else 80) }
-        val client = OkHttpClient.Builder().addNetworkInterceptor { chain ->
-            val current = chain.request()
-            val allowed = Triple(current.url.scheme, current.url.host.lowercase(), current.url.port) == mediaOrigin
-            val safe = if(allowed) current else current.newBuilder().removeHeader("Cookie").removeHeader("Authorization").build()
-            chain.proceed(safe)
-        }.build()
-        return OkHttpDataSource.Factory(client).setDefaultRequestProperties(headers)
+    private fun resetPreviewSource() {
+        previewAuthentication?.cancel(); previewAuthentication = null
+        previewAuthenticationRetried = false
+        previewSource = null
+        seekPreview.bind(++previewRevision) { throw CancellationException("Preview source is not ready") }
     }
+
+    private fun bindPreview(source: PreviewSource) {
+        val binding = ++previewRevision
+        val currentHeaders = headers.toMap()
+        seekPreview.bind(binding) {
+            if(released || returnedToWeb || previewSource !== source || sourceRevision != source.playerRevision ||
+                previewRevision != binding) throw CancellationException("Preview source retired")
+            SeekPreviewExtractor(context, PlaybackSourceSession(context, binding, source.item,
+                currentHeaders, source.cache, source.offline, source.progressive))
+        }
+    }
+
+    private fun onPreviewFailure(failure: Throwable) {
+        val source = previewSource ?: return
+        if(released || returnedToWeb || !request.fromWeb || previewAuthenticationRetried ||
+            previewAuthentication?.isActive == true || source.playerRevision != sourceRevision) return
+        var cause: Throwable? = failure
+        var status = 0
+        repeat(8) {
+            if(cause is HttpDataSource.InvalidResponseCodeException)
+                status = (cause as HttpDataSource.InvalidResponseCodeException).responseCode
+            cause = cause?.cause
+        }
+        if(status !in setOf(401, 403)) return
+        previewAuthenticationRetried = true
+        val binding = previewRevision
+        val refresh = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                val updated = try { withTimeoutOrNull(10_000) { request.refreshHeaders?.invoke() } }
+                    catch(cancelled: CancellationException) { throw cancelled }
+                    catch(_: Exception) { null }
+                if(updated == null || released || returnedToWeb || previewSource !== source ||
+                    sourceRevision != source.playerRevision || previewRevision != binding) return@launch
+                val target = seekPreview.state.value.targetMs
+                headers = updated.toMap()
+                // Preview authentication changes its own generation and cache only. The
+                // main player's position, tracks, output and source revision stay intact.
+                bindPreview(source)
+                target?.let(seekPreview::request)
+            } finally {
+                if(previewAuthentication === currentCoroutineContext()[Job]) previewAuthentication = null
+            }
+        }
+        previewAuthentication = refresh
+        refresh.start()
+    }
+
+    private data class PreviewSource(val playerRevision: Long, val item: MediaItem,
+        val cache: androidx.media3.datasource.cache.Cache?, val offline: DataSource.Factory?,
+        val progressive: Boolean)
     private fun failBackToWeb() {
         if(released || returnedToWeb) return
         returnedToWeb = true
+        previewAuthentication?.cancel(); previewAuthentication = null
+        seekPreview.hide()
         player?.pause()
         mutable.value = mutable.value.copy(error = true, buffering = false)
         returnToWeb()
@@ -431,5 +473,18 @@ class PlayerController(
             progress.prune()
         } }
     }
-    fun release() { if(released) return; save(); released = true; sourceRevision++; speedRevision++; subtitleImportRevision++; subtitleImport?.cancel(); localSubtitle = null; embeddedSubtitleText = ""; embeddedCues = emptyList(); mutableCues.value = emptyList(); mutableSubtitleText.value = ""; authentication?.cancel(); authentication = null; runCatching { connectivity.unregisterNetworkCallback(networkCallback) }; initialization?.cancel(); startup?.cancel(); ticker?.cancel(); mediaSession?.release(); mediaSession = null; player?.release(); player = null }
+    fun release() {
+        if(released) return
+        save()
+        released = true; sourceRevision++; previewRevision++; speedRevision++; subtitleImportRevision++
+        previewSource = null
+        previewAuthentication?.cancel(); previewAuthentication = null
+        seekPreview.close()
+        subtitleImport?.cancel(); localSubtitle = null; embeddedSubtitleText = ""; embeddedCues = emptyList()
+        mutableCues.value = emptyList(); mutableSubtitleText.value = ""
+        authentication?.cancel(); authentication = null
+        runCatching { connectivity.unregisterNetworkCallback(networkCallback) }
+        initialization?.cancel(); startup?.cancel(); ticker?.cancel()
+        mediaSession?.release(); mediaSession = null; player?.release(); player = null
+    }
 }

@@ -37,6 +37,7 @@ P0 是首个可用版本门，P1 是第二轮功能，P2 在规范中为“有�
 | E16 | [B13-AUDIO-CAPTURE-VALIDATION.md](B13-AUDIO-CAPTURE-VALIDATION.md)、`artifacts/b13-upload-lifecycle/audio-capture-integration/` | 独立AudioCaptureIntegrationTest复用原夹具，原File18不变。固定官方Fossify1.7.3实际Record/Save、临时READ观察、原FD/provider元数据/AAC结构、外部原文件与网页POST三方bytes、READ回收/原文档租约删除/外部源保留；0.5.8为1/1（23.74秒），当前0.5.9为1/1（45.525秒），原31ef失败52.453秒保留，修复仅测试shell执行/清理。当前G主F097/testE4E5与C目录包身份分别记录；同commit主包DEX/native/omni相同、13项assets仅行尾不同。不合并进目录49或旧117。当前全模块JVM151项0失败/错误/跳过（engine90 FROM-CACHE，其余有测试模块UP-TO-DATE），另补纯JVM common:test；lint0/22。hostmic实际OFF，虚拟输入不证明物理拾音。15c2943的R8/shrink构建6分31秒通过，ARM64开发包108,024,040字节、SHA `2f691037ce171e9edd7df915979fc45a2915c6d587f467d73e31c06f8598265d`，1518payload/对齐/同Debug证书/17库/4077+2+5资源均通过。录音完整取消/私密/生命周期/其他handler及本版常规完整、R8/ARM64运行与正式发行仍待。 |
 | E17 | [B13-PREPARED-FOLDER-VALIDATION.md](B13-PREPARED-FOLDER-VALIDATION.md)、[目录元数据合同](B13-PREPARED-FOLDER-CONTRACT.md)、`artifacts/folder-upload/0510-*` | 0.5.10/code18：真实TREE/Gecko二次确认与网页FileList/POST覆盖12份重复路径/同名目录/显式MIME/0、负及未知mtime完整多重集；metadata正向1/1（23.148秒）。新增TREE Back保留原FileList/lease/bytes、原生确认时重建及迟到旧系统结果；后者不等同迟到native prompt。engine104中103通过/1 Windows链接跳过；Android实际leaf/ancestor/unlisted链接及snapshot重检3项通过。保留单次10项9/10（105.094秒）、随后13项12/13（70.64秒）、授权窗口驱动后13项12/13（95.756秒）：最后唯一失败为virtual负例page准备超时，未触发TREE，其他12项通过；隔离负例1/1不抵消整组失败。主SHA987845/test0489固定，lint0/22；随后同包常规完整130/130通过（734.586秒），含本批全部13项及文件18/benchmark2/GL3；原专项失败保留，四个独立前置类仍排除不计通过。完整B13、其他provider/网站、进程死亡、迟到native、独立前置/真机矩阵及本版R8/ARM64运行仍待。 |
 | E18 | [B13目录后续冷页/系统权限](B13-PREPARED-FOLDER-VALIDATION.md)、`artifacts/folder-upload/0510-fresh-followup-20261030-1421/` | 0.5.10主987845未变，仅测试page失败快照，新test01b2a4。新实例5556安装前无Miru、实际hostmic OFF、首次目标进程直接原virtual负例1/1（14.305秒）；无失败快照触发，不宣称旧超时根因修复或uBO首装已验。该实例随后实际Android系统摄像头拒绝、摄像头/麦克风允许后网站许可、近似定位3/3（16.692秒），无pm grant/预授权。此test只证明独立专项，不把两轮拼成4项或合并成旧130项全套；系统永久拒绝/完整生命周期/私密与真机仍待。 |
+| E19 | [M3-SEEK-PREVIEW-VALIDATION.md](M3-SEEK-PREVIEW-VALIDATION.md)、[候选及旧失败](M3-SEEK-PREVIEW-PREFLIGHT.md)、`artifacts/m3-thumbnails/0511-*` | 0.5.11/code19缩略图：单ExoPlayer提帧替代示意MMR/ImageReader方案，完整保留10秒/60张LRU和时间fallback。主496f5b首轮test85078d播放器JVM27/27、lint0/22，owned cancel1/1（1.518秒）、close1/1（1.122秒），同次adapter22/22（25.675秒）含六格式/PTS/RGB、5/6秒真peer关闭/队列恢复、跨源剥离/私密/缓存分区与停源离线。首UI3/3（32.967秒）；仅测试补充后新test527b62，同次UI5/5（29.456秒）含真UP一次seek/Cancel零seek、playing持DOWN>3秒及真403时间无空框fallback，主播放/私密磁盘保持。原裸库两项失败保留，各输入不拼接；全量常规/本版R8打包及真机兼容仍待。 |
 | SRC | 当前模块源码、Gradle、manifest、资源和 `design/tokens.json` | 证明存在代码 / 配置。单独不能证明运行正确、无泄漏、无掉帧或兼容所有站点。 |
 | LEGAL | [OPEN-SOURCE-REVIEW.md](OPEN-SOURCE-REVIEW.md)、[third_party/README.md](../third_party/README.md) | M0 源码公开范围的检查和后续依赖说明；不是含 uBO / 嵌套依赖的完整二进制分发审查。 |
 
@@ -105,7 +106,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | P3 P1 按住后滑动换档 | pending | 当前长按中保持单一档。 | 每 40dp 切 1.5 / 2 / 2.5 / 3x，文字实时变化，禁止同时 seek / 调级。 |
 | P4 P0 进度条 | implemented | 4 / 8dp、自绘三层基础、16dp thumb、时间预览、松手 seek。 | 气泡、按下 thumb 动效、任意点直接 seek 和完整触摸 / 可访问性专项。 |
 | P5 P0 横滑 seek | implemented | 10dp slop、默认整宽120s、松手 seek。 | 虚拟时钟状态机、横竖竞争 / 范围边界、中央目标 / 总时长 / 差值卡片。 |
-| P6 P1 缩略图 | pending | 无预览帧。 | 直链 / 本地 retriever、HLS 分片帧、池1、10s粒度 / 60张LRU，失败不留空框。 |
+| P6 P1 缩略图 | implemented | E19：统一官方FrameExtractor单视频ExoPlayer替代MMR/ImageReader示意，HTTP MP4/content URI/HLS TS/fMP4/AES/DASH真实帧；10秒/60张LRU、owned取消、UI目标时间/预览与失败无空框。JVM27/27、后端22/22及另整组UI5/5。 | 本版完整常规回归、其他provider/公网站点与codec/物理GPU兼容，构建/打包不扩大为ARM64运行。 |
 | P7 P0 双击 / 连击 | implemented | 38 / 24 / 38分区、280ms / 80dp、260ms单击、750ms连击，E2 / E3 部分触摸。 | 全时间边界 / 中区开关、同侧连击与方向翻转状态机测试、弧形涟漪 / 文字与等价按钮。 |
 | P8 P0 亮度 / 音量 | implemented | 左右半区、75%高度、窗口亮度 / STREAM_MUSIC；已加等价滑块语义。 | 真实上下滑、静音 / 系统限制、手势开关、触感和状态恢复。 |
 | P9 P0 流缓存 | implemented | 独立 SimpleCache LRU、签名参数规则、清单走网络、auth 摘要分区、私密绕过；E2 / E3。 | 真断网已看部分回拖、真实重签名 / 私密 / 缓存错误矩阵，8GB上限设置差异。 |
@@ -162,7 +163,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | PLAYER-01 §8.1 | implemented | 请求头清单 / 分片同传和跨来源认证隔离已E2 / E3验证。无改写清单；外部视频 / 本地 / 离线 / 直输询问各入口待最终完整验证。 |
 | PLAYER-02 §8.2 | implemented | 竖屏16:9 / 标题 / 站点 / 按比例默认方向 / 手动全屏已有E3布局。缺竖屏本页其他视频列表、画质侧栏；P2选集 / 刘海画面延伸设置未做。 |
 | PLAYER-03 §8.3 | implemented | 单击260、双击280/80、750连击、10dp slop在PlayerGestures集中。分区硬编码 / 所有手势常量统一、虚拟时钟边界测试、倍速失败Toast和P1换档 / 捏合仍缺。 |
-| PLAYER-04 §8.4–8.5 | implemented | 内存缓冲 / 流缓存与默认预算已有；不连续磁盘区段 / 缩略图 / 全离线、缓存上限8GB、预缓冲300s、流 / offline互不影响待补。 |
+| PLAYER-04 §8.4–8.5 | implemented | 内存缓冲 / 流缓存与默认预算已有，缩略图实现与受控验证见E19；不连续磁盘区段 / 完整离线矩阵、缓存上限8GB、预缓冲300s、流 / offline互不影响待补。 |
 | PLAYER-05 §8.6–8.7 | implemented | 自动 / 硬 / 软和一次fallback、续播 / PiP已有。后台服务、按站点跳片头尾、16:9 / 4:3、P2 FFmpeg AC3/EAC3/DTS扩展、GL截图 / DLNA / 导出未做。 |
 | PLAYER-06 §8.8 / 13 | implemented | E5保留14份GLSL及MIT来源，原生HookShader/Renderer/SurfaceView、统计/同帧比较/错误回退/旋转已有实测；4778e46又验证真实三档benchmark和取消/后台释放。快速硬件应用推荐、温控/HDR/PiP/驱动矩阵及物理性能门未完成。 |
 | PLAYER-07 §8.9 | implemented | 清晰度parser / cache / limit已有E3-P；实际高分辨率回写、同源header隔离有证据，E4已有受控离线画质选择。特殊封装、unknown失败边界和公网矩阵继续保留。 |
@@ -308,7 +309,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | M0 骨架 | implemented | 不能把“已进入M3开发”当作M0所有P0通过；B1/B3/B4/B10/B11/B13/B19/B20及通用UI / 真机门未闭合。 |
 | M1 拦截与下载 | implemented | 首装uBO、A1/d3ward、全部冷启动 / 真机、通知 / 网络 / 手机重启、完整下载动效和阶段录屏。 |
 | M2 播放核心 | implemented | 全P0手势 / 時间门 / 系统焦点 / DataSaver / 外部文件 / 公网矩阵、UI动效、真机与阶段录屏。 |
-| M3 画质与离线 | implemented | 清晰度/字幕音轨、受控离线与超分渲染有E3/E4/E5；缩略图、完整性能/真机矩阵和阶段录屏仍未完成。 |
+| M3 画质与离线 | implemented | 清晰度/字幕音轨、受控离线与超分渲染有E3/E4/E5，E19增加缩略图后端/完整UI专项；完整常规/性能/真机兼容矩阵和阶段录屏仍未完成。 |
 | M4 打磨 / 发布 | pending | §7全部动效、§5.11全部设置、无障碍、§12指标、正式release / 许可门和录屏。 |
 | M5 iOS | pending | 规范明确列出，Android M4后启动；需独立原生工程及以下全部平台替代实现 / 编译 / 运行 / 真机验收。 |
 

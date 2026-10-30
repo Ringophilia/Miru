@@ -2,6 +2,7 @@
     <string name="player_hold_feedback">%1$.1fx ▶▶</string>
     <string name="player_seek_feedback">%1$+d 秒</string>
     <string name="player_seek">播放进度</string>
+    <string name="player_seek_preview">视频预览 %1$s</string>
     <string name="player_title">Miru 播放器</string>
     <string name="player_back">返回</string>
     <string name="player_play">播放</string>
