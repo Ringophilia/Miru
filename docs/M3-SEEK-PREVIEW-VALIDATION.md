@@ -2,7 +2,7 @@
 
 本批实现 §8.4 / P6 的拖动缩略图：10秒分桶、最多60张当前来源的内存LRU、单个活动提帧加
 最新待发目标。没有图片时只显示目标时间，有图片才显示预览；松手才seek，真实Cancel不seek。
-完整常规回归与本版release打包仍待，不能据已有专项关闭整个M3/M4。
+完整常规回归已按下文验证；本版release打包仍待，不能据已有专项关闭整个M3/M4。
 
 ## 实现与规范方案
 
@@ -82,6 +82,18 @@ image节点缺失、target非空/frame为空，主播放/FLAG_SECURE/磁盘保�
 
 ## 尚待收尾
 
-- 常规完整回归及本版ARM64/R8构建和打包验证。
+- 本版ARM64/R8构建和打包验证。
 - 物理GPU/HDR/厂商codec、其他content provider和复杂公网站点仍按总矩阵保留；受控样本通过
   不等同全设备兼容或物理性能达标。
+
+## 同包常规完整回归
+
+`0511-device-first/routine-complete-*`使用同一主496f5b/test527b62实际执行
+**135/135通过，881.462秒**，没有失败或跳过。`routine-complete-tests.json`从原始runner逐项
+终态校验135项，含本批完整UI5及原有媒体/离线/权限/文件与目录上传/benchmark/GL。
+不是发现测试或把单独轮次拼接；JVM27、adapter22和旧probe的scope仍各自保留。
+
+命令明确排除DownloadRestartTest、OfflineRestartTest、RuntimeSitePermissionIntegrationTest、
+AudioCaptureIntegrationTest，以及独立opt-in `app.miru.browser.capability`包。排除不记通过；
+不能把默认assumption skip计为执行。任务未并行Gradle/R8、录屏或其他设备自动化；此轮是
+既有受控profile，不宣称真正首启、ARM64/R8实际运行或物理性能。

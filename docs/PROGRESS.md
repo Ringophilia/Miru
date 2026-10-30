@@ -223,7 +223,8 @@
 - 以固定官方FrameExtractor共享视频ExoPlayer实现完整来源提帧，替代示意MMR/ImageReader组合；HTTP MP4/content URI/HLS TS/fMP4/AES128/DASH的真实Bitmap/PTS/RGB均有设备证据。10秒分桶/60张内存LRU，单活动+最新目标，旧来源/取消/迟到结果不能回写。
 - PreviewSourceLease只取消自有Call/source，原5/6秒门实际释放socket并恢复native队列，不以future.cancel/close返回值代替；main与preview共用来源/cache/header规则，private无磁盘，offline无upstream，独立一次预览认证刷新不重建主player。流缓存新增无歧义headers-v2命名空间，旧流条目保留并自然淘汰，离线缓存不改。
 - 首轮构建7分35秒，播放器JVM27/27，lint0/22；主496f5b/test85078d后端同次22/22（25.675秒）及UI3/3（32.967秒）。仅补测试后主包未变、新test527b62，UI完整5/5（29.456秒），真实蓝图/UP一次/Cancel零次、播放中持DOWN及403失败无空框均通过，各轮输入分开记录。
-- 本版完整常规回归/R8打包/真机codec与provider矩阵仍待；当前最新已验证打包仍为0.5.10。详见[缩略图验证](M3-SEEK-PREVIEW-VALIDATION.md)，旧裸库真实取消失败和测试资源/提供方失败仍保留。
+- 新固定主496f5b/test527b62常规完整回归135/135通过（881.462秒），包括本批UI5与既有全benchmark/GL；四个独立前置类和capability包明确排除，不计通过，原专项各输入不拼接。
+- 本版R8打包/真机codec与provider矩阵仍待；当前最新已验证打包仍为0.5.10。详见[缩略图验证](M3-SEEK-PREVIEW-VALIDATION.md)，旧裸库真实取消失败和测试资源/提供方失败仍保留。
 
 ## M3 尚待推进
 
