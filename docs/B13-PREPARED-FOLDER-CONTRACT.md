@@ -82,6 +82,7 @@ inventory 缺项/多项/size变化、根外/同前缀兄弟/非法逻辑路径/�
 真实 DocumentsUI TREE、provider、Gecko 两阶段及网页 FileList/POST 的受控逐项多重集验证已覆盖
 无扩展名显式 MIME、扩展名冲突 MIME、同路径不同 body、mtime、文件计数/bytes及内部路径不泄漏；
 具体执行与整组边界以本版验证记录为准，不能扩大到其他 provider 或网站。
-还须运行 R8 后同包 ABI 与原始 omni 严格验证；0.5.9 设备/发行证据不能代替本版证据。
+本版 R8/shrink 构建及 APK 内原始 omni/两项精确 patch/五项新增的严格验证已通过；R8 后同包
+ABI 的实际运行仍待，不能用构建与归档检查代替。0.5.9 设备/发行证据不能代替本版证据。
 虚拟转换、恶意循环、不可读或非法 metadata 继续明确整组拒绝，不能把拒绝写成普通 metadata 已支持。
 native/IPC 资源耗尽时上游可能丢项的边界仍未证明；本批不宣称解决上游 OOM/IPC 或 provider 原子快照。

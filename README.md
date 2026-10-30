@@ -101,13 +101,13 @@ Miru 的取舍遵循产品规范 [MIRU-SPEC.md](MIRU-SPEC.md)（唯一需求来�
 | **M4** | 动效、网站矩阵、真机性能、完整验收 | ⚪ 未开始 |
 | **iOS** | 按规范在 Android M4 之后启动 | ⚪ 未开始 |
 
-最新已验证打包为 **0.5.9 ARM64开发包，108,024,040字节**，仍使用Android Debug签名；打包与录音范围见[0.5.9记录](docs/B13-AUDIO-CAPTURE-VALIDATION.md)，拍摄历史见[0.5.8记录](docs/B13-CAPTURE-VALIDATION.md)，完整上传范围见[上传验收记录](docs/B13-FILE-UPLOAD-VALIDATION.md)。
+最新已验证打包为 **0.5.10 ARM64开发包，108,028,136字节**，仍使用Android Debug签名；打包与目录范围见[0.5.10记录](docs/B13-PREPARED-FOLDER-VALIDATION.md)，录音历史见[0.5.9记录](docs/B13-AUDIO-CAPTURE-VALIDATION.md)，拍摄历史见[0.5.8记录](docs/B13-CAPTURE-VALIDATION.md)，完整上传范围见[上传验收记录](docs/B13-FILE-UPLOAD-VALIDATION.md)。
 
 0.5.8固定Debug包已在API35/x86_64模拟器完成常规回归 **117/117**，另有首次启动uBO **1/1**、真实系统权限独立 **3/3**；两个外部重启类、ARM64运行与真机性能仍按[验收矩阵](docs/ACCEPTANCE.md)分别记录。
 
 0.5.9的[目录首批](docs/B13-FOLDER-UPLOAD-VALIDATION.md)已验证真实系统TREE、原生二次确认、深层相对路径与原始上传字节。目录生命周期、特殊MIME/元数据及其他provider仍待；本版49项为跨模块专项集成，尚无完整常规回归或ARM64运行验收。
 
-0.5.10 开发批次增加[目录元数据与生命周期](docs/B13-PREPARED-FOLDER-VALIDATION.md)：重复逻辑路径、显式 MIME 和 mtime 的实际网页字节验证，以及取消、重建、迟到系统结果和 Android 真实符号链接测试。固定同包常规完整回归 **130/130 通过（734.586秒）**，含本批全部13项；此前专项12/13及网页准备超时继续保留。重启、系统权限和录音四个独立前置类仍排除，不计通过。最新已验证 ARM64 打包仍为上述 0.5.9。
+0.5.10 开发批次增加[目录元数据与生命周期](docs/B13-PREPARED-FOLDER-VALIDATION.md)：重复逻辑路径、显式 MIME 和 mtime 的实际网页字节验证，以及取消、重建、迟到系统结果和 Android 真实符号链接测试。固定同包常规完整回归 **130/130 通过（734.586秒）**，含本批全部13项；此前专项12/13及网页准备超时继续保留。重启、系统权限和录音四个独立前置类仍排除，不计通过。R8/shrink构建与上述ARM64打包通过，ARM64/R8实际运行及正式签名仍待验。
 
 <details>
 <summary><b>历史已验证打包：0.5.4（ARM64 开发包）</b></summary>

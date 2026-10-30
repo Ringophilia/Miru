@@ -70,6 +70,24 @@ OfflineRestartTest、RuntimeSitePermissionIntegrationTest、AudioCaptureIntegrat
   validateFor 均须拒绝，链接保持、等长的目标 bytes 不变。没有创建失败 skip。此专项只证明
   Android 文件系统校验，不扩大为恶意外部 provider 或 UI 上传全矩阵。
 
+## R8 / ARM64 打包
+
+`20bd901` 干净源码的 `:app:assembleRelease :app:lintRelease --no-daemon` 成功，3 分 20 秒，
+release lint 0 错误/22 警告，479 项源清单构建前后未变。完整输入/日志/结果及原始 AGP 包在
+`artifacts/browser-core/0510-release-build-20261030-1409/`。原包 111,177,865 字节，SHA
+`eabdc0a763b34ea1484f97d9769f4c72f2b8cc96f84e2f5fdcd4ea8ba4037034`。
+
+最终 `artifacts/releases/Miru-0.5.10-arm64.apk` 为 **108,028,136 字节**，SHA
+`72eb7fc66cb4af6dc971e65b1d61132a6943322d4038273cc3f2759f7847e93b`。
+同名 `.verification-20261030-061345-fca47132/pipeline.json` 记录严格 <110,000,000 字节、
+1518 项非签名载荷的 path/length/CRC/SHA/压缩方式全保持、SDK 对齐和同 Android Debug 证书；
+证书 SHA `5aa1a00e59b8638298dbddcc5a61053ca245249136edb67199e0c9a3e4cb1f84`。
+
+独立 `native-verification.json` 核对 17 个 ELF64/little-endian/AArch64、仅 arm64-v8a；
+`omni-verification.json` 核对 4077 原项、GEO/导航两项精确修改与五项固定官方新增，共4084项。
+omni 为16,459,282字节，SHA `f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`。
+这些证据只证明构建/打包，Debug130项设备结果不扩大为 R8/ARM64实际运行或正式签名验收。
+
 ## 测试驱动修正与剩余门
 
 网页触摸现在先要求真实 Main RESUMED 且实际 window focus，再核对 Gecko view 可见与触摸
