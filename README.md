@@ -165,7 +165,7 @@ Miru 的取舍遵循产品规范 [MIRU-SPEC.md](MIRU-SPEC.md)（唯一需求来�
 .\gradlew.bat --no-daemon testDebugUnitTest :core:common:test :app:lintDebug
 
 # 设备测试（需连接模拟器或手机）
-.\gradlew.bat --no-daemon :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.notClass=app.miru.browser.DownloadRestartTest,app.miru.browser.OfflineRestartTest,app.miru.browser.RuntimeSitePermissionIntegrationTest,app.miru.browser.AudioCaptureIntegrationTest"
+.\gradlew.bat --no-daemon :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.notClass=app.miru.browser.DownloadRestartTest,app.miru.browser.OfflineRestartTest,app.miru.browser.RuntimeSitePermissionIntegrationTest,app.miru.browser.AudioCaptureIntegrationTest" "-Pandroid.testInstrumentationRunnerArguments.notPackage=app.miru.browser.capability"
 ```
 
 设备测试的网页由测试进程内的 loopback HTTP 服务提供；全新安装 uBO 时仍可能访问 Gecko 远程设置。独立的手动 fixture 可通过 `node tools/m1-fixture-server.mjs` 启动。
