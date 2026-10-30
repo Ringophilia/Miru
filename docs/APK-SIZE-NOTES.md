@@ -133,3 +133,14 @@ SDK 对齐、签名和原 Android Debug 证书一致性通过，独立 Python �
 同名`.verification-20261029-182614-f33e5209/pipeline.json`记录1518payload完整、对齐、签名及同Debug证书；
 `059-release-native-verification.json`与`059-release-omni-verification.json`另证17个ARM64库和4077+2+5资源。
 正式签名、R8/ARM64运行和物理性能仍未验收，详见[本版记录](B13-AUDIO-CAPTURE-VALIDATION.md)。
+
+## 2026-10-30：0.5.10目录元数据开发包
+
+`20bd901`的R8/shrink与release lint成功（3分20秒，0错误/22警告）；479项源清单未变。
+原AGP包111,177,865字节，SHA `eabdc0a763b34ea1484f97d9769f4c72f2b8cc96f84e2f5fdcd4ea8ba4037034`。
+最终`artifacts/releases/Miru-0.5.10-arm64.apk`为**108,028,136字节**，SHA
+`72eb7fc66cb4af6dc971e65b1d61132a6943322d4038273cc3f2759f7847e93b`。
+同名`.verification-20261030-061345-fca47132/pipeline.json`记录1518payload、对齐、签名及同Debug证书。
+`artifacts/browser-core/0510-release-build-20261030-1409/`另存独立17个ARM64库/4077+2+5 Gecko资源验证。
+本版Debug固定包常规130/130通过，但不能扩大为R8/ARM64运行；正式签名与物理性能仍待，
+详见[本版记录](B13-PREPARED-FOLDER-VALIDATION.md)。

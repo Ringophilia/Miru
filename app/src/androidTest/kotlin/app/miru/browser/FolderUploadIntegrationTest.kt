@@ -368,10 +368,26 @@ internal class FolderUploadDriver(val compose: AndroidComposeTestRule<ActivitySc
     fun page(origin: FolderOrigin, private: Boolean): String {
         var owner = ""
         compose.runOnIdle { owner = browser.newTab(origin.url, isPrivate = private) }
-        compose.waitUntil(30_000) {
-            origin.assertHealthy()
-            browser.state.value.selectedTab?.let { it.id == owner && it.url == origin.url && it.title == "Folder ready" && !it.loading } == true &&
-                origin.pageRequests.get() == 1 && origin.readyDocuments[1] != null
+        try {
+            compose.waitUntil(30_000) {
+                origin.assertHealthy()
+                browser.state.value.selectedTab?.let { it.id == owner && it.url == origin.url && it.title == "Folder ready" && !it.loading } == true &&
+                    origin.pageRequests.get() == 1 && origin.readyDocuments[1] != null
+            }
+        } catch(failure: Throwable) {
+            try {
+                compose.runOnIdle {
+                    val selected = browser.state.value.selectedTab
+                    android.util.Log.i("MiruFolderPickerTest", "stage=PAGE_READY_FAILED expectedOwner=$owner " +
+                        "selectedOwnerMatches=${selected?.id == owner} selectedUrlMatches=${selected?.url == origin.url} " +
+                        "selectedTitleMatches=${selected?.title == "Folder ready"} loading=${selected?.loading} " +
+                        "pageRequests=${origin.pageRequests.get()} readyDocuments=${origin.readyDocuments.keys.sorted()} " +
+                        "originFailure=${origin.failure.get()?.javaClass?.name ?: "none"}")
+                }
+            } catch(diagnosticFailure: Throwable) {
+                if(diagnosticFailure !== failure) failure.addSuppressed(diagnosticFailure)
+            }
+            throw failure
         }
         assertSameDocument(origin, documentInstance(origin))
         return owner

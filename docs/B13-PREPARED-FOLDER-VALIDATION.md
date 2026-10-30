@@ -45,7 +45,7 @@ PromptRequest 或 FileList。主/测试安装后再核对已安装 base APK 的 
 OfflineRestartTest、RuntimeSitePermissionIntegrationTest、AudioCaptureIntegrationTest 四个
 需要独立前置的类；排除不记通过。完整运行期间未并行 Gradle/R8、录屏或其他设备自动化。
 它不是全新首装证明，也不抵消上表三轮专项失败；最后一次 page 准备超时的具体未满足条件
-仍待增加失败快照区分。
+仍未唯一归因，后续只加失败快照，见下节。
 
 每轮包含独立 `input.json`、`device.log`、`runtime.log`、`result.json`；APK 身份不拼接，
 首轮或隔离通过不合成为整组通过。目录中的 `launch.json` 保存进程/AVD/启动参数与时间。
@@ -69,6 +69,46 @@ OfflineRestartTest、RuntimeSitePermissionIntegrationTest、AudioCaptureIntegrat
   unlisted directory 三类符号链接。每项有正常控制/恢复控制，初次 validate 和原 snapshot 的
   validateFor 均须拒绝，链接保持、等长的目标 bytes 不变。没有创建失败 skip。此专项只证明
   Android 文件系统校验，不扩大为恶意外部 provider 或 UI 上传全矩阵。
+
+## 后续冷页与系统权限（仅测试诊断增加）
+
+生产主 APK 仍为987845；仅在 `page()` 原30秒等待失败后记录一次脱敏快照并原样抛出主异常。
+快照区分所选owner/URL/title匹配、loading、实际GET数、ready文档键和server异常类；不输出
+网页URL/正文/凭据，诊断自身失败作为suppressed。就绪条件、rAF、等待时间与业务断言不变。
+
+独立候选 `0510-page-snapshot-candidate-20261030-142555770/snapshot.json` 的新test为
+8,591,480字节，SHA `01b2a4ae924c4a2f9fdd44a2da521572e81c33dddfee1e67ba2da547add7c6bd`；
+源文件SHA `117aeb45029fa6a933d552a693b33173397610d66d468b54f81ae19644b22eaf`。
+构建18秒成功、lint0/22，主APK未变。首个PS5包装观察失败独立保留于
+`0510-page-snapshot-candidate-20261030-142323050/`，不是Gradle源码失败或成功证据。
+
+另建受控 `emulator-5556` API35/x86_64/no-snapshot/read-only；安装前确认无Miru包，实际
+console `hostmicoff` 返回OK，无 `pm grant`/预授权/发现测试。证据目录
+`artifacts/folder-upload/0510-fresh-followup-20261030-1421/`：
+
+- 首个目标进程直接运行原virtual负例：**1/1，14.305秒**，真实TREE失败提示、清理及空Inspect
+  通过。没有PAGE_READY_FAILED日志；此轮没有复现先前超时，不证明其根因已修复，也不是uBO首装验收。
+- 同一新实例随后独立运行系统权限类：**3/3，16.692秒**，实际Android摄像头拒绝、摄像头/
+  麦克风允许后仍需网站许可，以及近似定位。目录负例未授予这些系统权限。此轮不是首次目标
+  进程，不与前述130项或单项拼接；新test01b与130项test0489各自保留身份。
+
+## R8 / ARM64 打包
+
+`20bd901` 干净源码的 `:app:assembleRelease :app:lintRelease --no-daemon` 成功，3 分 20 秒，
+release lint 0 错误/22 警告，479 项源清单构建前后未变。完整输入/日志/结果及原始 AGP 包在
+`artifacts/browser-core/0510-release-build-20261030-1409/`。原包 111,177,865 字节，SHA
+`eabdc0a763b34ea1484f97d9769f4c72f2b8cc96f84e2f5fdcd4ea8ba4037034`。
+
+最终 `artifacts/releases/Miru-0.5.10-arm64.apk` 为 **108,028,136 字节**，SHA
+`72eb7fc66cb4af6dc971e65b1d61132a6943322d4038273cc3f2759f7847e93b`。
+同名 `.verification-20261030-061345-fca47132/pipeline.json` 记录严格 <110,000,000 字节、
+1518 项非签名载荷的 path/length/CRC/SHA/压缩方式全保持、SDK 对齐和同 Android Debug 证书；
+证书 SHA `5aa1a00e59b8638298dbddcc5a61053ca245249136edb67199e0c9a3e4cb1f84`。
+
+独立 `native-verification.json` 核对 17 个 ELF64/little-endian/AArch64、仅 arm64-v8a；
+`omni-verification.json` 核对 4077 原项、GEO/导航两项精确修改与五项固定官方新增，共4084项。
+omni 为16,459,282字节，SHA `f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`。
+这些证据只证明构建/打包，Debug130项设备结果不扩大为 R8/ARM64实际运行或正式签名验收。
 
 ## 测试驱动修正与剩余门
 
