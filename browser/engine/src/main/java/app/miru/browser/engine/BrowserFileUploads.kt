@@ -57,8 +57,8 @@ internal class BrowserFileSelection(
 
 internal class BrowserFolderSelection(token: Long, isPrivate: Boolean, pending: () -> Boolean,
     documentAlive: () -> Boolean, val flowCurrent: () -> Boolean,
-    val prepare: (File) -> PreparedNativeFiles?,
-    val deliver: (PreparedNativeFiles, String, () -> Unit, (Boolean) -> Unit) -> Boolean,
+    val prepare: (PreparedUploadFolder) -> PreparedNativeFolder?,
+    val deliver: (PreparedNativeFolder, String, () -> Unit, (Boolean) -> Unit) -> Boolean,
     cancel: () -> Unit,
 ) : BrowserUploadSelection(token, isPrivate, pending, documentAlive, cancel)
 
@@ -374,7 +374,7 @@ class BrowserFileUploads internal constructor(
             try {
                 initialized.await()
                 if(!current(op)) { abandon(op); return@launch }
-                val (directory, prepared) = withContext(Dispatchers.IO) {
+                val (rootName, prepared) = withContext(Dispatchers.IO) {
                     if(!DocumentsContract.isTreeUri(tree) || !readableResultUri(null, tree))
                         throw java.io.IOException("Unavailable folder selection")
                     val signal = CancellationSignal()
@@ -384,8 +384,8 @@ class BrowserFileUploads internal constructor(
                         if(op.abandoned) throw CancellationException("Folder owner ended")
                         val lease = folders.createLease((folderRoot.usableSpace - DISK_RESERVE).coerceAtLeast(0), MAX_FILES)
                         op.selectionLease = lease
-                        val directory = lease.copy(AndroidUploadTreeSource(context, tree, signal))
-                        directory to (ticket.prepare(directory) ?: throw java.io.IOException("Folder validation failed"))
+                        val folder = lease.copy(AndroidUploadTreeSource(context, tree, signal))
+                        folder.rootName to (ticket.prepare(folder) ?: throw java.io.IOException("Folder validation failed"))
                     } finally { if(op.signal === signal) op.signal = null }
                 }
                 if(!current(op) || !ticket.flowCurrent()) { abandon(op); return@launch }
@@ -402,7 +402,7 @@ class BrowserFileUploads internal constructor(
                     }
                 }
                 op.delivering = true
-                val accepted = ticket.deliver(prepared, directory.name, { waiting.appearanceDeadline?.cancel() }) { allowed ->
+                val accepted = ticket.deliver(prepared, rootName, { waiting.appearanceDeadline?.cancel() }) { allowed ->
                     if(awaitingFolder === waiting) {
                         waiting.appearanceDeadline?.cancel()
                         awaitingFolder = null

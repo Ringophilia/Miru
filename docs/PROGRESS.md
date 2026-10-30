@@ -207,6 +207,14 @@
 - 录音取消/私密/完整生命周期、其他handler及本版完整常规/R8/ARM64运行仍待，详见[B13录音记录](B13-AUDIO-CAPTURE-VALIDATION.md)。
 - 录音测试与证据已提交`15c2943`；其干净源码R8/shrink release构建成功（6分31秒），最终ARM64开发包 **108,024,040字节**、SHA `2f691037ce171e9edd7df915979fc45a2915c6d587f467d73e31c06f8598265d`。1518payload、SDK对齐/同Debug证书、17个ARM64库和4077+2+5 Gecko资源均验证通过；仍非正式签名，R8/ARM64运行另待。
 
+## B13 目录元数据与生命周期（0.5.10/code18）
+
+- 非空目录使用真实物理 root 和逐项 prepared manifest，保留每个源文件的 MIME、mtime、原名和完整逻辑路径；重复路径/同名目录不去重，未知时间使用真实 payload stat，空根仍走真实公开确认。新固定内部 ABI 受原 native record 的一次性能力和既有两阶段 fence 约束。
+- 真实 provider 的 12 份文件、FileList/POST 完整元数据频次多重集和两轮原 bytes 已通过专项。新增 TREE Back 保留原选择、原生确认可见时重建 Main、旧 owner 真实迟到系统结果和下一 owner 独立上传；不宣称迟到第二 native prompt 已验收。
+- engine104项为103通过/1 Windows链接跳过；另在真实 Android 创建 leaf/ancestor/unlisted 三类链接，初次 validate 与 snapshot.validateFor 均须拒绝，并验证前后正常控制、目标等长 bytes 保持，3项通过。Debug/lint通过，0错误/22警告；主APK987845固定，最终test0489。
+- 保留首轮10项9/10（105.094秒）、随后13项12/13（70.64秒）以及真实grant窗口驱动修正后的13项12/13（95.756秒）。最后唯一失败是virtual负例在网页准备阶段超时，尚未打开TREE；同包常规130项已启动，提交时尚无终态，不合并或预记通过。
+- 本版 R8/ARM64运行、完整目录/B13矩阵、其他provider、真实迟到native确认和进程死亡等继续待验；准确输入、失败与边界见[本版验证](B13-PREPARED-FOLDER-VALIDATION.md)。最新已验证ARM64打包仍为0.5.9。
+
 ## M3 尚待推进
 
 - 离线已接入 Media3 DownloadManager / DownloadService、HLS / DASH 清晰度与关联音轨 / 字幕、独立非 LRU 缓存、统一下载页与 upstream-free 播放。直链 MP4 保留普通下载引擎；实现与准确验证边界见 `M3-OFFLINE-VALIDATION.md`。下载进行中进程终止、真机网络 / 重启与后台矩阵仍需专项，不能用已完成项的重启恢复代替。

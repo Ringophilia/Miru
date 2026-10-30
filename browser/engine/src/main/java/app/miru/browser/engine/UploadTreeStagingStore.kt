@@ -29,9 +29,9 @@ internal interface UploadTreeSource {
 }
 
 internal data class UploadTreeEntry(val id: String, val name: String, val directory: Boolean,
-    val lastModified: Long? = null)
+    val lastModified: Long? = null, val mimeType: String? = null)
 
-/** The public Gecko folder API scans this complete physical tree after its real confirmation. */
+/** Bounded, single-pass provider copying; logical paths are independent of the private layout. */
 internal class UploadTreeStagingStore(root: File) {
     private val configuredRoot = root.toPath().toAbsolutePath().normalize()
     private val lock = Any()
@@ -55,10 +55,10 @@ internal class UploadTreeStagingStore(root: File) {
     }
 
     private fun directory(): Path {
-        realRoot?.let { validateTreeDirectory(it); return it }
+        realRoot?.let { validateFolderStagingDirectory(it); return it }
         if(Files.isSymbolicLink(configuredRoot)) throw IOException("Folder staging root is redirected")
         Files.createDirectories(configuredRoot)
-        return configuredRoot.toRealPath().also { validateTreeDirectory(it); realRoot = it }
+        return configuredRoot.toRealPath().also { validateFolderStagingDirectory(it); realRoot = it }
     }
 
     private companion object { const val PREFIX = "folder-lease-" }
@@ -77,10 +77,17 @@ internal class UploadTreeStagingLease(
     private val copying = AtomicBoolean()
     private val activeInput = AtomicReference<InputStream?>()
     private var cleaned = false
-    private data class Directory(val entry: UploadTreeEntry, val path: Path, val ancestors: Set<String>)
+    private class Ancestor(val id: String, val parent: Ancestor?) {
+        fun contains(candidate: String): Boolean {
+            var ancestor: Ancestor? = this
+            while(ancestor != null) { if(ancestor.id == candidate) return true; ancestor = ancestor.parent }
+            return false
+        }
+    }
+    private data class Directory(val entry: UploadTreeEntry, val logicalPath: String, val ancestors: Ancestor)
 
     /** Blocking IO on the caller's dispatcher. Any error rejects and removes the entire tree. */
-    suspend fun copy(source: UploadTreeSource): File {
+    suspend fun copy(source: UploadTreeSource): PreparedUploadFolder {
         check(copying.compareAndSet(false, true)) { "A folder lease can be prepared once" }
         return suspendCancellableCoroutine { continuation ->
             continuation.invokeOnCancellation { runCatching { activeInput.get()?.close() } }
@@ -88,44 +95,61 @@ internal class UploadTreeStagingLease(
                 val copiedRoot = synchronized(lock) {
                     fun checkCurrent() { continuation.context.ensureActive(); check(!closed.get()) { "Folder lease ended" } }
                     checkCurrent()
-                    validateTreeDirectory(stagingRoot)
-                    validateTreeDirectory(leaseDirectory)
+                    validateFolderStagingDirectory(stagingRoot)
+                    validateFolderStagingDirectory(leaseDirectory)
                     val root = source.root()
                     if(!root.directory || root.id.isBlank()) throw IOException("Selected item is not a directory")
-                    validateTreeName(root.name)
+                    validateFolderStagingName(root.name)
                     val output = Files.createDirectory(leaseDirectory.resolve(root.name))
+                    val payloads = mutableListOf<UploadFolderPayload>()
                     val stack = ArrayDeque<Directory>()
-                    stack.addLast(Directory(root, output, setOf(root.id)))
+                    stack.addLast(Directory(root, "/${root.name}", Ancestor(root.id, null)))
                     var entries = 1
                     var files = 0
                     var bytes = 0L
+                    var metadataBytes = 0L
+                    fun accountMetadata(entry: UploadTreeEntry, logicalPath: String) {
+                        if(entry.id.isBlank() || entry.id.length > MAX_ID_CHARS)
+                            throw IOException("Invalid folder document identity")
+                        metadataBytes += entry.id.toByteArray(Charsets.UTF_8).size.toLong() +
+                            entry.name.toByteArray(Charsets.UTF_8).size + logicalPath.toByteArray(Charsets.UTF_8).size +
+                            (entry.mimeType?.toByteArray(Charsets.UTF_8)?.size ?: 0)
+                        if(metadataBytes > MAX_METADATA_BYTES) throw IOException("Folder metadata budget exceeded")
+                    }
+                    accountMetadata(root, "/${root.name}")
                     while(stack.isNotEmpty()) {
                         checkCurrent()
                         val directory = stack.removeLast()
-                        validateTreeDirectory(directory.path)
+                        validateFolderStagingDirectory(output)
                         val children = source.children(directory.entry.id, maximumEntries - entries)
                         if(children.size > maximumEntries - entries) throw IOException("Folder entry budget exceeded")
                         entries += children.size
-                        val names = mutableSetOf<String>()
                         for(child in children) {
                             checkCurrent()
-                            validateTreeName(child.name)
-                            if(child.id.isBlank() || !names.add(child.name))
-                                throw IOException("Folder has ambiguous or duplicate entry names")
-                            validateTreeDirectory(directory.path)
-                            val target = directory.path.resolve(child.name)
+                            validateFolderStagingName(child.name)
+                            val logicalPath = "${directory.logicalPath}/${child.name}"
+                            accountMetadata(child, logicalPath)
                             if(child.directory) {
-                                if(child.id in directory.ancestors) throw IOException("Folder provider contains a cycle")
-                                Files.createDirectory(target)
-                                stack.addLast(Directory(child, target, directory.ancestors + child.id))
+                                if(directory.ancestors.contains(child.id)) throw IOException("Folder provider contains a cycle")
+                                stack.addLast(Directory(child, logicalPath, Ancestor(child.id, directory.ancestors)))
                             } else {
                                 if(++files > maximumFiles) throw IOException("Folder file budget exceeded")
+                                val mime = normalizeUploadMime(child.mimeType)
+                                validateUploadTime(child.lastModified)
+                                // Every occurrence gets its own private directory. The physical basename
+                                // becomes File.name; Gecko gets the original logical path from the manifest.
+                                val payloadRoot = output.resolve(".miru-payload")
+                                if(files == 1) Files.createDirectory(payloadRoot)
+                                validateFolderStagingDirectory(payloadRoot)
+                                val targetDirectory = Files.createDirectory(payloadRoot.resolve(files.toString()))
+                                val target = targetDirectory.resolve(child.name)
+                                var fileBytes = 0L
                                 val incoming = TreeClosingInput(source.open(child.id))
                                 activeInput.set(incoming)
                                 try {
                                     incoming.use { input ->
                                         checkCurrent()
-                                        validateTreeDirectory(directory.path)
+                                        validateFolderStagingDirectory(targetDirectory)
                                         Files.newOutputStream(target, CREATE_NEW, WRITE, NOFOLLOW_LINKS).use { out ->
                                             val buffer = ByteArray(64 * 1024)
                                             while(true) {
@@ -141,16 +165,18 @@ internal class UploadTreeStagingLease(
                                                 if(count.toLong() > budgetBytes - bytes) throw IOException("Folder byte budget exceeded")
                                                 out.write(buffer, 0, count)
                                                 bytes += count
+                                                fileBytes += count
                                             }
                                         }
                                     }
                                 } finally { activeInput.compareAndSet(incoming, null) }
-                                child.lastModified?.takeIf { it >= 0 }?.let { Files.setLastModifiedTime(target, FileTime.fromMillis(it)) }
+                                child.lastModified?.let { Files.setLastModifiedTime(target, FileTime.fromMillis(it)) }
+                                payloads += UploadFolderPayload(target.toString(), logicalPath, mime, child.lastModified, fileBytes)
                             }
                         }
                     }
                     checkCurrent()
-                    output.toFile()
+                    PreparedUploadFolder.validate(stagingRoot, output, payloads, files, bytes)
                 }
                 continuation.resume(copiedRoot) { _, _, _ -> runCatching { close() } }
             } catch(failure: Throwable) {
@@ -165,7 +191,7 @@ internal class UploadTreeStagingLease(
         runCatching { activeInput.get()?.close() }
         synchronized(lock) {
             if(cleaned) return
-            validateTreeDirectory(stagingRoot)
+            validateFolderStagingDirectory(stagingRoot)
             deleteTreeUpload(leaseDirectory)
             cleaned = true
             onClosed()
@@ -178,16 +204,11 @@ internal class UploadTreeStagingLease(
         override fun read(bytes: ByteArray, offset: Int, length: Int): Int = input.read(bytes, offset, length)
         override fun close() { if(ended.compareAndSet(false, true)) input.close() }
     }
-}
 
-private fun validateTreeName(name: String) {
-    if(name.isEmpty() || name == "." || name == ".." || '/' in name || '\\' in name || '\u0000' in name ||
-        name.toByteArray(Charsets.UTF_8).size > 255) throw IOException("Invalid folder entry name")
-}
-
-private fun validateTreeDirectory(path: Path) {
-    if(!Files.isDirectory(path, NOFOLLOW_LINKS) || path.toRealPath() != path)
-        throw IOException("Folder staging directory is unavailable or redirected")
+    private companion object {
+        const val MAX_METADATA_BYTES = 1024L * 1024
+        const val MAX_ID_CHARS = 16 * 1024
+    }
 }
 
 private fun deleteTreeUpload(path: Path) {

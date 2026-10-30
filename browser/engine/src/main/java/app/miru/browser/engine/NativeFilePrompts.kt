@@ -50,6 +50,24 @@ internal class PreparedNativeFiles internal constructor(
     }
 }
 
+/** Single-use native-record binding of a fully validated folder, retained only in its callback. */
+internal class PreparedNativeFolder internal constructor(private val requestIdentity: Any,
+    private val folder: PreparedUploadFolder) {
+    private var consumed = false
+    private val selection = arrayOf(Uri.fromFile(File(folder.rootPath)))
+
+    @MainThread
+    fun belongsTo(identity: Any): Boolean = !consumed && requestIdentity === identity
+    fun uri(): Uri = selection.single()
+
+    @MainThread
+    fun consume(identity: Any, selected: Array<Uri>): PreparedUploadFolder? {
+        if(!belongsTo(identity)) return null
+        consumed = true
+        return folder.takeIf { selected.contentEquals(selection) }
+    }
+}
+
 /**
  * Upload native delegate adapter for the pinned AC/GeckoView 158.0.2 build.
  *
@@ -106,23 +124,22 @@ object NativeFilePrompts {
     }
 
     @WorkerThread
-    internal fun prepareFolder(request: PromptRequest.Folder, directory: File): PreparedNativeFiles? {
+    internal fun prepareFolder(request: PromptRequest.Folder, folder: PreparedUploadFolder): PreparedNativeFolder? {
         check(!isNativePromptMainThread()) { "Folder paths must be validated off Main" }
         val record = recordFor(request) ?: return null
         val root = File(record.applicationContext.cacheDir, "miru-folder-staging").canonicalFile
-        val selected = directory.canonicalFile
-        if(!selected.path.startsWith(root.path + File.separator) || !selected.isDirectory || !selected.canRead()) return null
-        return PreparedNativeFiles(record, arrayOf(Uri.fromFile(selected)))
+        val validated = folder.validateFor(root.toPath())
+        return PreparedNativeFolder(record, validated)
     }
 
     @MainThread
-    internal fun selectPreparedFolder(request: PromptRequest.Folder, prepared: PreparedNativeFiles): Boolean {
+    internal fun selectPreparedFolder(request: PromptRequest.Folder, prepared: PreparedNativeFolder): Boolean {
         check(isNativePromptMainThread())
         val record = recordFor(request) ?: return false
         if(record.ended || !prepared.belongsTo(record)) return false
-        record.prepared = prepared
-        try { request.onSelected(record.applicationContext, prepared.uris().single()) }
-        finally { record.prepared = null }
+        record.preparedFolder = prepared
+        try { request.onSelected(record.applicationContext, prepared.uri()) }
+        finally { record.preparedFolder = null }
         return record.confirmed
     }
 
@@ -179,6 +196,7 @@ object NativeFilePrompts {
         var ended = false // Main only: claims completion before calling native code or observers.
         @Volatile var confirmed = false
         var prepared: PreparedNativeFiles? = null // Only held during the synchronous selection callback.
+        var preparedFolder: PreparedNativeFolder? = null
     }
 
     private class Installation(
@@ -327,29 +345,45 @@ object NativeFilePrompts {
             record.ended = true
             if (prompt.isComplete) return
             try {
-                val prepared = if (record.document.isCurrent()) selection?.let { record.prepared?.consume(record, it) } else null
-                if (prepared == null) {
+                val folderRequest = prompt.type == GeckoSession.PromptDelegate.FilePrompt.Type.FOLDER
+                val current = record.document.isCurrent()
+                val preparedFolder = if(current && folderRequest) selection?.let { record.preparedFolder?.consume(record, it) } else null
+                val prepared = if(current && !folderRequest) selection?.let { record.prepared?.consume(record, it) } else null
+                if (prepared == null && preparedFolder == null) {
                     result.complete(prompt.dismiss())
                 } else {
-                    if(prompt.type == GeckoSession.PromptDelegate.FilePrompt.Type.FOLDER) {
+                    val response = if(preparedFolder != null) {
                         if(pendingFolderConfirmation != null) {
                             result.complete(prompt.dismiss())
                             return
                         }
-                        // Set before public confirm can asynchronously issue FolderUploadPrompt.
+                        // Set before either completion can issue the genuine FolderUploadPrompt.
+                        // A failed ABI call keeps the same fence: native may already have reentered.
                         pendingFolderConfirmation = record
-                    }
-                    result.complete(prompt.confirm(applicationContext, prepared))
+                        if(preparedFolder.payloads.isEmpty())
+                            prompt.confirm(applicationContext, Uri.fromFile(File(preparedFolder.rootPath)))
+                        else MiruGeckoSessionBridge.confirmPreparedFolder(prompt, preparedFolder)
+                    } else prompt.confirm(applicationContext, checkNotNull(prepared))
+                    result.complete(response)
                     record.confirmed = true
                 }
+            } catch (_: LinkageError) {
+                failedCompletion(record, prompt, result)
             } catch (_: Exception) {
-                record.confirmed = false
-                try {
-                    if (!prompt.isComplete) result.complete(prompt.dismiss())
-                    else result.completeExceptionally(IllegalStateException("File prompt completion failed"))
-                } catch (_: Exception) {
-                    // The one native completion may already have ended; do not retry or log inputs.
-                }
+                failedCompletion(record, prompt, result)
+            }
+        }
+
+        private fun failedCompletion(record: FileRecord, prompt: GeckoSession.PromptDelegate.FilePrompt,
+            result: GeckoResult<GeckoSession.PromptDelegate.PromptResponse>) {
+            record.confirmed = false
+            try {
+                if(!prompt.isComplete) result.complete(prompt.dismiss())
+                else result.completeExceptionally(IllegalStateException("File prompt completion failed"))
+            } catch(_: LinkageError) {
+                // The incompatible ABI cannot be retried; do not expose paths or provider metadata.
+            } catch(_: Exception) {
+                // The one native completion may already have ended; do not retry or log inputs.
             }
         }
 

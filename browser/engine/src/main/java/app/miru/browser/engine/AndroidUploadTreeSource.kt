@@ -7,7 +7,6 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.CancellationSignal
 import android.provider.DocumentsContract
-import android.webkit.MimeTypeMap
 import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
@@ -38,10 +37,15 @@ internal class AndroidUploadTreeSource(context: Context, private val tree: Uri,
         val uri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, id)
         return resolver.query(uri, columns, null, null, null, signal)?.use { cursor ->
             buildList {
+                var metadataBytes = 0L
                 while(cursor.moveToNext()) {
                     signal.throwIfCanceled()
                     if(size >= maximum) throw IOException("Folder entry budget exceeded")
-                    add(entry(cursor))
+                    val child = entry(cursor)
+                    metadataBytes += child.id.toByteArray(Charsets.UTF_8).size.toLong() +
+                        child.name.toByteArray(Charsets.UTF_8).size + (child.mimeType?.toByteArray(Charsets.UTF_8)?.size ?: 0)
+                    if(metadataBytes > 1024L * 1024) throw IOException("Folder query metadata budget exceeded")
+                    add(child)
                 }
             }
         } ?: throw IOException("Folder children are unavailable")
@@ -52,18 +56,13 @@ internal class AndroidUploadTreeSource(context: Context, private val tree: Uri,
         val mime = cursor.getString(2).lowercase(Locale.ROOT)
         val directory = mime == DocumentsContract.Document.MIME_TYPE_DIR
         val name = cursor.getString(1)
-        if(!directory) {
-            if(!cursor.isNull(4) && cursor.getInt(4) and DocumentsContract.Document.FLAG_VIRTUAL_DOCUMENT != 0)
-                throw IOException("Virtual folder files need a different conversion contract")
-            val extension = name.takeIf { it.lastIndexOf('.') > 0 }?.substringAfterLast('.')?.lowercase(Locale.ROOT)
-            val inferred = extension?.let { MimeTypeMap.getSingleton().getMimeTypeFromExtension(it) }
-            // The public root route lets Gecko infer MIME from the copied basename. Never
-            // silently advertise preserving a conflicting explicit provider MIME declaration.
-            if(mime.isNotBlank() && mime != "application/octet-stream" && (inferred == null || inferred != mime))
-                throw IOException("Folder file MIME cannot be preserved by a local directory")
-        }
-        return UploadTreeEntry(cursor.getString(0), name, directory,
-            if(cursor.isNull(3)) null else cursor.getLong(3))
+        if(!cursor.isNull(4) && cursor.getInt(4) and DocumentsContract.Document.FLAG_VIRTUAL_DOCUMENT != 0)
+            throw IOException("Virtual folder files need a different conversion contract")
+        val id = cursor.getString(0)
+        if(id.isBlank() || id.length > 16 * 1024) throw IOException("Invalid folder document identity")
+        validateFolderStagingName(name)
+        return UploadTreeEntry(id, name, directory,
+            if(cursor.isNull(3)) null else cursor.getLong(3), if(directory) null else normalizeUploadMime(mime))
     }
 
     override fun open(id: String): InputStream {
