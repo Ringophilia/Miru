@@ -90,8 +90,38 @@ FLAG_SECURE、没有磁盘层且stream spans不变。相同比例断言未再看
 
 `dash-module-final`误填两项旧类名，实际29项通过、两项JUnit initializationError（22.753秒），不能算59项通过；日志与原命令保留。已按原59项类名重跑；`dash-module-final-02`同次**59/59，0跳过，50.155秒**，包括DASH18、HLS选轨11、HLS索引19、资源绑定11。
 
-常规应用142项已启动，明确排除四个独立前置类和capability包，排除项不计通过；尚无本候选的完整应用通过声明。R8/ARM64
-构建打包也未将旧0.5.12结果转记到0.5.13。
+`dash-routine-complete`最终同包常规 **142/142，0跳过，1465.085秒**。明确排除
+DownloadRestartTest、OfflineRestartTest、RuntimeSitePermissionIntegrationTest、
+AudioCaptureIntegrationTest四个独立前置类与capability包，排除项不计通过。原DASH3项、HLS4项、
+缩略图5项、文件上传/目录、真实超分与benchmark均在这一整组内通过；旧失败与早期单独轮次仍保留。
+
+本轮DASH场景的当前进程日志和两张9秒蓝帧另保存于dash-routine-complete的
+`dash-ui-current-process.log/json`和PNG，RGB仍约[1,0,255]，没有比例失真。最终源码相对R8冻结
+输入只改验收Markdown，见`dash-release-build/source-review-final.json`。
+
+## 83f2da9 干净源的 R8 与 ARM64 开发包
+
+代码和上述专项记录提交为 `83f2da9354eeb5f5f7703a91b84b7da257270750` 后，从干净源执行
+`.\gradlew.bat --no-daemon :app:assembleRelease :app:lintRelease`，成功7分48秒，lint0错误/
+22警告。`dash-release-build/source-before.json`与`source-after.json`的567项输入无变化。
+相对Debug build-10仅三份Markdown文档差异，详见`source-review-debug.json`，没有把后续代码
+拼进原APK的通过声明。
+
+- 原AGP ARM64包111,282,415字节，SHA
+  `da13c64f1a4697463155c509749c69538593ff879c11525e497f2a527bca18da`。
+- 最终 `artifacts/releases/Miru-0.5.13-arm64.apk` 为 **108,135,802字节**，严格小于
+  110,000,000；SHA `5895832134098c75a64a7dad316b890f9bbe5fda763bfa65267104d10e424cd3`。
+- 仅复用旧0.5.12包中与当前R8包相同payload的压缩字节。独立核验全部1538项payload与
+  当前R8输入逐项相等，16KB zipalign、签名验证及同证书校验通过。证书仍为Android Debug：
+  `5aa1a00e59b8638298dbddcc5a61053ca245249136edb67199e0c9a3e4cb1f84`。
+- 17个原生库全为ELF64/AArch64，没有其他ABI。Gecko验证4077个未改原始载荷、两项精确
+  patch和五项固定新增资源；omni SHA仍为
+  `f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`。
+- 完整八步打包证据在同名`.verification-20261031-195149-1a20b89f/pipeline.json`，原生/
+  Gecko结果在`dash-release-build/native-verification.json`和`omni-verification.json`。
+
+这是构建、完整性和体积证据；**ARM64/R8实际运行与正式签名仍未通过**。Debug/API35专项
+或常规套件都不能代替这些运行门。
 
 ## 尚未证明
 
