@@ -113,6 +113,8 @@ Miru 的取舍遵循产品规范 [MIRU-SPEC.md](MIRU-SPEC.md)（唯一需求来�
 
 0.5.11 开发批次接入[拖动缩略图](docs/M3-SEEK-PREVIEW-VALIDATION.md)：10秒/60张内存LRU、受控提帧取消、认证/缓存隔离和真实拖动界面。播放器JVM27/27、提帧后端独立22/22、完整UI另5/5通过；同包常规完整 **135/135通过（881.462秒）**。独立前置类与capability包排除不计通过；R8/shrink构建及1538项完整载荷、17个ARM64库、Gecko资源、签名/对齐/体积打包验证通过。ARM64/R8实际运行、正式签名及真机矩阵继续待验。
 
+P11 磁盘缓存区段正在推进：[精确覆盖计算与监听基础层](docs/M3-CACHED-RANGES-PLAN.md)已通过播放器JVM55/55；[独立MP4预验](docs/M3-CACHED-RANGES-PREFLIGHT.md)基线3/3，复杂另2过1失败，编辑列表呈现差异及原断言保留。格式适配、真实磁盘/解码、界面和停源回拖仍待，P11未记验收通过。
+
 <details>
 <summary><b>历史已验证打包：0.5.4（ARM64 开发包）</b></summary>
 

@@ -226,6 +226,12 @@
 - 新固定主496f5b/test527b62常规完整回归135/135通过（881.462秒），包括本批UI5与既有全benchmark/GL；四个独立前置类和capability包明确排除，不计通过，原专项各输入不拼接。
 - `506f177`干净源R8/shrink与release lint成功（4分钟，0错误/22警告），517项源清单无变化。最终ARM64开发包108,115,322字节，SHA `84d864f59a16fdf124ddbd2fb70ff469e200c10edab1dbf607adeaa910cd55eb`；1538payload、SDK对齐/同Debug证书、17个ARM64库和4077+2+5 Gecko资源验证通过。ARM64/R8实际运行、正式签名及真机codec/provider矩阵仍待，详见[缩略图验证](M3-SEEK-PREVIEW-VALIDATION.md)；旧裸库取消失败和测试资源/提供方失败仍保留。
 
+## M3 磁盘缓存区段基础层与MP4预验（2026-10-31，P11仍pending）
+
+- `aef8a06`完成精确字节依赖覆盖、多轨交集、IO committed spans监听、代次/淘汰/取消失效和同一source key factory。首53项播放器JVM通过后审查补“同步计算期间取消”检查及真实线程竞争，最终55/55、0失败/错误/跳过；app lint0错误/22警告，输入521项无漂移。真实磁盘/主源格式适配/UI仍待，见[完整计划与验证](M3-CACHED-RANGES-PLAN.md)。
+- `7d52837`导入独立MP4公开表能力预验：基线同次3/3（0.166秒）；另复杂同次2通过/1失败（0.281秒），强VBR/B帧头尾全部逐包字段通过，edit与ffprobe PTS差约16.7ms。单edit诊断仍原断言失败（0.218秒），实际265项byte/flags/hash全等、PTS全吻合独立raw表/edit公式；固定FFmpeg另作首呈现点归零。保留原失败，不改期望、不删preroll、不拼6/6。完整证据、输入SHA及后续解码/停源门见[预验记录](M3-CACHED-RANGES-PREFLIGHT.md)。
+- 当前产品进度条尚未显示磁盘区段；以上基础和解析门不能代替实际格式映射、播放呈现、缓存洞与UI验证，也不挪用旧0.5.11的135项/ARM64包作为本批设备或release通过证据。
+
 ## M3 尚待推进
 
 - 离线已接入 Media3 DownloadManager / DownloadService、HLS / DASH 清晰度与关联音轨 / 字幕、独立非 LRU 缓存、统一下载页与 upstream-free 播放。直链 MP4 保留普通下载引擎；实现与准确验证边界见 `M3-OFFLINE-VALIDATION.md`。下载进行中进程终止、真机网络 / 重启与后台矩阵仍需专项，不能用已完成项的重启恢复代替。
