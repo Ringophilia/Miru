@@ -239,6 +239,13 @@
 - build-02主/测试APK的4类应用专项23/23通过（180.774秒）。复查新增失败后迟到EOF反例，原实现1项确实失败（把128字节失败前缀重新登记为完整资源）；修复为失败终结observation，只有新open可重试。最终build-03成功2分50秒，541项输入无漂移，JVM**71/71**、lint0/22，独立player真实磁盘**11/11（2.090秒）**，另最终固定主/测试APK同次4类应用专项**23/23（180.213秒）**。不同轮次/包的结果分别保留，不拼成整套通过。
 - 本批不是0.5.11发行重验，没有新ARM64/R8/正式签名结果。完整输入与SHA、测试负例和证据边界见[主源绑定验证](M3-CACHE-BINDINGS-VALIDATION.md)；受控字节区间/WAV不代替真实视频格式映射、解码PTS/RGB、磁盘UI和停源seek。
 
+## M3 HLS清单观察与时间依赖映射（2026-10-31，P11仍pending）
+
+- 实际main且有stream cache时包装官方DefaultHlsPlaylistTracker，公开方法（含默认deactivate）完整转发；只观察原tracker最终快照，redirect的baseUri不冒充注册URL，null/stop/restart/owner/迟到回调失效，preview/private/offline隔离。
+- HLS映射核心保留原DataSpec资源坐标及init/media两组AES key、按initial time/period窗口投影；BYTERANGE、一字节洞、AV交集、preroll/discontinuity、LL trailing parts和未知值不按比例推断。生产尚无当前选轨发布、非独立segment真实sample证明或磁盘UI，不以catalog出现的全部轨道冒充选择。
+- 基线be34c29加5项源码/模块配置/设备测试，三轮544项冻结输入无漂移；JVM71项保持、lint0/22。设备首25/25、补null/错位负例后27/27；最终build-03仅扩展独立测试，真实TS/fMP4/AES/BYTERANGE门后同轮**30/30（5.819秒，HLS19+绑定11）**。主/应用测试包与build-02逐字节同SHA，4类应用专项**20/20（278.542秒）**；不是完整常规套件或把旧轮拼成30项。
+- 测试派生独立清单的原素材未改：原固定FFprobe关键包和FFmpeg九份各自独立首帧RGB通过，仅证明素材独立性。输入SHA、原命令、每轮结果与未完范围见[HLS记录](M3-HLS-CACHED-RANGES-VALIDATION.md)。Android实际解码/停源seek、当前选轨/多码率失效、跨会话资源闭合、其他格式和磁盘UI继续推进，无新ARM64/R8/正式签名声明。
+
 ## M3 尚待推进
 
 - 离线已接入 Media3 DownloadManager / DownloadService、HLS / DASH 清晰度与关联音轨 / 字幕、独立非 LRU 缓存、统一下载页与 upstream-free 播放。直链 MP4 保留普通下载引擎；实现与准确验证边界见 `M3-OFFLINE-VALIDATION.md`。下载进行中进程终止、真机网络 / 重启与后台矩阵仍需专项，不能用已完成项的重启恢复代替。

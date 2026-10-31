@@ -45,11 +45,12 @@ class PlaybackSourceSession(
     private val headers = headers.toMap()
     private val cache = if(offlineDataSourceFactory == null) cache else null
     private val bindings = CachedResourceBindings()
+    internal val hlsCacheCatalog = if(this.cache != null) HlsCacheCatalog() else null
     @Volatile private var closed = false
     /** Invalidation only; format adapters obtain a coherent snapshot on their IO worker. */
     val cacheBindingRevision = bindings.revision
     fun cacheResourceSnapshot(): CachedResourceSnapshot = bindings.snapshot()
-    override fun close() { closed = true; bindings.close() }
+    override fun close() { closed = true; bindings.close(); hlsCacheCatalog?.close() }
     private val configuration = requireNotNull(mediaItem.localConfiguration)
     private val url = configuration.uri.toString()
     // The v2 namespace prevents reuse of old comma/equal-joined partitions. Those
@@ -111,6 +112,7 @@ class PlaybackSourceSession(
         return when {
             !forceProgressive && (path.endsWith(".m3u8") || type.contains("mpegurl")) ->
                 HlsMediaSource.Factory { dataType -> (if(dataType == C.DATA_TYPE_MANIFEST) manifest else media).createDataSource() }
+                    .apply { if(preview == null) hlsCacheCatalog?.let { setPlaylistTrackerFactory(it.factory) } }
             !forceProgressive && (path.endsWith(".mpd") || type.contains("dash+xml")) ->
                 DashMediaSource.Factory(DefaultDashChunkSource.Factory(media), manifest)
             else -> ProgressiveMediaSource.Factory(if(adaptive) manifest else media)

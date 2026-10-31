@@ -3,7 +3,8 @@
 2026-10-31。需求保持MIRU-SPEC §8.4/8.5/P11的完整范围：从真实SimpleCache spans计算可能
 不连续的磁盘时间区段，显示在内存buffer层之下，并以停源回拖验证。**P11仍pending**。
 首批完成精确覆盖计算、监听基础层和唯一key factory提取。后续[主源资源绑定](M3-CACHE-BINDINGS-VALIDATION.md)
-已接入实际main session并有真实磁盘基础证据；格式适配、timeline/选轨和UI仍待。
+已接入实际main session并有真实磁盘基础证据；后续[HLS首批映射](M3-HLS-CACHED-RANGES-VALIDATION.md)
+已接入主清单观察并验证格式依赖。当前选轨发布、其他格式、真实停源解码和UI仍待。
 不能用本批单测把现有进度条称为已有磁盘区段。
 
 ## 已实现的基础层
@@ -60,6 +61,10 @@ callback、parent取消、计算期间淘汰/取消、cache异常重试、touch�
    `periodTime=playlist.startTimeUs-tracker.initialStartTimeUs+segment.relativeStartTimeUs`，
    再加period.positionInWindowUs。BYTERANGE、init/media AES key、discontinuity、独立AV须
    完整验证；未知长度仅实际EOF/可信长度闭合。LL-HLS/GAP/非独立前驱不猜测可用。
+   [首批实现与验证](M3-HLS-CACHED-RANGES-VALIDATION.md)已有官方tracker观察、时间/依赖映射核心，
+   以及TS/fMP4/AES/BYTERANGE真实主源/磁盘门，独立模块同轮30/30（HLS19+绑定11）、另应用20/20。
+   生产当前尚无选轨发布或非独立segment的sample证明提供器，跨会话未知长度/Range重试闭合、
+   LL parts/动态轨道/冗余URL等完整矩阵继续保留；这些通过不是完整HLS或P11验收。
 4. **DASH。** 实现DashChunkSource.Factory并完整转发设置；DefaultDashChunkSource公开
    protected representationHolders/newInitializationChunk/newMediaChunk，可在实际加载sidx后
    读index和最终BaseURL。逐segment校验RangedUri，merged load不能整体赋给每段；WrappingIndex
