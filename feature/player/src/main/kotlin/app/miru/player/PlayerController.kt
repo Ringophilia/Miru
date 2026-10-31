@@ -13,6 +13,7 @@ import androidx.media3.common.*
 import androidx.media3.datasource.*
 import androidx.media3.exoplayer.*
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.session.MediaSession
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,16 +50,19 @@ class PlayerController(
 ) {
     private val mutable = MutableStateFlow(PlayerSnapshot())
     val state = mutable.asStateFlow()
+    private val mutableDiskRanges = MutableStateFlow<List<CachedTimeRange>>(emptyList())
+    val diskRanges = mutableDiskRanges.asStateFlow()
+    private var cachedTimeline: PlayerCachedTimeline? = null
     var player: ExoPlayer? by mutableStateOf(null); private set
     private var mediaSession: MediaSession? = null
     private var ticker: Job? = null
     private var startup: Job? = null
     private var initialization: Job? = null
     private var authentication: Job? = null
-    private var sourceRevision = 0L
+    @Volatile private var sourceRevision = 0L
     private var mainSourceSession: PlaybackSourceSession? = null
     private var returnedToWeb = false
-    private var released = false
+    @Volatile private var released = false
     private var authenticationRetried = false
     private var softwareRetried = false
     private var forceProgressive = false
@@ -102,6 +106,7 @@ class PlayerController(
     private fun open(position: Long, decoder: String, restore: Boolean = false) {
         if(released) return
         val revision = ++sourceRevision
+        cachedTimeline?.close(); cachedTimeline = null; mutableDiskRanges.value = emptyList()
         mainSourceSession?.close(); mainSourceSession = null
         resetPreviewSource()
         authentication?.cancel(); authentication = null
@@ -144,6 +149,11 @@ class PlayerController(
                 offline?.dataSourceFactory, forceProgressive)
             mainSourceSession = sourceSession
             val source = sourceSession.createMediaSource()
+            if(disk != null && source is HlsMediaSource && sourceSession.hlsCacheCatalog != null) {
+                cachedTimeline = PlayerCachedTimeline(created, sourceSession, disk, scope) { ranges ->
+                    if(!released && revision == sourceRevision) mutableDiskRanges.value = ranges
+                }
+            }
             val preview = PreviewSource(revision, item, disk, offline?.dataSourceFactory, forceProgressive)
             previewSource = preview
             bindPreview(preview)
@@ -259,6 +269,7 @@ class PlayerController(
     private fun failBackToWeb() {
         if(released || returnedToWeb) return
         returnedToWeb = true
+        cachedTimeline?.close(); cachedTimeline = null; mutableDiskRanges.value = emptyList()
         mainSourceSession?.close(); mainSourceSession = null
         previewAuthentication?.cancel(); previewAuthentication = null
         seekPreview.hide()
@@ -270,6 +281,7 @@ class PlayerController(
     private fun update() {
         val target = player ?: return
         if(released) return
+        cachedTimeline?.refresh()
         val size = target.videoSize
         val format = target.videoFormat
         val transfer = format?.colorInfo?.colorTransfer
@@ -482,6 +494,7 @@ class PlayerController(
         if(released) return
         save()
         released = true; sourceRevision++; previewRevision++; speedRevision++; subtitleImportRevision++
+        cachedTimeline?.close(); cachedTimeline = null; mutableDiskRanges.value = emptyList()
         mainSourceSession?.close(); mainSourceSession = null
         previewSource = null
         previewAuthentication?.cancel(); previewAuthentication = null

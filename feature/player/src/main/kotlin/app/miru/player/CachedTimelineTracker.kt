@@ -26,9 +26,11 @@ import kotlin.coroutines.coroutineContext
  * supply decode/init/key dependencies and selected track identity; neither load
  * completion nor bufferedPosition supplies proof of disk availability here.
  *
- * Callbacks only enqueue invalidation: Cache invokes listeners under its monitor.
- * Registration, coherent committed-span snapshots and cleanup run on IO, without
- * acquiring the selection gate while holding the cache monitor.
+ * Callbacks never query disk: they enqueue invalidation and withdraw removed
+ * coverage while Cache invokes listeners under its monitor.
+ * Registration, coherent committed-span snapshots and cleanup run on IO. Removal
+ * clears publication synchronously under the small selection gate. No path holds
+ * that gate while acquiring the cache monitor, so lock order stays acyclic.
  */
 internal class CachedTimelineTracker(
     private val cache: Cache,
@@ -37,7 +39,7 @@ internal class CachedTimelineTracker(
     private val calculate: (Collection<CachedTrackCoverage>, Map<String, Collection<CachedResourceRange>>, Long?) -> List<CachedTimeRange> =
         CachedTimelineCoverage::compute,
 ) : Closeable {
-    private class Selection(tracks: Collection<CachedTrackCoverage>, val durationUs: Long?) {
+    private class Selection(tracks: Collection<CachedTrackCoverage>, val durationUs: Long?, val isCurrent: () -> Boolean) {
         val tracks: List<CachedTrackCoverage> = Collections.unmodifiableList(ArrayList(tracks))
         val keys: Set<String> = this.tracks.asSequence().flatMap { it.intervals.asSequence() }
             .flatMap { it.requiredBytes.asSequence() }.map { it.key }.toSet()
@@ -54,7 +56,7 @@ internal class CachedTimelineTracker(
     val ranges = mutable.asStateFlow()
     private val listener = object : Cache.Listener {
         override fun onSpanAdded(cache: Cache, span: CacheSpan) { invalidate() }
-        override fun onSpanRemoved(cache: Cache, span: CacheSpan) { invalidate() }
+        override fun onSpanRemoved(cache: Cache, span: CacheSpan) { invalidate(clear = true) }
         // Touch replaces metadata for the same committed byte extent.
         override fun onSpanTouched(cache: Cache, oldSpan: CacheSpan, newSpan: CacheSpan) = Unit
     }
@@ -96,7 +98,7 @@ internal class CachedTimelineTracker(
                 }
                 synchronized(gate) {
                     // A replaced selection/source can never receive old IO results.
-                    if(!closed && selection === current && cacheRevision.get() == capturedRevision) mutable.value = result
+                    if(!closed && selection === current && cacheRevision.get() == capturedRevision && current.isCurrent()) mutable.value = result
                 }
             }
         } finally {
@@ -106,11 +108,15 @@ internal class CachedTimelineTracker(
         }
     }
 
-    private fun invalidate() { cacheRevision.incrementAndGet(); invalidations.trySend(Unit) }
+    private fun invalidate(clear: Boolean = false) = synchronized(gate) {
+        cacheRevision.incrementAndGet()
+        if(clear) mutable.value = emptyList()
+        invalidations.trySend(Unit)
+    }
 
     /** Replace the complete current window/period/representation selection. */
-    fun replace(tracks: Collection<CachedTrackCoverage>, durationUs: Long? = null) {
-        val next = Selection(tracks, durationUs)
+    fun replace(tracks: Collection<CachedTrackCoverage>, durationUs: Long? = null, isCurrent: () -> Boolean = { true }) {
+        val next = Selection(tracks, durationUs, isCurrent)
         synchronized(gate) {
             if(closed) return
             selection = next

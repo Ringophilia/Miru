@@ -78,6 +78,7 @@ fun PlayerScreen(
     onLockChanged: (Boolean) -> Unit = {},
 ) {
     val state by controller.state.collectAsState()
+    val diskRanges by controller.diskRanges.collectAsState()
     val seekPreview by controller.seekPreview.state.collectAsState()
     val tracks by controller.trackOptions.collectAsState()
     val cues by controller.subtitleCues.collectAsState()
@@ -213,11 +214,17 @@ fun PlayerScreen(
                                         }, enabled = seekEnabled, interactionSource = seekInteractions,
                                             modifier = Modifier.align(Alignment.Center).testTag("player_seek_slider").semantics { contentDescription = seekLabel },
                                             thumb = { Box(Modifier.size(16.dp).background(Color.White, CircleShape)) },
-                                            track = { Canvas(Modifier.fillMaxWidth().height(if(drag == null) 4.dp else 8.dp)) {
+                                            track = { Canvas(Modifier.fillMaxWidth().height(if(drag == null) 4.dp else 8.dp).testTag("player_seek_track")) {
                                                 val y = size.height / 2
                                                 val total = maxOf(1f, state.duration.toFloat())
                                                 fun line(color: Color, fraction: Float) { drawLine(color, Offset(0f, y), Offset(size.width * fraction.coerceIn(0f, 1f), y), size.height, StrokeCap.Round) }
                                                 line(Color.White.copy(alpha = 0.2f), 1f)
+                                                if(state.ready && state.duration > 0) diskRanges.forEach { range ->
+                                                    val durationUs = state.duration.toDouble() * 1000.0
+                                                    val start = (range.startUs / durationUs).coerceIn(0.0, 1.0).toFloat() * size.width
+                                                    val end = (range.endUs / durationUs).coerceIn(0.0, 1.0).toFloat() * size.width
+                                                    if(start < end) drawLine(Color.White.copy(alpha = 0.32f), Offset(start, y), Offset(end, y), size.height, StrokeCap.Butt)
+                                                }
                                                 line(Color.White.copy(alpha = 0.45f), state.buffered / total)
                                                 line(primary, (drag ?: state.position.toFloat()) / total)
                                             } },

@@ -46,6 +46,7 @@ class CachedTimelineTrackerTest {
         runCurrent()
         assertEquals(listOf(time(0, 12)), tracker.ranges.value)
         store.remove("main", 40)
+        assertTrue("Removal must withdraw stale UI coverage before the IO worker resumes", tracker.ranges.value.isEmpty())
         runCurrent()
         assertEquals(listOf(time(0, 4), time(8, 12)), tracker.ranges.value)
         store.clear("main")
@@ -53,6 +54,19 @@ class CachedTimelineTrackerTest {
         assertTrue(tracker.ranges.value.isEmpty())
         tracker.close(); runCurrent()
         assertTrue(store.listeners.isEmpty())
+    }
+
+    @Test fun aChangedExternalSourceRevisionRejectsTheCompletedOldIndex() = runTest {
+        val store = FakeCache()
+        store.put("main", 0, 120)
+        var current = true
+        val tracker = CachedTimelineTracker(store.cache, this, StandardTestDispatcher(testScheduler)) { tracks, spans, duration ->
+            CachedTimelineCoverage.compute(tracks, spans, duration).also { current = false }
+        }
+        tracker.replace(listOf(track("main")), isCurrent = { current })
+        runCurrent()
+        assertTrue("A coherent disk snapshot cannot publish into a retired source/binding generation", tracker.ranges.value.isEmpty())
+        tracker.close(); runCurrent()
     }
 
     @Test fun holesUnknownLengthsAndOverflowingSpansAreNotCommittedBytes() = runTest {

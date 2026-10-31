@@ -1,10 +1,21 @@
 // Copyright (c) 2026 Ringophilia and xiaomao
 // SPDX-License-Identifier: MPL-2.0
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.tasks.OutputDirectory
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+}
+abstract class PlayerTrackTestAssetsTask : Sync() {
+    @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
+}
+val trackTestAssets = tasks.register<PlayerTrackTestAssetsTask>("preparePlayerTrackTestAssets") {
+    from(rootProject.file("app/src/androidTest/assets/media/m3-tracks"))
+    outputDirectory.set(layout.buildDirectory.dir("generated/player-track-test-assets"))
+    into(outputDirectory.dir("tracks"))
 }
 android {
     namespace = "app.miru.player"
@@ -16,6 +27,11 @@ android {
     buildFeatures { compose = true }
     sourceSets.getByName("androidTest").assets.srcDir(rootProject.file("app/src/androidTest/assets/media/seek-preview"))
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+}
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        variant.androidTest?.sources?.assets?.addGeneratedSourceDirectory(trackTestAssets, PlayerTrackTestAssetsTask::outputDirectory)
+    }
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
