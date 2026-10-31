@@ -2,7 +2,7 @@
 
 本批实现 §8.4 / P6 的拖动缩略图：10秒分桶、最多60张当前来源的内存LRU、单个活动提帧加
 最新待发目标。没有图片时只显示目标时间，有图片才显示预览；松手才seek，真实Cancel不seek。
-完整常规回归已按下文验证；本版release打包仍待，不能据已有专项关闭整个M3/M4。
+完整常规回归和本版release打包已按下文验证；ARM64/R8实际运行及真机门仍待，不能据已有专项关闭整个M3/M4。
 
 ## 实现与规范方案
 
@@ -82,7 +82,7 @@ image节点缺失、target非空/frame为空，主播放/FLAG_SECURE/磁盘保�
 
 ## 尚待收尾
 
-- 本版ARM64/R8构建和打包验证。
+- 本版ARM64/R8实际运行、正式签名和完整发行验收。
 - 物理GPU/HDR/厂商codec、其他content provider和复杂公网站点仍按总矩阵保留；受控样本通过
   不等同全设备兼容或物理性能达标。
 
@@ -97,3 +97,24 @@ image节点缺失、target非空/frame为空，主播放/FLAG_SECURE/磁盘保�
 AudioCaptureIntegrationTest，以及独立opt-in `app.miru.browser.capability`包。排除不记通过；
 不能把默认assumption skip计为执行。任务未并行Gradle/R8、录屏或其他设备自动化；此轮是
 既有受控profile，不宣称真正首启、ARM64/R8实际运行或物理性能。
+
+## R8 / ARM64开发包（2026-10-30；独立载荷复核2026-10-31）
+
+干净源码`506f1773208486af0a1a7a470bf581af3ebe5927`执行
+`:app:assembleRelease :app:lintRelease --no-daemon`成功，4分钟；517项源码构建前后无变化，
+release lint为0错误/22警告。证据在`artifacts/m3-thumbnails/0511-release-build/`。
+
+| 产物 | 字节 | SHA-256 |
+| --- | ---: | --- |
+| AGP原ARM64 release | 111,259,863 | `6529dd5cc97adc594025670301a48be963720608a3d43ec4cd36c02a5642b612` |
+| 最终ARM64开发包 | **108,115,322** | `84d864f59a16fdf124ddbd2fb70ff469e200c10edab1dbf607adeaa910cd55eb` |
+
+最终文件为`artifacts/releases/Miru-0.5.11-arm64.apk`；旁边
+`.verification-20261030-122224-0977ce14/pipeline.json`记录全部1538项非签名payload逐项一致、
+SDK对齐、有效签名及与原包同一Android Debug证书。大小严格小于110,000,000字节。
+
+独立`native-verification.json`确认全部17份native payload仅为ELF64/小端/AArch64。
+`omni-verification.json`确认原4077项保持、GEO与navigation两项精确修改及5份固定官方新增，
+共4084项；omni为16,459,282字节，SHA
+`f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`。
+以上证明构建与打包，不能代替ARM64/R8运行、正式签名或真机性能验收。

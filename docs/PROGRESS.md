@@ -224,12 +224,12 @@
 - PreviewSourceLease只取消自有Call/source，原5/6秒门实际释放socket并恢复native队列，不以future.cancel/close返回值代替；main与preview共用来源/cache/header规则，private无磁盘，offline无upstream，独立一次预览认证刷新不重建主player。流缓存新增无歧义headers-v2命名空间，旧流条目保留并自然淘汰，离线缓存不改。
 - 首轮构建7分35秒，播放器JVM27/27，lint0/22；主496f5b/test85078d后端同次22/22（25.675秒）及UI3/3（32.967秒）。仅补测试后主包未变、新test527b62，UI完整5/5（29.456秒），真实蓝图/UP一次/Cancel零次、播放中持DOWN及403失败无空框均通过，各轮输入分开记录。
 - 新固定主496f5b/test527b62常规完整回归135/135通过（881.462秒），包括本批UI5与既有全benchmark/GL；四个独立前置类和capability包明确排除，不计通过，原专项各输入不拼接。
-- 本版R8打包/真机codec与provider矩阵仍待；当前最新已验证打包仍为0.5.10。详见[缩略图验证](M3-SEEK-PREVIEW-VALIDATION.md)，旧裸库真实取消失败和测试资源/提供方失败仍保留。
+- `506f177`干净源R8/shrink与release lint成功（4分钟，0错误/22警告），517项源清单无变化。最终ARM64开发包108,115,322字节，SHA `84d864f59a16fdf124ddbd2fb70ff469e200c10edab1dbf607adeaa910cd55eb`；1538payload、SDK对齐/同Debug证书、17个ARM64库和4077+2+5 Gecko资源验证通过。ARM64/R8实际运行、正式签名及真机codec/provider矩阵仍待，详见[缩略图验证](M3-SEEK-PREVIEW-VALIDATION.md)；旧裸库取消失败和测试资源/提供方失败仍保留。
 
 ## M3 尚待推进
 
 - 离线已接入 Media3 DownloadManager / DownloadService、HLS / DASH 清晰度与关联音轨 / 字幕、独立非 LRU 缓存、统一下载页与 upstream-free 播放。直链 MP4 保留普通下载引擎；实现与准确验证边界见 `M3-OFFLINE-VALIDATION.md`。下载进行中进程终止、真机网络 / 重启与后台矩阵仍需专项，不能用已完成项的重启恢复代替。
-- 视频进度缩略图的其他provider/公网/codec与完整常规验收；超分的物理GPU性能、快速硬件上的应用推荐、真实温控及完整生命周期/驱动兼容专项。渲染链和受控benchmark UI已有证据，不能据此标记整个M3完成。
+- 不连续磁盘缓存区段的精确时间映射、渲染和断网回拖；视频进度缩略图的其他provider/公网/codec矩阵；超分的物理GPU性能、快速硬件上的应用推荐、真实温控及完整生命周期/驱动兼容专项。0.5.11常规135/135及打包已通过，不能据此标记整个M3完成。
 - 清晰度探测的 HLS byte-range、加密 init map、复杂多 PMT / 跨包 PSI、特殊封装与公网样本兼容；本地字幕的复杂 ASS 样式、图片字幕和字体附件不在本轮支持范围。
 - 真机 SAF 文件提供方、多语言音轨 / 字幕、可访问性、直播动态轨道与完整网站矩阵。
 

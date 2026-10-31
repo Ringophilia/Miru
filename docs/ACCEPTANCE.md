@@ -37,7 +37,7 @@ P0 是首个可用版本门，P1 是第二轮功能，P2 在规范中为“有�
 | E16 | [B13-AUDIO-CAPTURE-VALIDATION.md](B13-AUDIO-CAPTURE-VALIDATION.md)、`artifacts/b13-upload-lifecycle/audio-capture-integration/` | 独立AudioCaptureIntegrationTest复用原夹具，原File18不变。固定官方Fossify1.7.3实际Record/Save、临时READ观察、原FD/provider元数据/AAC结构、外部原文件与网页POST三方bytes、READ回收/原文档租约删除/外部源保留；0.5.8为1/1（23.74秒），当前0.5.9为1/1（45.525秒），原31ef失败52.453秒保留，修复仅测试shell执行/清理。当前G主F097/testE4E5与C目录包身份分别记录；同commit主包DEX/native/omni相同、13项assets仅行尾不同。不合并进目录49或旧117。当前全模块JVM151项0失败/错误/跳过（engine90 FROM-CACHE，其余有测试模块UP-TO-DATE），另补纯JVM common:test；lint0/22。hostmic实际OFF，虚拟输入不证明物理拾音。15c2943的R8/shrink构建6分31秒通过，ARM64开发包108,024,040字节、SHA `2f691037ce171e9edd7df915979fc45a2915c6d587f467d73e31c06f8598265d`，1518payload/对齐/同Debug证书/17库/4077+2+5资源均通过。录音完整取消/私密/生命周期/其他handler及本版常规完整、R8/ARM64运行与正式发行仍待。 |
 | E17 | [B13-PREPARED-FOLDER-VALIDATION.md](B13-PREPARED-FOLDER-VALIDATION.md)、[目录元数据合同](B13-PREPARED-FOLDER-CONTRACT.md)、`artifacts/folder-upload/0510-*` | 0.5.10/code18：真实TREE/Gecko二次确认与网页FileList/POST覆盖12份重复路径/同名目录/显式MIME/0、负及未知mtime完整多重集；metadata正向1/1（23.148秒）。新增TREE Back保留原FileList/lease/bytes、原生确认时重建及迟到旧系统结果；后者不等同迟到native prompt。engine104中103通过/1 Windows链接跳过；Android实际leaf/ancestor/unlisted链接及snapshot重检3项通过。保留单次10项9/10（105.094秒）、随后13项12/13（70.64秒）、授权窗口驱动后13项12/13（95.756秒）：最后唯一失败为virtual负例page准备超时，未触发TREE，其他12项通过；隔离负例1/1不抵消整组失败。主SHA987845/test0489固定，lint0/22；随后同包常规完整130/130通过（734.586秒），含本批全部13项及文件18/benchmark2/GL3；原专项失败保留，四个独立前置类仍排除不计通过。完整B13、其他provider/网站、进程死亡、迟到native、独立前置/真机矩阵及本版R8/ARM64运行仍待。 |
 | E18 | [B13目录后续冷页/系统权限](B13-PREPARED-FOLDER-VALIDATION.md)、`artifacts/folder-upload/0510-fresh-followup-20261030-1421/` | 0.5.10主987845未变，仅测试page失败快照，新test01b2a4。新实例5556安装前无Miru、实际hostmic OFF、首次目标进程直接原virtual负例1/1（14.305秒）；无失败快照触发，不宣称旧超时根因修复或uBO首装已验。该实例随后实际Android系统摄像头拒绝、摄像头/麦克风允许后网站许可、近似定位3/3（16.692秒），无pm grant/预授权。此test只证明独立专项，不把两轮拼成4项或合并成旧130项全套；系统永久拒绝/完整生命周期/私密与真机仍待。 |
-| E19 | [M3-SEEK-PREVIEW-VALIDATION.md](M3-SEEK-PREVIEW-VALIDATION.md)、[候选及旧失败](M3-SEEK-PREVIEW-PREFLIGHT.md)、`artifacts/m3-thumbnails/0511-*` | 0.5.11/code19缩略图：单ExoPlayer提帧替代示意MMR/ImageReader方案，完整保留10秒/60张LRU和时间fallback。主496f5b首轮test85078d播放器JVM27/27、lint0/22，owned cancel1/1（1.518秒）、close1/1（1.122秒），同次adapter22/22（25.675秒）含六格式/PTS/RGB、5/6秒真peer关闭/队列恢复、跨源剥离/私密/缓存分区与停源离线。首UI3/3（32.967秒）；仅测试补充后新test527b62，同次UI5/5（29.456秒）含真UP一次seek/Cancel零seek、playing持DOWN>3秒及真403时间无空框fallback，主播放/私密磁盘保持。原裸库两项失败保留，各输入不拼接；随后S2同包常规135/135通过（881.462秒），四个独立类和capability包排除不计通过。本版R8打包及真机兼容仍待。 |
+| E19 | [M3-SEEK-PREVIEW-VALIDATION.md](M3-SEEK-PREVIEW-VALIDATION.md)、[候选及旧失败](M3-SEEK-PREVIEW-PREFLIGHT.md)、`artifacts/m3-thumbnails/0511-*` | 0.5.11/code19缩略图：单ExoPlayer提帧替代示意MMR/ImageReader方案，完整保留10秒/60张LRU和时间fallback。主496f5b首轮test85078d播放器JVM27/27、lint0/22，owned cancel1/1（1.518秒）、close1/1（1.122秒），同次adapter22/22（25.675秒）含六格式/PTS/RGB、5/6秒真peer关闭/队列恢复、跨源剥离/私密/缓存分区与停源离线。首UI3/3（32.967秒）；仅测试补充后新test527b62，同次UI5/5（29.456秒）含真UP一次seek/Cancel零seek、playing持DOWN>3秒及真403时间无空框fallback，主播放/私密磁盘保持。原裸库两项失败保留，各输入不拼接；随后S2同包常规135/135通过（881.462秒），四个独立类和capability包排除不计通过。506f177干净源R8/lint成功（4分钟，0/22），108,115,322字节ARM64开发包1538payload/对齐/同Debug证书/17库/4077+2+5资源验证通过；ARM64/R8运行、正式签名和真机兼容仍待。 |
 | SRC | 当前模块源码、Gradle、manifest、资源和 `design/tokens.json` | 证明存在代码 / 配置。单独不能证明运行正确、无泄漏、无掉帧或兼容所有站点。 |
 | LEGAL | [OPEN-SOURCE-REVIEW.md](OPEN-SOURCE-REVIEW.md)、[third_party/README.md](../third_party/README.md) | M0 源码公开范围的检查和后续依赖说明；不是含 uBO / 嵌套依赖的完整二进制分发审查。 |
 
@@ -284,7 +284,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | PERF05 良好网络HLS起播<1.5s | pending | 真实首画 / 首音时间，不是ready布尔值；受控网络和release真机。 |
 | PERF06 判定后倍速<100ms | pending | 手势判定时间→实际PlaybackParameters事件；并与P2按下400ms要求分开计。 |
 | PERF07 10标签内存 / Gecko回收 | pending | 10个实际内容标签、后台回收 / 恢复 / 峰值内存，应用不额外限标签。 |
-| PERF08 ARM64 APK<110MB | verified（仅0.5.10体积/打包） | E17最终APK **108,028,136字节**，SHA `72eb7fc66cb4af6dc971e65b1d61132a6943322d4038273cc3f2759f7847e93b`；1518payload逐项保持、SDK对齐/同证书、17个ELF64/AArch64库及4077原项+GEO/导航两项精确修改+5官方新增验证通过。仍为Android Debug签名，正式签名/ARM64及R8运行、完整发行门另列；旧版证据保留。 |
+| PERF08 ARM64 APK<110MB | verified（仅0.5.11体积/打包） | E19最终APK **108,115,322字节**，SHA `84d864f59a16fdf124ddbd2fb70ff469e200c10edab1dbf607adeaa910cd55eb`；1538payload逐项保持、SDK对齐/同证书、17个ELF64/AArch64库及4077原项+GEO/导航两项精确修改+5官方新增验证通过。仍为Android Debug签名，正式签名/ARM64及R8运行、完整发行门另列；旧版证据保留。 |
 | PERF09 超分均衡<12ms | pending | 指定8Gen2级设备、540P动画→1080P、稳定统计含保护；与设置benchmark<16ms推荐门分别验。 |
 | PRIV01 无账号 / Glean / Sync / FxA / 上传 | implemented | E0静态图与源码有证据；完整实际依赖、崩溃上传配置、抓包 / 日志取证、关于本机日志导出待补。 |
 | PRIV02 Cookie / Authorization不落盘 | implemented | 普通下载 / playback / media models内存、分区摘要；需最终Room / prefs / savedstate / files / logs取证和重启恢复认证测试。 |
@@ -295,7 +295,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | VIS02 移除动画全流程 | pending | 运行系统scale=0的全操作链，静态循环 / 跟手 / 无输入阻塞。 |
 | DEV01 模拟器+真机仪器测试 | implemented | API35/x86_64多批受控测试；完整0.5.3为77/79。0.5.4站点/混合下载7/7、真实系统3/3、生命周期2/2、JVM111项及lint0错误/22警告；固定APK常规87/87（641.35秒）。0.5.5/E10常规98/98（595.555秒）、fresh系统3/3（21.844秒）、普通/私密prompt11/11。0.5.6/E11完整102/106（1328.953秒）；0.5.7/E12完整103/106（883.116秒），余底栏页顶测试、图片复制后重开菜单和QUALITY超时；后续Core独立7/7及MIME上传13/13不抵消整套失败。0.5.8/E14上传整类15/15（170.368秒），新增capture生命周期独立3/3（65.015秒），同一测试APK随后整类18/18通过（199.276秒）；随后固定同包在新5600常规完整回归117/117（907.736秒）通过，含原上传8+MIME5+capture5；旧失败和排除类保留，不推定真机门。所有旧失败保留；两个强停重启类仍排除，系统权限类独立验证；0.5.8另启5602的真正首次启动1/1（36.811秒）及真实系统权限3/3（33.353秒）均通过。0.5.9/E15另有目录首批5/5及最终固定包跨模块单次49/49（602.313秒），原48/49失败保留；engine90/90含树10/10，仅API35/x86_64受控provider，尚无本版完整常规回归。release构建/打包仅按PERF08所列版本，0.5.8构建/打包见E14，0.5.9的R8/shrink构建与ARM64打包见E16，R8/ARM64运行仍待；API26–28 / 当前系统 / ARM64物理机仍缺。 |
 | SITE01 第11所有真实网站 / 登录 | pending | B1六站及R4媒体站点的兼容矩阵；需要真实账户时由人提供可用会话 / 完成认证，不猜测通过。 |
-| REL01 发布构建 / AAB或按ABI拆分 | implemented | 0.5.10/20bd901干净源启R8/shrink，构建/lint成功（3分20秒，0错误/22警告），108,028,136字节ARM64开发包一致性/体积验证通过（E17/PERF08）；AAB分发、正式签名、R8及ARM64实际运行验收未完，历史版本记录保留。 |
+| REL01 发布构建 / AAB或按ABI拆分 | implemented | 0.5.11/506f177干净源启R8/shrink，构建/lint成功（4分钟，0错误/22警告），108,115,322字节ARM64开发包1538payload/一致性/体积验证通过（E19/PERF08）；AAB分发、正式签名、R8及ARM64实际运行验收未完，历史版本记录保留。 |
 | REL02 正式签名 | pending | 基线无keystore.properties，现包Android Debug证书；需维护者提供安全签名配置，不在源码 / 日志中存秘密。 |
 | REL03 完整第三方告知 / 对应源码 | pending | LEGAL仅旧快照；uBO GPL、过滤列表、Gecko嵌套依赖、Media3和将来shader真实产物须重新审查；关于需可取到全部许可和准确源码。 |
 | REL04 图标 / 素材来源 | implemented | 原画、trace脚本、PROVENANCE与项目许可排除说明已有；发布时维护者权利 / 服务条款确认仍保留，不因AI生成推定全授权。 |
@@ -309,7 +309,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | M0 骨架 | implemented | 不能把“已进入M3开发”当作M0所有P0通过；B1/B3/B4/B10/B11/B13/B19/B20及通用UI / 真机门未闭合。 |
 | M1 拦截与下载 | implemented | 首装uBO、A1/d3ward、全部冷启动 / 真机、通知 / 网络 / 手机重启、完整下载动效和阶段录屏。 |
 | M2 播放核心 | implemented | 全P0手势 / 時间门 / 系统焦点 / DataSaver / 外部文件 / 公网矩阵、UI动效、真机与阶段录屏。 |
-| M3 画质与离线 | implemented | 清晰度/字幕音轨、受控离线与超分渲染有E3/E4/E5，E19增加缩略图后端/完整UI专项；完整常规/性能/真机兼容矩阵和阶段录屏仍未完成。 |
+| M3 画质与离线 | implemented | 清晰度/字幕音轨、受控离线与超分渲染有E3/E4/E5，E19增加缩略图后端/完整UI、135项常规回归及打包；磁盘区段、完整离线/性能/真机兼容矩阵和阶段录屏仍未完成。 |
 | M4 打磨 / 发布 | pending | §7全部动效、§5.11全部设置、无障碍、§12指标、正式release / 许可门和录屏。 |
 | M5 iOS | pending | 规范明确列出，Android M4后启动；需独立原生工程及以下全部平台替代实现 / 编译 / 运行 / 真机验收。 |
 
@@ -335,7 +335,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | R5 鉴权 / 签名 | implemented | 401 / 403刷新一次、失败回网页、释放期间不重建已测；真实站点登录Cookie / token轮换需补。 |
 | R6 Transformer离线导出 | pending | P2实现前先验证支持；失败再用TS+Muxer，不预承诺能无重编码导出。 |
 | R7 GL SurfaceView同步 / HDR | implemented | E5实际同帧比较、暂停重绘/旋转/故障回退；HDR策略存在，真实HDR/驱动矩阵仍待补。 |
-| R8 ABI体积 | verified（仅0.5.10打包） | PERF08/E17：最终108,028,136字节<110,000,000，独立ZIP/ELF检查只有17个ARM64库；仍需正式签名/ARM64与R8运行及后续版本重验，旧版证据保留。 |
+| R8 ABI体积 | verified（仅0.5.11打包） | PERF08/E19：最终108,115,322字节<110,000,000，独立ZIP/ELF检查只有17个ARM64库；仍需正式签名/ARM64与R8运行及后续版本重验，旧版证据保留。 |
 | R9 uBO / Gecko分发许可 | pending | 全部第三方 / 列表 / 嵌套库实际产物审查与人工确认；旧M0开源检查不能覆盖含uBO发行。 |
 | R10 Google Play视频下载政策 | pending（条件项） | 仅在决定上架Play时需当时政策与站点限制核对；当前本地构建没有商店发布证据。保留此门，不主动上架。 |
 
