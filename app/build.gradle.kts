@@ -112,6 +112,10 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation("androidx.room:room-runtime:2.8.5")
+    // Independent P11 sample-index capability probe; no production mapper/UI change.
+    androidTestImplementation("androidx.media3:media3-extractor:1.11.1") {
+        exclude(group = "com.google.errorprone", module = "error_prone_annotations")
+    }
     // P6 capability probe only; this is not a production extraction engine decision.
     androidTestImplementation("androidx.media3:media3-inspector-frame:1.11.1") {
         // Compile-time annotations are already supplied by the tested application's

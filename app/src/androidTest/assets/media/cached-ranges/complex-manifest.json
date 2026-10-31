@@ -1,0 +1,321 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "tools/generate-cached-range-fixtures.ps1",
+  "status": "generated-and-host-validated; Android BoxParser capability still unverified",
+  "ffmpegVersion": "ffmpeg version n8.0.1-66-g27b8d1a017-20260228 Copyright (c) 2000-2025 the FFmpeg developers",
+  "ffmpegSha256": "6d1169549f6a67de04dfc1d1868b514d594e365a1104fd384cbe851ded7108f8",
+  "ffprobeVersion": "ffprobe version n8.0.1-66-g27b8d1a017-20260228 Copyright (c) 2007-2025 the FFmpeg developers",
+  "ffprobeSha256": "3ca44c072baeb38eaf21f32f8bf527718c5cd2ee0bc49122e187b7c1ab595644",
+  "commands": [
+    {
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffmpeg.exe",
+      "arguments": [
+        "-version"
+      ]
+    },
+    {
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffprobe.exe",
+      "arguments": [
+        "-version"
+      ]
+    },
+    {
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffmpeg.exe",
+      "arguments": [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostdin",
+        "-filter_complex_threads",
+        "1",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=red:s=160x90:r=30:d=4",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc2=s=160x90:r=30:d=4",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=blue:s=160x90:r=30:d=4",
+        "-filter_complex",
+        "[0:v][1:v][2:v]concat=n=3:v=1:a=0,format=yuv420p[v]",
+        "-map",
+        "[v]",
+        "-an",
+        "-c:v",
+        "libx264",
+        "-profile:v",
+        "high",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "18",
+        "-bf",
+        "3",
+        "-g",
+        "30",
+        "-keyint_min",
+        "30",
+        "-x264-params",
+        "b-adapt=0:scenecut=0:open-gop=0",
+        "-video_track_timescale",
+        "15360",
+        "-movie_timescale",
+        "1000",
+        "-use_editlist",
+        "1",
+        "-threads",
+        "2",
+        "-movflags",
+        "+faststart",
+        "-y",
+        "head-vbr-bframes.mp4"
+      ],
+      "workingDirectory": "C:\\Users\\tocml\\.codex\\worktrees\\folder-upload\\Miru\\app\\src\\androidTest\\assets\\media\\cached-ranges"
+    },
+    {
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffmpeg.exe",
+      "arguments": [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostdin",
+        "-i",
+        "head-vbr-bframes.mp4",
+        "-map",
+        "0:v:0",
+        "-an",
+        "-c",
+        "copy",
+        "-video_track_timescale",
+        "15360",
+        "-movie_timescale",
+        "1000",
+        "-use_editlist",
+        "1",
+        "-movflags",
+        "-faststart",
+        "-y",
+        "tail-vbr-bframes.mp4"
+      ],
+      "workingDirectory": "C:\\Users\\tocml\\.codex\\worktrees\\folder-upload\\Miru\\app\\src\\androidTest\\assets\\media\\cached-ranges"
+    },
+    {
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffmpeg.exe",
+      "arguments": [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostdin",
+        "-ss",
+        "1.25",
+        "-i",
+        "head-vbr-bframes.mp4",
+        "-t",
+        "8.5",
+        "-map",
+        "0:v:0",
+        "-an",
+        "-c",
+        "copy",
+        "-avoid_negative_ts",
+        "disabled",
+        "-video_track_timescale",
+        "15360",
+        "-movie_timescale",
+        "1000",
+        "-use_editlist",
+        "1",
+        "-movflags",
+        "+faststart",
+        "-y",
+        "edit-list-vbr.mp4"
+      ],
+      "workingDirectory": "C:\\Users\\tocml\\.codex\\worktrees\\folder-upload\\Miru\\app\\src\\androidTest\\assets\\media\\cached-ranges"
+    },
+    {
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffprobe.exe",
+      "arguments": [
+        "-v",
+        "error",
+        "-ignore_editlist",
+        "1",
+        "-show_streams",
+        "-show_packets",
+        "-show_entries",
+        "stream=index,id,codec_type,time_base,start_pts,duration_ts:packet=stream_index,pos,size,pts,dts,duration,flags",
+        "-of",
+        "json",
+        "head-vbr-bframes.mp4"
+      ],
+      "workingDirectory": "C:\\Users\\tocml\\.codex\\worktrees\\folder-upload\\Miru\\app\\src\\androidTest\\assets\\media\\cached-ranges"
+    },
+    {
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffprobe.exe",
+      "arguments": [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_frames",
+        "-show_entries",
+        "frame=pict_type",
+        "-of",
+        "json",
+        "head-vbr-bframes.mp4"
+      ],
+      "workingDirectory": "C:\\Users\\tocml\\.codex\\worktrees\\folder-upload\\Miru\\app\\src\\androidTest\\assets\\media\\cached-ranges"
+    },
+    {
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffprobe.exe",
+      "arguments": [
+        "-v",
+        "error",
+        "-ignore_editlist",
+        "1",
+        "-show_streams",
+        "-show_packets",
+        "-show_entries",
+        "stream=index,id,codec_type,time_base,start_pts,duration_ts:packet=stream_index,pos,size,pts,dts,duration,flags",
+        "-of",
+        "json",
+        "tail-vbr-bframes.mp4"
+      ],
+      "workingDirectory": "C:\\Users\\tocml\\.codex\\worktrees\\folder-upload\\Miru\\app\\src\\androidTest\\assets\\media\\cached-ranges"
+    },
+    {
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffprobe.exe",
+      "arguments": [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_frames",
+        "-show_entries",
+        "frame=pict_type",
+        "-of",
+        "json",
+        "tail-vbr-bframes.mp4"
+      ],
+      "workingDirectory": "C:\\Users\\tocml\\.codex\\worktrees\\folder-upload\\Miru\\app\\src\\androidTest\\assets\\media\\cached-ranges"
+    },
+    {
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffprobe.exe",
+      "arguments": [
+        "-v",
+        "error",
+        "-ignore_editlist",
+        "0",
+        "-show_streams",
+        "-show_packets",
+        "-show_entries",
+        "stream=index,id,codec_type,time_base,start_pts,duration_ts:packet=stream_index,pos,size,pts,dts,duration,flags",
+        "-of",
+        "json",
+        "edit-list-vbr.mp4"
+      ],
+      "workingDirectory": "C:\\Users\\tocml\\.codex\\worktrees\\folder-upload\\Miru\\app\\src\\androidTest\\assets\\media\\cached-ranges"
+    },
+    {
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffprobe.exe",
+      "arguments": [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_frames",
+        "-show_entries",
+        "frame=pict_type",
+        "-of",
+        "json",
+        "edit-list-vbr.mp4"
+      ],
+      "workingDirectory": "C:\\Users\\tocml\\.codex\\worktrees\\folder-upload\\Miru\\app\\src\\androidTest\\assets\\media\\cached-ranges"
+    },
+    {
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffprobe.exe",
+      "arguments": [
+        "-v",
+        "error",
+        "-ignore_editlist",
+        "1",
+        "-show_streams",
+        "-show_packets",
+        "-show_entries",
+        "stream=index,id,codec_type,time_base,start_pts,duration_ts:packet=stream_index,pos,size,pts,dts,duration,flags",
+        "-of",
+        "json",
+        "edit-list-vbr.mp4"
+      ],
+      "workingDirectory": "C:\\Users\\tocml\\.codex\\worktrees\\folder-upload\\Miru\\app\\src\\androidTest\\assets\\media\\cached-ranges"
+    },
+    {
+      "executable": "C:\\Users\\tocml\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BtbN.FFmpeg.GPL.8.0_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-n8.0.1-66-g27b8d1a017-win64-gpl-8.0\\bin\\ffprobe.exe",
+      "arguments": [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_frames",
+        "-show_entries",
+        "frame=pict_type",
+        "-of",
+        "json",
+        "edit-list-vbr.mp4"
+      ],
+      "workingDirectory": "C:\\Users\\tocml\\.codex\\worktrees\\folder-upload\\Miru\\app\\src\\androidTest\\assets\\media\\cached-ranges"
+    }
+  ],
+  "variableDensityChecks": [
+    {
+      "asset": "media/cached-ranges/head-vbr-bframes.mp4",
+      "staticTwoSecondBytes": 964,
+      "movingTwoSecondBytes": 52204
+    },
+    {
+      "asset": "media/cached-ranges/tail-vbr-bframes.mp4",
+      "staticTwoSecondBytes": 964,
+      "movingTwoSecondBytes": 52204
+    }
+  ],
+  "files": [
+    {
+      "name": "head-vbr-bframes.mp4",
+      "bytes": 114700,
+      "sha256": "d9c1befb0034b52e1772c402e64b2095524fc51d7016e27880177574ade48176"
+    },
+    {
+      "name": "tail-vbr-bframes.mp4",
+      "bytes": 114700,
+      "sha256": "5e7ddfeab8b88ebdbba949746150b89f93642e25998e3f45395cf0d3a4281c5c"
+    },
+    {
+      "name": "edit-list-vbr.mp4",
+      "bytes": 111379,
+      "sha256": "d5b7d36d58ae04283e78d666ba9c19ea172885b65ddf1536e399a4f2ca2c4500"
+    },
+    {
+      "name": "head-vbr-bframes.samples.json",
+      "bytes": 115443,
+      "sha256": "090838d48c2f457850c2111236aca88b65cf6ab841dea3bdaabb9dbd79bbbbb8"
+    },
+    {
+      "name": "tail-vbr-bframes.samples.json",
+      "bytes": 115413,
+      "sha256": "5bbcf631574f8a911fe3cd6305dd0c090e805198d4548783508c8fb0bee7ad32"
+    },
+    {
+      "name": "edit-list-vbr.samples.json",
+      "bytes": 85622,
+      "sha256": "24c51347e7c351d63a5fe29e2b6a623f51e41f8dc709afe573c2d75b91c70296"
+    },
+    {
+      "name": "edit-list-vbr.raw.samples.json",
+      "bytes": 85540,
+      "sha256": "e41ec6dd076f7b5b36745419d87a52127ddd4aad2a4846af0c8475453ae067b0"
+    }
+  ]
+}
