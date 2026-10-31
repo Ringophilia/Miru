@@ -7,9 +7,11 @@ import android.content.Context
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheKeyFactory
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.dash.DefaultDashChunkSource
@@ -49,6 +51,14 @@ class PlaybackSourceSession(
             val name = it.key.lowercase()
             "${name.length}:$name${it.value.length}:${it.value}"
         })
+    // Timeline mapping must use this actual session's header partition, including
+    // when preview-only authentication has already moved to a newer partition.
+    // Keep one key factory for both committed cache spans and playback requests.
+    val cacheKeyFactory = CacheKeyFactory(::cacheKey)
+
+    fun cacheKey(spec: DataSpec): String = "$partition:${PlaybackPolicy.normalizedCacheUrl(
+        spec.uri.toString(), spec.position > 0 || spec.length != C.LENGTH_UNSET.toLong())}"
+
     private val client by lazy {
         val origin = url.toHttpUrlOrNull()?.let { Triple(it.scheme, it.host, it.port) }
         httpClient.newBuilder().addNetworkInterceptor { chain ->
@@ -75,7 +85,7 @@ class PlaybackSourceSession(
             OkHttpDataSource.Factory(preview ?: client as Call.Factory).setDefaultRequestProperties(headers))
         val cached = cache?.let { disk -> CacheDataSource.Factory().setCache(disk)
             .setUpstreamDataSourceFactory(upstream).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-            .setCacheKeyFactory { spec -> "$partition:${PlaybackPolicy.normalizedCacheUrl(spec.uri.toString(), spec.position > 0 || spec.length != C.LENGTH_UNSET.toLong())}" }
+            .setCacheKeyFactory(cacheKeyFactory)
         } ?: upstream
         val manifest = preview?.track(upstream) ?: upstream
         val media = preview?.track(cached) ?: cached
