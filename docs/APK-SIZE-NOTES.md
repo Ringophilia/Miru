@@ -155,3 +155,14 @@ SDK 对齐、签名和原 Android Debug 证书一致性通过，独立 Python �
 有效签名及同Debug证书。2026-10-31独立复核17个ELF64/AArch64库和4077+2+5 Gecko资源通过，
 证据在`artifacts/m3-thumbnails/0511-release-build/`。本版Debug常规135/135通过与打包验证
 范围分别保留；ARM64/R8实际运行、正式签名和物理性能仍待，见[缩略图记录](M3-SEEK-PREVIEW-VALIDATION.md)。
+
+## 2026-10-31：0.5.12普通HLS磁盘层开发包
+
+`5475738`干净源R8/shrink和release lint成功（5分49秒，0错误/22警告），552项源清单无漂移。
+原AGP ARM64包111,274,567字节，SHA `4262d69563519561c347d8d9b7eb4cd3f307b6fa94118a38fb31a711b7df8327`。
+最终`artifacts/releases/Miru-0.5.12-arm64.apk`为**108,127,610字节**，SHA
+`0d9ea5eaee1cf5625937755b495a38e95e4bb7e743f3eef810dd56e3e87fbfb2`，严格小于110,000,000字节。
+同名`.verification-20261031-125052-259d6aca/pipeline.json`证明1538payload完整、SDK对齐、有效签名
+及同Android Debug证书；`artifacts/m3-cached-ranges/selection-release-build/`独立验证17个ARM64库
+和4077原项+两项精确修改+五项官方新增Gecko资源。Debug同包139/139与本打包证据范围分开；
+ARM64/R8实际运行、正式签名及完整P11仍待，见[本版记录](M3-CACHED-TIMELINE-UI-VALIDATION.md)。

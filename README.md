@@ -101,7 +101,7 @@ Miru 的取舍遵循产品规范 [MIRU-SPEC.md](MIRU-SPEC.md)（唯一需求来�
 | **M4** | 动效、网站矩阵、真机性能、完整验收 | ⚪ 未开始 |
 | **iOS** | 按规范在 Android M4 之后启动 | ⚪ 未开始 |
 
-最新已验证打包为 **0.5.11 ARM64开发包，108,115,322字节**，仍使用Android Debug签名；构建、完整载荷及体积见[0.5.11记录](docs/M3-SEEK-PREVIEW-VALIDATION.md)，目录历史见[0.5.10记录](docs/B13-PREPARED-FOLDER-VALIDATION.md)，录音历史见[0.5.9记录](docs/B13-AUDIO-CAPTURE-VALIDATION.md)，完整上传范围见[上传验收记录](docs/B13-FILE-UPLOAD-VALIDATION.md)。
+最新已验证打包为 **0.5.12 ARM64开发包，108,127,610字节**，仍使用Android Debug签名；构建、完整载荷及体积见[0.5.12记录](docs/M3-CACHED-TIMELINE-UI-VALIDATION.md)，缩略图历史见[0.5.11记录](docs/M3-SEEK-PREVIEW-VALIDATION.md)，目录历史见[0.5.10记录](docs/B13-PREPARED-FOLDER-VALIDATION.md)，录音历史见[0.5.9记录](docs/B13-AUDIO-CAPTURE-VALIDATION.md)，完整上传范围见[上传验收记录](docs/B13-FILE-UPLOAD-VALIDATION.md)。
 
 0.5.8固定Debug包已在API35/x86_64模拟器完成常规回归 **117/117**，另有首次启动uBO **1/1**、真实系统权限独立 **3/3**；两个外部重启类、ARM64运行与真机性能仍按[验收矩阵](docs/ACCEPTANCE.md)分别记录。
 
@@ -113,7 +113,7 @@ Miru 的取舍遵循产品规范 [MIRU-SPEC.md](MIRU-SPEC.md)（唯一需求来�
 
 0.5.11 开发批次接入[拖动缩略图](docs/M3-SEEK-PREVIEW-VALIDATION.md)：10秒/60张内存LRU、受控提帧取消、认证/缓存隔离和真实拖动界面。播放器JVM27/27、提帧后端独立22/22、完整UI另5/5通过；同包常规完整 **135/135通过（881.462秒）**。独立前置类与capability包排除不计通过；R8/shrink构建及1538项完整载荷、17个ARM64库、Gecko资源、签名/对齐/体积打包验证通过。ARM64/R8实际运行、正式签名及真机矩阵继续待验。
 
-0.5.12/code20接入[P11普通HLS磁盘进度条](docs/M3-CACHED-TIMELINE-UI-VALIDATION.md)：按实际原生wrapper/选轨发布不连续区段，读取失败/切源/清理撤旧层；JVM72/72、独立模块41/41、真实UI4/4通过，含停供后实际93秒蓝帧与无缓存缺口失败。同包常规完整139/139通过（941.713秒），四个独立前置类及capability仍排除不计通过。[独立MP4预验](docs/M3-CACHED-RANGES-PREFLIGHT.md)的复杂2过1失败继续保留。DASH/MP4等、复杂HLS及跨会话未知资源仍待，P11完整验收未完成；最新已验ARM64包仍为上文0.5.11。
+0.5.12/code20接入[P11普通HLS磁盘进度条](docs/M3-CACHED-TIMELINE-UI-VALIDATION.md)：按实际原生wrapper/选轨发布不连续区段，读取失败/切源/清理撤旧层；JVM72/72、独立模块41/41、真实UI4/4通过，含停供后实际93秒蓝帧与无缓存缺口失败。同包常规完整139/139通过（941.713秒），四个独立前置类及capability仍排除不计通过。5475738干净源R8构建及1538payload/ARM64体积打包验证通过，实际运行和正式签名仍待。[独立MP4预验](docs/M3-CACHED-RANGES-PREFLIGHT.md)的复杂2过1失败继续保留。DASH/MP4等、复杂HLS及跨会话未知资源仍待，P11完整验收未完成。
 
 <details>
 <summary><b>历史已验证打包：0.5.4（ARM64 开发包）</b></summary>

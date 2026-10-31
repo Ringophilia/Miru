@@ -108,3 +108,22 @@ loopback HTTP origin提供120秒受控HLS，由原自有三TS资源跨十个disc
 - DASH真实Template/Timeline/List/Base+sidx及多period，MP4完整sample/edit/GOP和其他VBR封装。
 - offline独立缓存的对应索引与显示策略、完整private生命周期、真实网站/设备/性能矩阵。
 - 本批未宣称整个P11/M3完成；ARM64/R8实际运行、正式签名和完整发布门仍需各自证据。
+
+## 5475738干净源的R8与ARM64开发包
+
+实现、完整Debug回归和记录提交为`54757382d491ee01d9bd86c4f9cc0ba8e9a28cf7`后，从干净源执行
+`.\gradlew.bat --no-daemon :app:assembleRelease :app:lintRelease`，成功5分49秒，0错误/22警告，
+552项源输入前后无变化。证据在`selection-release-build/`，未把Debug139项挪用为R8运行证明。
+
+- 原AGP ARM64包111,274,567字节，SHA `4262d69563519561c347d8d9b7eb4cd3f307b6fa94118a38fb31a711b7df8327`。
+- 最终`artifacts/releases/Miru-0.5.12-arm64.apk`为**108,127,610字节**，SHA
+  `0d9ea5eaee1cf5625937755b495a38e95e4bb7e743f3eef810dd56e3e87fbfb2`，严格小于110,000,000字节。
+- 打包工具只复用旧0.5.11包中相同payload的压缩字节；独立校验最终1538项payload逐项保持当前
+  R8包内容，SDK 16KB对齐、签名和同证书通过。仍为Android Debug证书
+  `5aa1a00e59b8638298dbddcc5a61053ca245249136edb67199e0c9a3e4cb1f84`。
+- 独立ZIP/ELF验证17个库全为ELF64/AArch64，无其他ABI；Gecko核验4077项原载荷、两项精确修改和
+  五项固定官方资源，omni SHA仍为`f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`。
+- 完整打包步骤在同名`.verification-20261031-125052-259d6aca/pipeline.json`，原生库与Gecko独立
+  结果为`selection-release-build/native-verification.json`和`omni-verification.json`。
+
+这是构建、完整性和体积证据；**没有ARM64/R8实际运行或正式签名通过声明**。
