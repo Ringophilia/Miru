@@ -60,11 +60,41 @@ lint0错误/22警告。最终模块APK内59项素材逐字节相等。
 `closure-module-03`同次 **70/70，0跳过，23.273秒**；`closure-ui-03`同包 **8/8，0跳过，36.863秒**。
 HLS新source仅访问117秒蓝段，仍恢复11段完整holes；DASH两项新decoder后保留完整红/蓝holes。
 各自保持原PTS、RGB、清init/清缓存、私密及无新增媒体请求门。普通流metadata增加不改变内存buffer或seek所有权。
-常规应用143项已启动，四个独立前置类及capability包仍排除不计通过；本版R8/ARM64构建打包尚未记作通过。
+`closure-routine-complete`最终同包常规 **143/143，0跳过，954.367秒**。明确排除
+DownloadRestartTest、OfflineRestartTest、RuntimeSitePermissionIntegrationTest、
+AudioCaptureIntegrationTest四个独立前置类与capability包，排除项不计通过。
+本批全部8项缓存UI、缩略图、文件/目录交互、离线、benchmark与真实shader均在该整组内通过。
+整组结束后取回三张实际PNG，SHA与专项UI蓝帧一致；原PTS/RGB、完整holes及无新增媒体请求
+均由该轮实际断言通过。此时logcat环形缓冲已无早期缓存标签，首次可选PID提取实际报
+StopIteration，未更新文档即退出；限制记录在early-logcat-capture.json，未把专项日志拼作本轮
+进程追踪。源码相对R8冻结输入只改验收Markdown，见`closure-release-build/source-review-final.json`。
 模块由DASH19、HLS索引20、HLS选轨11、资源绑定11及新增资源闭合9项组成；新增闭合使用
 实际SimpleCache/CacheDataSource验证原key、未知EOF/failed-prefix、已知长度部分写入、
 merged一字节洞、从空索引唤醒、四资源依赖发现、headers/private/offline/close、旧计算替换
 和清空后新长度。它们是磁盘/metadata证据，不另作视频解码声明。
+
+## cf1c52a 干净源的 R8 与 ARM64 开发包
+
+提交 `cf1c52aa6b9f50dc521ed705c5be33d815e503cc` 后，从干净源执行
+`.\gradlew.bat --no-daemon :app:assembleRelease :app:lintRelease`，成功4分2秒，lint0错误/
+22警告。571项源输入前后无漂移，证据在`closure-release-build/`。相对最终Debug build-03
+仅三份验收Markdown变化，`source-review-debug.json`确认没有其他代码变更。
+
+- AGP原包111,283,379字节，SHA
+  `728d9c6bc6298e4a89cf88d700d2ed38c5322d5fcca342a39f2a6cae44a2aea4`。
+- 最终 `artifacts/releases/Miru-0.5.14-arm64.apk` 为 **108,135,802字节**，严格小于
+  110,000,000；SHA `57c091e95da603073555728da03c3a5e90fb1268954b0d1d6c12a61357426d89`。
+  与旧包体积相同不代表载荷相同；八步流水线独立验证了全部1538项当前载荷。
+- 只复用旧0.5.13包中内容相同条目的压缩字节。当前1538项payload与R8原包逐项相等，SDK
+  16KB zipalign、签名及同证书检查通过。证书仍为Android Debug：
+  `5aa1a00e59b8638298dbddcc5a61053ca245249136edb67199e0c9a3e4cb1f84`。
+- 17个库全为ELF64/AArch64，无其他ABI。Gecko的4077项原始载荷、两项精确修改和五项
+  固定新增资源验证通过，omni SHA为
+  `f0531a43b294533f7929afc74a03d265a1e8c2a93076c0c57dd7a2a2fb0af1f8`。
+- 流水线在同名`.verification-20261031-210253-00dc80f7/pipeline.json`，原生/Gecko报告在
+  `closure-release-build/native-verification.json`与`omni-verification.json`。
+
+这些只证明构建、载荷完整性、证书/对齐和体积；**正式签名、ARM64/R8实际运行仍待**。
 
 ## 仍需完成
 
