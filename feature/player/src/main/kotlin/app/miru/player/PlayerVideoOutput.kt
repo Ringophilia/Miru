@@ -43,5 +43,7 @@ internal fun PlayerVideoOutput(controller: PlayerController, state: PlayerSnapsh
             frameRate = state.format.frameRate, hdr = state.format.hdr, protectedContent = state.format.protectedContent,
             speed = state.speed, pip = pip, fit = when(fit) { 1 -> SuperResFit.COVER; 2 -> SuperResFit.FILL; else -> SuperResFit.CONTAIN },
             compareSplit = compareSplit, deviceCeiling = preferences.superResDeviceCeiling))
+        val layout = controller.videoLayoutSize
+        view.setVideoLayoutSize(layout.width, layout.height, layout.pixelWidthHeightRatio)
     }, onRelease = { it.dispose(); binding[0] = null })
 }

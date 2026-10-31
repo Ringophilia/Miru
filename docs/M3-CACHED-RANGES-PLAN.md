@@ -5,7 +5,9 @@
 首批完成精确覆盖计算、监听基础层和唯一key factory提取。后续[主源资源绑定](M3-CACHE-BINDINGS-VALIDATION.md)
 已接入实际main session并有真实磁盘基础证据；[HLS首批映射](M3-HLS-CACHED-RANGES-VALIDATION.md)
 之后，[0.5.12普通HLS层](M3-CACHED-TIMELINE-UI-VALIDATION.md)已串联实际选轨、发布和UI，受控停供
-解码/像素通过。其他格式、复杂HLS/资源闭合与完整真机矩阵仍待，不能据局部通过调整完整P11状态。
+解码/像素通过。[0.5.13普通DASH](M3-DASH-CACHED-RANGES-VALIDATION.md)后续接入实际holder、sidx、
+PTO、merged子range和选中AV；当前UI7/7含停供新decoder的9秒PTS/蓝帧。整窗口多period/动态DASH、
+MP4/其他格式、复杂HLS/资源闭合与完整真机矩阵仍待，不能据局部通过调整完整P11状态。
 不能用本批单测把现有进度条称为已有磁盘区段。
 
 ## 已实现的基础层
@@ -73,6 +75,8 @@ callback、parent取消、计算期间淘汰/取消、cache异常重试、touch�
    protected representationHolders/newInitializationChunk/newMediaChunk，可在实际加载sidx后
    读index和最终BaseURL。逐segment校验RangedUri，merged load不能整体赋给每段；WrappingIndex
    已减presentationTimeOffset，不能重复减。覆盖Template/Timeline/List/Base+sidx与多period。
+   0.5.13已有普通当前period实现与受控证据；完整跨period整窗口覆盖、未观察资源闭合、
+   动态/live/非独立段与完整鉴权矩阵仍待，不以单period切换用例代替全部。
 5. **MP4及其他VBR。** 从实际消费字节或cache-only/no-write/no-upstream reader有界组装moov，
    以公开BoxParser取样本表，同时独立保留stts/ctts/elst、逐样本duration/DTS和decode依赖。
    B帧数组非显示顺序，不能用相邻PTS算时长；按GOP/preroll/codec init和选中audio求闭包。

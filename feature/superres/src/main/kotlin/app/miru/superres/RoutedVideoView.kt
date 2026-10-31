@@ -66,6 +66,13 @@ class RoutedVideoView @JvmOverloads constructor(
     private val main = Handler(Looper.getMainLooper())
     private val power = context.getSystemService(PowerManager::class.java)
     private var config = SuperResViewConfig()
+    // Replacing a decoder temporarily reports an unknown video size. Resizing the
+    // direct Surface to the whole viewport during that gap can discard its first
+    // paused frame. Retain only layout geometry; routing still uses current input
+    // metadata (including unknown size, HDR and protected-content decisions).
+    private var layoutSourceWidth = 0
+    private var layoutSourceHeight = 0
+    private var layoutPixelRatio = 1f
     private var decoderListener: ((Surface?) -> Unit)? = null
     private var decoderSurface: Surface? = null
     private var displaySurface: Surface? = null
@@ -141,6 +148,8 @@ class RoutedVideoView @JvmOverloads constructor(
         val newContent = next.pageUrl != config.pageUrl || next.title != config.title
         val explicitlyReenabled = config.mode == SuperResMode.OFF && next.mode != SuperResMode.OFF
         config = next
+        if(newContent) { layoutSourceWidth = 0; layoutSourceHeight = 0; layoutPixelRatio = 1f }
+        setVideoLayoutSize(next.sourceWidth, next.sourceHeight, next.pixelWidthHeightRatio)
         if(newContent || explicitlyReenabled) {
             failure = null
             errorReported = false
@@ -152,6 +161,17 @@ class RoutedVideoView @JvmOverloads constructor(
         reconcile()
         requestLayout()
         publish()
+    }
+
+    /** Layout-only geometry, including sizes reported between two UI updates. */
+    fun setVideoLayoutSize(width: Int, height: Int, pixelWidthHeightRatio: Float = 1f) {
+        checkMain()
+        if(disposed || width <= 0 || height <= 0 ||
+            layoutSourceWidth == width && layoutSourceHeight == height && layoutPixelRatio == pixelWidthHeightRatio) return
+        layoutSourceWidth = width
+        layoutSourceHeight = height
+        layoutPixelRatio = pixelWidthHeightRatio
+        requestLayout()
     }
 
     fun setCompare(split: Float) {
@@ -263,8 +283,8 @@ class RoutedVideoView @JvmOverloads constructor(
 
     private fun childRect(w: Int, h: Int): SuperResImageRect {
         if(glLayout) return SuperResImageRect(0f, 0f, w.toFloat(), h.toFloat())
-        return SuperResPolicy.imageRect(config.sourceWidth, config.sourceHeight, w, h,
-            config.fit, config.pixelWidthHeightRatio).takeIf { it.width > 0 && it.height > 0 }
+        return SuperResPolicy.imageRect(layoutSourceWidth, layoutSourceHeight, w, h,
+            config.fit, layoutPixelRatio).takeIf { it.width > 0 && it.height > 0 }
             ?: SuperResImageRect(0f, 0f, w.toFloat(), h.toFloat())
     }
 

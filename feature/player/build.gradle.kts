@@ -13,9 +13,11 @@ abstract class PlayerTrackTestAssetsTask : Sync() {
     @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
 }
 val trackTestAssets = tasks.register<PlayerTrackTestAssetsTask>("preparePlayerTrackTestAssets") {
-    from(rootProject.file("app/src/androidTest/assets/media/m3-tracks"))
+    from(rootProject.file("app/src/androidTest/assets/media/m3-tracks")) { into("tracks") }
+    from(rootProject.file("app/src/androidTest/assets/media/cached-ranges/dash")) { into("dash-cache") }
+    from(rootProject.file("app/src/androidTest/assets/media/dash")) { into("dash-av") }
     outputDirectory.set(layout.buildDirectory.dir("generated/player-track-test-assets"))
-    into(outputDirectory.dir("tracks"))
+    into(outputDirectory)
 }
 android {
     namespace = "app.miru.player"

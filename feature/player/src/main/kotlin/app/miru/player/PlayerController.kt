@@ -14,6 +14,7 @@ import androidx.media3.datasource.*
 import androidx.media3.exoplayer.*
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.session.MediaSession
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -95,7 +96,10 @@ class PlayerController(
     private var embeddedSubtitleText = ""
     private var subtitleImport: Job? = null
     private var subtitleImportRevision = 0L
-    private var lastVideoSize = 0 to 0
+    private var lastVideoSize = VideoSize.UNKNOWN
+    // Layout remains known for this request while a replacement decoder is still
+    // reporting UNKNOWN. Current decoder metadata in PlayerSnapshot stays separate.
+    internal val videoLayoutSize: VideoSize get() = lastVideoSize
     private var lastSave = 0L
     private val progressKey = PlaybackPolicy.progressKey(request.pageUrl, request.url)
     private val settingsRepository = PlayerPreferencesRepository(context)
@@ -149,8 +153,9 @@ class PlayerController(
                 offline?.dataSourceFactory, forceProgressive)
             mainSourceSession = sourceSession
             val source = sourceSession.createMediaSource()
-            if(disk != null && source is HlsMediaSource && sourceSession.hlsCacheCatalog != null) {
-                cachedTimeline = PlayerCachedTimeline(created, sourceSession, disk, scope) { ranges ->
+            val cachedKind = when(source) { is HlsMediaSource -> CachedSourceKind.HLS; is DashMediaSource -> CachedSourceKind.DASH; else -> null }
+            if(disk != null && cachedKind != null) {
+                cachedTimeline = PlayerCachedTimeline(created, sourceSession, disk, scope, cachedKind) { ranges ->
                     if(!released && revision == sourceRevision) mutableDiskRanges.value = ranges
                 }
             }
@@ -289,9 +294,10 @@ class PlayerController(
             (format?.bitrate ?: 0).coerceAtLeast(0), (format?.frameRate ?: 0f).coerceAtLeast(0f),
             size.pixelWidthHeightRatio,
             transfer == C.COLOR_TRANSFER_ST2084 || transfer == C.COLOR_TRANSFER_HLG, format?.drmInitData != null)
-        if(size.width > 0 && size.height > 0 && lastVideoSize != (size.width to size.height)) {
-            lastVideoSize = size.width to size.height
-            runCatching { request.onVideoSize?.invoke(size.width, size.height) }
+        if(size.width > 0 && size.height > 0) {
+            val changed = lastVideoSize.width != size.width || lastVideoSize.height != size.height
+            lastVideoSize = size
+            if(changed) runCatching { request.onVideoSize?.invoke(size.width, size.height) }
         }
         mutable.value = mutable.value.copy(ready = mutable.value.ready || target.playbackState == Player.STATE_READY || target.playbackState == Player.STATE_ENDED,
             playing = target.isPlaying, buffering = waitingForNetwork || target.playbackState == Player.STATE_BUFFERING,

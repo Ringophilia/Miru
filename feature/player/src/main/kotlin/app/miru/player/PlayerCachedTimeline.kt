@@ -14,21 +14,27 @@ import androidx.media3.datasource.cache.Cache
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.MediaLoadData
+import androidx.media3.exoplayer.dash.manifest.DashManifest
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
 
-/** Source-owned HLS selection/index publication. Player access is on its application thread; IO is not. */
+internal enum class CachedSourceKind { HLS, DASH }
+
+/** Source-owned selection/index publication. Player access is on its application thread; IO is not. */
 internal class PlayerCachedTimeline(
     private val player: ExoPlayer,
     private val session: PlaybackSourceSession,
     cache: Cache,
     parent: CoroutineScope,
+    private val kind: CachedSourceKind = CachedSourceKind.HLS,
     private val publish: (List<CachedTimeRange>) -> Unit,
 ) : Closeable {
-    private val catalog = requireNotNull(session.hlsCacheCatalog)
+    private val catalog = if(kind == CachedSourceKind.HLS) requireNotNull(session.hlsCacheCatalog) else null
+    private val dashCatalog = if(kind == CachedSourceKind.DASH) requireNotNull(session.dashCacheCatalog) else null
+    private val revision = catalog?.revision ?: requireNotNull(dashCatalog).revision
     private val job = SupervisorJob(parent.coroutineContext[Job])
     private val scope = CoroutineScope(parent.coroutineContext + job)
     private val tracker = CachedTimelineTracker(cache, scope)
@@ -38,13 +44,14 @@ internal class PlayerCachedTimeline(
     private val applicationHandler = Handler(player.applicationLooper)
     private var periodUid: Any? = null
     private val downstream = LinkedHashMap<Int, Format>()
+    private val pendingDownstream = LinkedHashMap<Any, MutableMap<Int, Format>>()
     private var input: Input? = null
     private var published: Input? = null
     private var mapping: Job? = null
 
     private data class Input(val periodUid: Any, val positionInWindowUs: Long, val durationUs: Long,
         val tracks: Tracks, val parameters: TrackSelectionParameters, val downstream: Map<Int, Format>,
-        val catalogRevision: Long, val resourceRevision: Long)
+        val catalogRevision: Long, val resourceRevision: Long, val manifest: Any?, val localPeriodIndex: Int)
 
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
@@ -56,12 +63,16 @@ internal class PlayerCachedTimeline(
     private val analytics = object : AnalyticsListener {
         override fun onDownstreamFormatChanged(eventTime: AnalyticsListener.EventTime, mediaLoadData: MediaLoadData) {
             if(closed) return
-            val uid = currentPeriod()?.uid ?: return
-            if(eventTime.mediaPeriodId?.periodUid != uid) return
-            usePeriod(uid)
+            val uid = eventTime.mediaPeriodId?.periodUid ?: return
+            if(player.currentTimeline.getIndexOfPeriod(uid) < 0) return
             val format = mediaLoadData.trackFormat ?: return
-            val kinds = catalog.snapshot().identities.values.filter { it.format == format }.map { it.kind }.distinct()
-            kinds.forEach { downstream[it] = format }
+            val types = if(kind == CachedSourceKind.HLS) requireNotNull(catalog).snapshot().identities.values
+                .filter { it.format == format }.map { it.kind }.distinct()
+                else listOf(mediaLoadData.trackType)
+            val pending = pendingDownstream.getOrPut(uid) { linkedMapOf() }
+            types.forEach { pending[it] = format }
+            while(pendingDownstream.size > 4) pendingDownstream.remove(pendingDownstream.keys.first())
+            if(currentPeriod()?.uid == uid) { usePeriod(uid); downstream.putAll(pending); pendingDownstream.remove(uid) }
             refresh()
         }
     }
@@ -69,7 +80,7 @@ internal class PlayerCachedTimeline(
     init {
         player.addListener(listener)
         player.addAnalyticsListener(analytics)
-        scope.launch { catalog.revision.collect { refresh() } }
+        scope.launch { revision.collect { refresh() } }
         scope.launch { session.cacheBindingRevision.collect { refresh() } }
         scope.launch { tracker.ranges.collect { ranges ->
             val current = published
@@ -89,7 +100,7 @@ internal class PlayerCachedTimeline(
     }
 
     private fun usePeriod(uid: Any) {
-        if(periodUid != uid) { periodUid = uid; downstream.clear() }
+        if(periodUid != uid) { periodUid = uid; downstream.clear(); pendingDownstream.remove(uid)?.let(downstream::putAll) }
     }
 
     /** Safe for the controller's application-thread ticker as well as player events. */
@@ -100,23 +111,34 @@ internal class PlayerCachedTimeline(
         usePeriod(requireNotNull(period.uid))
         val timeline = player.currentTimeline
         val window = timeline.getWindow(period.windowIndex, Timeline.Window())
-        val snapshot = catalog.snapshot()
+        val snapshot = catalog?.snapshot()
+        val dashSnapshot = dashCatalog?.snapshot()
         val next = Input(requireNotNull(period.uid), period.positionInWindowUs, window.durationUs,
-            player.currentTracks, player.trackSelectionParameters, downstream.toMap(), snapshot.revision, session.cacheBindingRevision.value)
+            player.currentTracks, player.trackSelectionParameters, downstream.toMap(), snapshot?.revision ?: requireNotNull(dashSnapshot).revision, session.cacheBindingRevision.value,
+            window.manifest, player.currentPeriodIndex - window.firstPeriodIndex)
         if(input == next) return
         input = next
         invalidate()
-        if(snapshot.playlists.isEmpty()) return
-        val selected = HlsCachedSelection.select(snapshot, next.tracks, next.parameters, next.downstream) ?: return
+        val hlsSelected = if(snapshot == null) null else {
+            HlsCachedSelection.select(snapshot, next.tracks, next.parameters, next.downstream) ?: return
+        }
+        val dashSelected = if(dashSnapshot == null) null else {
+            DashCachedSelection.select(dashSnapshot, next.manifest as? DashManifest ?: return,
+                next.localPeriodIndex, next.tracks, next.parameters, next.downstream) ?: return
+        }
         val epoch = generation.get()
         mapping = scope.launch(Dispatchers.IO) {
             try {
                 val resources = session.cacheResourceSnapshot()
                 if(resources.revision != next.resourceRevision) return@launch
-                val tracks = selected.mapIndexed { index, selectedPlaylist ->
+                val tracks = if(hlsSelected != null) hlsSelected.mapIndexed { index, selectedPlaylist ->
                     ensureActive()
-                    HlsCachedTimelineIndex.track("selected-$index", selectedPlaylist.playlist, snapshot.initialStartTimeUs,
+                    HlsCachedTimelineIndex.track("selected-$index", selectedPlaylist.playlist, requireNotNull(snapshot).initialStartTimeUs,
                         next.positionInWindowUs, next.durationUs.takeIf { it >= 0 }, resources::rangeFor)
+                } else requireNotNull(dashSelected).mapIndexed { index, selectedRepresentation ->
+                    ensureActive()
+                    DashCachedTimelineIndex.track("selected-$index", selectedRepresentation, requireNotNull(dashSnapshot).independent(selectedRepresentation.representation),
+                        next.positionInWindowUs, next.durationUs.takeIf { it >= 0 }, resources, currentCoroutineContext())
                 }
                 withContext(Dispatchers.Main.immediate) {
                     if(!closed && generation.get() == epoch && valid(next)) {
@@ -131,7 +153,7 @@ internal class PlayerCachedTimeline(
         }
     }
 
-    private fun valid(current: Input) = current.catalogRevision == catalog.revision.value &&
+    private fun valid(current: Input) = current.catalogRevision == revision.value &&
         current.resourceRevision == session.cacheBindingRevision.value
 
     private fun invalidate() {
@@ -145,7 +167,7 @@ internal class PlayerCachedTimeline(
     override fun close() {
         retirePublication()
         job.cancel()
-        downstream.clear(); input = null; published = null
+        downstream.clear(); pendingDownstream.clear(); input = null; published = null
     }
 
     private fun retirePublication() {

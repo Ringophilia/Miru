@@ -46,11 +46,16 @@ class PlaybackSourceSession(
     private val cache = if(offlineDataSourceFactory == null) cache else null
     private val bindings = CachedResourceBindings()
     internal val hlsCacheCatalog = if(this.cache != null) HlsCacheCatalog() else null
+    internal val dashCacheCatalog = if(this.cache != null) DashCacheCatalog() else null
     @Volatile private var closed = false
     /** Invalidation only; format adapters obtain a coherent snapshot on their IO worker. */
     val cacheBindingRevision = bindings.revision
     fun cacheResourceSnapshot(): CachedResourceSnapshot = bindings.snapshot()
-    override fun close() { closed = true; bindings.close(); hlsCacheCatalog?.close() }
+    internal fun bindMainCacheFactory(factory: DataSource.Factory): DataSource.Factory {
+        check(cache != null && !closed) { "No active streaming-cache binding" }
+        return DataSource.Factory { CacheBindingDataSource(factory.createDataSource(), cacheKeyFactory, bindings) }
+    }
+    override fun close() { closed = true; bindings.close(); hlsCacheCatalog?.close(); dashCacheCatalog?.close() }
     private val configuration = requireNotNull(mediaItem.localConfiguration)
     private val url = configuration.uri.toString()
     // The v2 namespace prevents reuse of old comma/equal-joined partitions. Those
@@ -103,9 +108,7 @@ class PlaybackSourceSession(
         // preview lease can populate cache, but cannot replace main auth/index
         // metadata. Private/offline never bind the streaming cache at all.
         val media = if(preview != null) preview.track(cached)
-            else if(cache != null) DataSource.Factory {
-                CacheBindingDataSource(cached.createDataSource(), cacheKeyFactory, bindings)
-            } else cached
+            else if(cache != null) bindMainCacheFactory(cached) else cached
         val type = configuration.mimeType.orEmpty().lowercase()
         val path = configuration.uri.path.orEmpty().lowercase()
         val adaptive = path.endsWith(".m3u8") || path.endsWith(".mpd") || type.contains("mpegurl") || type.contains("dash+xml")
@@ -114,7 +117,10 @@ class PlaybackSourceSession(
                 HlsMediaSource.Factory { dataType -> (if(dataType == C.DATA_TYPE_MANIFEST) manifest else media).createDataSource() }
                     .apply { if(preview == null) hlsCacheCatalog?.let { setPlaylistTrackerFactory(it.factory) } }
             !forceProgressive && (path.endsWith(".mpd") || type.contains("dash+xml")) ->
-                DashMediaSource.Factory(DefaultDashChunkSource.Factory(media), manifest)
+                if(preview == null && dashCacheCatalog != null) DashMediaSource.Factory(
+                    ObservedDashChunkSourceFactory(media, dashCacheCatalog, ::cacheKey), manifest)
+                    .setManifestParser(DashCacheManifestParser(dashCacheCatalog))
+                else DashMediaSource.Factory(DefaultDashChunkSource.Factory(media), manifest)
             else -> ProgressiveMediaSource.Factory(if(adaptive) manifest else media)
         }
     }
