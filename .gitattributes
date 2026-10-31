@@ -3,3 +3,5 @@ third_party/mozilla-blocklist/snapshot/** -text
 third_party/mozilla-permission-policy/*.mjs -text
 third_party/mozilla-permission-policy/upstream/*.mjs -text
 feature/superres/src/main/assets/anime4k/** -text
+# Packet references are byte-pinned by the generated fixture manifest.
+app/src/androidTest/assets/media/cached-ranges/*.json -text
