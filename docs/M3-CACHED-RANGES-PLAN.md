@@ -2,7 +2,8 @@
 
 2026-10-31。需求保持MIRU-SPEC §8.4/8.5/P11的完整范围：从真实SimpleCache spans计算可能
 不连续的磁盘时间区段，显示在内存buffer层之下，并以停源回拖验证。**P11仍pending**。
-本批完成精确覆盖计算、监听基础层和唯一key factory提取，尚未接入主controller、格式适配或UI。
+首批完成精确覆盖计算、监听基础层和唯一key factory提取。后续[主源资源绑定](M3-CACHE-BINDINGS-VALIDATION.md)
+已接入实际main session并有真实磁盘基础证据；格式适配、timeline/选轨和UI仍待。
 不能用本批单测把现有进度条称为已有磁盘区段。
 
 ## 已实现的基础层
@@ -46,10 +47,12 @@ callback、parent取消、计算期间淘汰/取消、cache异常重试、touch�
 
 ## 后续实现边界与完整验收门
 
-1. **主session与资源binding。** controller须保留实际主PlaybackSourceSession；preview单独
-   刷新headers不能改主索引。记录真实原open DataSpec计算出的key及资源坐标；不可在知道EOF
-   长度后重造DataSpec。无扩展名资源的`(0, UNSET)`和`(0, knownLength)`可能触发不同归一化。
-   cache坐标是DataSpec.position，不盲加uriPositionOffset。所有关联仅内存，不保存URL/凭据。
+1. **主session与资源binding。** [绑定基础](M3-CACHE-BINDINGS-VALIDATION.md)已保留实际main session，
+   记录真实原open的key/坐标/长度，未知EOF后不重造DataSpec；preview不改主绑定，私密/离线隔离。
+   JVM71/71和真实磁盘11/11覆盖基础门，尚须由格式adapter正确消费同代snapshot，不能把绑定长度
+   当作完整磁盘覆盖。无扩展名签名query及uriPositionOffset已验证，完整HTTP/重试/时轴矩阵仍待。
+   同URI的整资源与Range可能落在不同key；DASH merged load须从实际父请求key拆分子范围，不能
+   重造子DataSpec猜key。格式计算发布须同时核对source/selection代次与binding snapshot revision。
 2. **源/时轴/选轨代次。** source、timeline、period/window、representation及index变化均撤旧
    plan；private不取得stream cache也不建磁盘层，offline沿用独立UUID存储/无upstream工厂。
    不将任意ABR码率的缓存union冒充当前选轨可断网播放。

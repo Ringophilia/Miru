@@ -232,6 +232,13 @@
 - `7d52837`导入独立MP4公开表能力预验：基线同次3/3（0.166秒）；另复杂同次2通过/1失败（0.281秒），强VBR/B帧头尾全部逐包字段通过，edit与ffprobe PTS差约16.7ms。单edit诊断仍原断言失败（0.218秒），实际265项byte/flags/hash全等、PTS全吻合独立raw表/edit公式；固定FFmpeg另作首呈现点归零。保留原失败，不改期望、不删preroll、不拼6/6。完整证据、输入SHA及后续解码/停源门见[预验记录](M3-CACHED-RANGES-PREFLIGHT.md)。
 - 当前产品进度条尚未显示磁盘区段；以上基础和解析门不能代替实际格式映射、播放呈现、缓存洞与UI验证，也不挪用旧0.5.11的135项/ARM64包作为本批设备或release通过证据。
 
+## M3 主源资源绑定（2026-10-31，P11仍pending）
+
+- controller已保留实际主PlaybackSourceSession，原始DataSpec key/position/length绑定接入外层CacheDataSource；未知EOF不重造key，uriPositionOffset不改缓存坐标。metadata仅内存/最多4096项、不可变snapshot、revision与旧open/EOF/关闭失效；preview不写主绑定，private/offline不建stream绑定。后续格式adapter和时轴/选轨索引仍待。
+- `G:\Projects\Miru`基线d5619a2加7项源码/配置/测试，两轮540项冻结源均无漂移，build-01成功3分36秒、build-02成功2分38秒；播放器JVM70/70，0失败/错误/跳过，lint0错误/22警告。首设备轮因表达式测试返回List发生JUnit初始化失败，实际用例0项执行，保留原日志；修正后独立player固定APK真实SimpleCache **10/10（1.166秒）**，含未提交/partial/异常、受控0–4/8–12秒字节洞、commit/remove/clear、实际WAV主/preview/private/offline路径和迟到source关闭门。
+- build-02主/测试APK的4类应用专项23/23通过（180.774秒）。复查新增失败后迟到EOF反例，原实现1项确实失败（把128字节失败前缀重新登记为完整资源）；修复为失败终结observation，只有新open可重试。最终build-03成功2分50秒，541项输入无漂移，JVM**71/71**、lint0/22，独立player真实磁盘**11/11（2.090秒）**，另最终固定主/测试APK同次4类应用专项**23/23（180.213秒）**。不同轮次/包的结果分别保留，不拼成整套通过。
+- 本批不是0.5.11发行重验，没有新ARM64/R8/正式签名结果。完整输入与SHA、测试负例和证据边界见[主源绑定验证](M3-CACHE-BINDINGS-VALIDATION.md)；受控字节区间/WAV不代替真实视频格式映射、解码PTS/RGB、磁盘UI和停源seek。
+
 ## M3 尚待推进
 
 - 离线已接入 Media3 DownloadManager / DownloadService、HLS / DASH 清晰度与关联音轨 / 字幕、独立非 LRU 缓存、统一下载页与 upstream-free 播放。直链 MP4 保留普通下载引擎；实现与准确验证边界见 `M3-OFFLINE-VALIDATION.md`。下载进行中进程终止、真机网络 / 重启与后台矩阵仍需专项，不能用已完成项的重启恢复代替。

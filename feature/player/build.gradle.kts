@@ -9,7 +9,10 @@ plugins {
 android {
     namespace = "app.miru.player"
     compileSdk = 37
-    defaultConfig { minSdk = 26 }
+    defaultConfig {
+        minSdk = 26
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
@@ -36,4 +39,6 @@ dependencies {
     ksp("androidx.room:room-compiler:2.8.5")
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
 }

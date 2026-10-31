@@ -56,6 +56,7 @@ class PlayerController(
     private var initialization: Job? = null
     private var authentication: Job? = null
     private var sourceRevision = 0L
+    private var mainSourceSession: PlaybackSourceSession? = null
     private var returnedToWeb = false
     private var released = false
     private var authenticationRetried = false
@@ -101,6 +102,7 @@ class PlayerController(
     private fun open(position: Long, decoder: String, restore: Boolean = false) {
         if(released) return
         val revision = ++sourceRevision
+        mainSourceSession?.close(); mainSourceSession = null
         resetPreviewSource()
         authentication?.cancel(); authentication = null
         initialization?.cancel()
@@ -138,8 +140,10 @@ class PlayerController(
             val item = (offline?.mediaItem?.buildUpon() ?: MediaItem.Builder().setUri(request.url))
                 .setMediaMetadata(MediaMetadata.Builder().setTitle(if(request.isPrivate) context.getString(R.string.player_title) else request.title).build())
                 .apply { request.mimeType?.let(::setMimeType) }.build()
-            val source = PlaybackSourceSession(context, revision, item, headers, disk,
-                offline?.dataSourceFactory, forceProgressive).createMediaSource()
+            val sourceSession = PlaybackSourceSession(context, revision, item, headers, disk,
+                offline?.dataSourceFactory, forceProgressive)
+            mainSourceSession = sourceSession
+            val source = sourceSession.createMediaSource()
             val preview = PreviewSource(revision, item, disk, offline?.dataSourceFactory, forceProgressive)
             previewSource = preview
             bindPreview(preview)
@@ -255,6 +259,7 @@ class PlayerController(
     private fun failBackToWeb() {
         if(released || returnedToWeb) return
         returnedToWeb = true
+        mainSourceSession?.close(); mainSourceSession = null
         previewAuthentication?.cancel(); previewAuthentication = null
         seekPreview.hide()
         player?.pause()
@@ -477,6 +482,7 @@ class PlayerController(
         if(released) return
         save()
         released = true; sourceRevision++; previewRevision++; speedRevision++; subtitleImportRevision++
+        mainSourceSession?.close(); mainSourceSession = null
         previewSource = null
         previewAuthentication?.cancel(); previewAuthentication = null
         seekPreview.close()

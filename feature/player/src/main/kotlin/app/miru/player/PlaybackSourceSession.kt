@@ -28,6 +28,8 @@ import java.io.Closeable
  * Immutable current-header/source revision, shared by playback and preview policy.
  * The owner decides whether disk is allowed: private playback passes null. Offline
  * always ignores disk and never creates an HTTP upstream, including for manifests.
+ * close() retires metadata and future factories; the player/preview lease owns
+ * release of its already-created sources and transport.
  */
 class PlaybackSourceSession(
     context: Context,
@@ -38,10 +40,16 @@ class PlaybackSourceSession(
     private val offlineDataSourceFactory: DataSource.Factory? = null,
     private val forceProgressive: Boolean = false,
     httpClient: OkHttpClient = OkHttpClient.Builder().build(),
-) {
+) : Closeable {
     private val context = context.applicationContext
     private val headers = headers.toMap()
     private val cache = if(offlineDataSourceFactory == null) cache else null
+    private val bindings = CachedResourceBindings()
+    @Volatile private var closed = false
+    /** Invalidation only; format adapters obtain a coherent snapshot on their IO worker. */
+    val cacheBindingRevision = bindings.revision
+    fun cacheResourceSnapshot(): CachedResourceSnapshot = bindings.snapshot()
+    override fun close() { closed = true; bindings.close() }
     private val configuration = requireNotNull(mediaItem.localConfiguration)
     private val url = configuration.uri.toString()
     // The v2 namespace prevents reuse of old comma/equal-joined partitions. Those
@@ -73,6 +81,7 @@ class PlaybackSourceSession(
     fun createMediaSource(): MediaSource = factory(null).createMediaSource(mediaItem)
 
     fun previewLease(): PreviewSourceLease {
+        check(!closed) { "Playback source session is closed" }
         // Offline still owns/interrupts its preview file/cache sources, but never
         // constructs an HTTP upstream (or even a preview HTTP client).
         val transport = PreviewTransport(if(offlineDataSourceFactory == null) client else null)
@@ -81,6 +90,7 @@ class PlaybackSourceSession(
     }
 
     private fun factory(preview: PreviewTransport?): MediaSource.Factory {
+        check(!closed) { "Playback source session is closed" }
         val upstream = offlineDataSourceFactory ?: DefaultDataSource.Factory(context,
             OkHttpDataSource.Factory(preview ?: client as Call.Factory).setDefaultRequestProperties(headers))
         val cached = cache?.let { disk -> CacheDataSource.Factory().setCache(disk)
@@ -88,7 +98,13 @@ class PlaybackSourceSession(
             .setCacheKeyFactory(cacheKeyFactory)
         } ?: upstream
         val manifest = preview?.track(upstream) ?: upstream
-        val media = preview?.track(cached) ?: cached
+        // Only actual main-source opens can establish its resource binding. A
+        // preview lease can populate cache, but cannot replace main auth/index
+        // metadata. Private/offline never bind the streaming cache at all.
+        val media = if(preview != null) preview.track(cached)
+            else if(cache != null) DataSource.Factory {
+                CacheBindingDataSource(cached.createDataSource(), cacheKeyFactory, bindings)
+            } else cached
         val type = configuration.mimeType.orEmpty().lowercase()
         val path = configuration.uri.path.orEmpty().lowercase()
         val adaptive = path.endsWith(".m3u8") || path.endsWith(".mpd") || type.contains("mpegurl") || type.contains("dash+xml")
