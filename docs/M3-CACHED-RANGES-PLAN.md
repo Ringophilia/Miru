@@ -7,7 +7,8 @@
 之后，[0.5.12普通HLS层](M3-CACHED-TIMELINE-UI-VALIDATION.md)已串联实际选轨、发布和UI，受控停供
 解码/像素通过。[0.5.13普通DASH](M3-DASH-CACHED-RANGES-VALIDATION.md)后续接入实际holder、sidx、
 PTO、merged子range和选中AV；当前UI7/7含停供新decoder的9秒PTS/蓝帧。整窗口多period/动态DASH、
-MP4/其他格式、复杂HLS/资源闭合与完整真机矩阵仍待，不能据局部通过调整完整P11状态。
+[0.5.14资源闭合](M3-CACHE-RESOURCE-CLOSURE-VALIDATION.md)补普通流跨会话未访问资源、SDK元数据及动态监听，
+完整Range/鉴权/未知资源矩阵、MP4/其他格式、复杂HLS与真机仍待，不能据局部通过调整完整P11状态。
 不能用本批单测把现有进度条称为已有磁盘区段。
 
 ## 已实现的基础层

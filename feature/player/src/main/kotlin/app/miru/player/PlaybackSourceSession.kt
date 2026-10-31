@@ -51,9 +51,11 @@ class PlaybackSourceSession(
     /** Invalidation only; format adapters obtain a coherent snapshot on their IO worker. */
     val cacheBindingRevision = bindings.revision
     fun cacheResourceSnapshot(): CachedResourceSnapshot = bindings.snapshot()
+    internal fun cacheResourceResolver(snapshot: CachedResourceSnapshot, lengths: (String) -> Long): CachedResourceLookup =
+        CachedResourceResolver(snapshot, cacheKeyFactory, lengths) { cache != null && !closed }
     internal fun bindMainCacheFactory(factory: DataSource.Factory): DataSource.Factory {
         check(cache != null && !closed) { "No active streaming-cache binding" }
-        return DataSource.Factory { CacheBindingDataSource(factory.createDataSource(), cacheKeyFactory, bindings) }
+        return DataSource.Factory { CacheBindingDataSource(CacheMetadataDataSource(factory.createDataSource(), cache), cacheKeyFactory, bindings) }
     }
     override fun close() { closed = true; bindings.close(); hlsCacheCatalog?.close(); dashCacheCatalog?.close() }
     private val configuration = requireNotNull(mediaItem.localConfiguration)
@@ -107,7 +109,9 @@ class PlaybackSourceSession(
         // Only actual main-source opens can establish its resource binding. A
         // preview lease can populate cache, but cannot replace main auth/index
         // metadata. Private/offline never bind the streaming cache at all.
-        val media = if(preview != null) preview.track(cached)
+        val media = if(preview != null) preview.track(if(cache == null) cached else DataSource.Factory {
+            CacheMetadataDataSource(cached.createDataSource(), cache)
+        })
             else if(cache != null) bindMainCacheFactory(cached) else cached
         val type = configuration.mimeType.orEmpty().lowercase()
         val path = configuration.uri.path.orEmpty().lowercase()
@@ -118,7 +122,7 @@ class PlaybackSourceSession(
                     .apply { if(preview == null) hlsCacheCatalog?.let { setPlaylistTrackerFactory(it.factory) } }
             !forceProgressive && (path.endsWith(".mpd") || type.contains("dash+xml")) ->
                 if(preview == null && dashCacheCatalog != null) DashMediaSource.Factory(
-                    ObservedDashChunkSourceFactory(media, dashCacheCatalog, ::cacheKey), manifest)
+                    ObservedDashChunkSourceFactory(media, dashCacheCatalog, ::cacheKey, inferUnvisitedRequests = true), manifest)
                     .setManifestParser(DashCacheManifestParser(dashCacheCatalog))
                 else DashMediaSource.Factory(DefaultDashChunkSource.Factory(media), manifest)
             else -> ProgressiveMediaSource.Factory(if(adaptive) manifest else media)

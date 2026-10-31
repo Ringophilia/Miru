@@ -147,6 +147,42 @@ class CachedTimelineUiIntegrationTest {
         assertEquals(before, after)
     }
 
+    @Test fun aFreshSourceAtTheEndStillShowsUnvisitedCachedRedWithoutMediaSupply() = withPlayer { running ->
+        removeMiddle(running)
+        val before = running.origin.calls.count { it.path.endsWith(".ts") }
+        running.origin.mediaAvailable.set(false) // A fresh source may still fetch its playlist.
+        var old: androidx.media3.exoplayer.ExoPlayer? = null
+        var revision = 0L
+        running.scenario.onActivity {
+            old = it.playback.player; revision = it.playback.state.value.sourceRevision
+            it.playback.seek(117_000)
+            it.playback.decoder("software")
+            assertTrue(it.playback.diskRanges.value.isEmpty())
+        }
+        compose.waitUntil(30_000) {
+            var ready = false
+            running.scenario.onActivity {
+                if(it.playback.state.value.error) throw AssertionError("Cached HLS source restart requested stopped media")
+                ready = it.playback.state.value.ready && it.playback.state.value.sourceRevision > revision && it.playback.player !== old
+                if(ready) it.playback.pause()
+            }
+            ready
+        }
+        val pts = AtomicLong(-1)
+        var output: RoutedVideoView? = null
+        running.scenario.onActivity {
+            checkNotNull(it.playback.player).setVideoFrameMetadataListener { value, _, _, _ -> pts.set(value) }
+            output = findVideo(it.window.decorView)
+            it.playback.seek(117_000)
+        }
+        compose.waitUntil(10_000) { abs(pts.get() - 117_000_000) <= 150_000 }
+        val frame = blueFrame(requireNotNull(output))
+        try { File(context.filesDir, "cached-hls-reopened-blue.png").outputStream().use { frame.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+        finally { frame.recycle() }
+        assertEquals("Reopening must not fetch media to discover old disk ranges", before, running.origin.calls.count { it.path.endsWith(".ts") })
+        compose.waitUntil(10_000) { ranges(running) == HOLES }
+    }
+
     @Test fun decoderRebuildWithdrawsTheOldLayerBeforeTheNewSourceBecomesReady() = withPlayer { running ->
         var oldPlayer: androidx.media3.exoplayer.ExoPlayer? = null
         var revision = 0L
@@ -260,6 +296,7 @@ class CachedTimelineUiIntegrationTest {
 private class RangeOrigin(assets: Context) : Closeable {
     class Call(val path: String, val status: Int)
     val available = AtomicBoolean(true)
+    val mediaAvailable = AtomicBoolean(true)
     val calls = CopyOnWriteArrayList<Call>()
     private val running = AtomicBoolean(true)
     private val server = ServerSocket(0, 16, InetAddress.getByName("127.0.0.1"))
@@ -295,8 +332,8 @@ private class RangeOrigin(assets: Context) : Closeable {
         val headers = linkedMapOf<String, String>()
         while(true) { val line = reader.readLine()?.takeIf { it.isNotBlank() } ?: break; headers[line.substringBefore(':').lowercase()] = line.substringAfter(':').trim() }
         val body = files[path.removePrefix("/")]
-        if(!available.get() || body == null) {
-            val code = if(!available.get()) 503 else 404
+        if(!available.get() || !mediaAvailable.get() && path.endsWith(".ts") || body == null) {
+            val code = if(body == null) 404 else 503
             calls += Call(path, code)
             socket.getOutputStream().apply { write("HTTP/1.1 $code Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray()); flush() }
             return

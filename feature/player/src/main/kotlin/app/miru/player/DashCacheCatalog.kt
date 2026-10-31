@@ -21,12 +21,14 @@ internal class DashCacheRequest(val uri: String, val position: Long, val length:
 
 /** One exact child range inside an actually emitted (possibly merged) request. */
 internal class DashCacheResource(val request: DashCacheRequest, val position: Long, val length: Long, val resourceUri: String? = null) {
-    fun resolve(resources: CachedResourceSnapshot): CachedResourceRange? {
+    fun resolve(resources: CachedResourceSnapshot): CachedResourceRange? = resolve(resources.lookup)
+    fun resolve(resources: CachedResourceLookup): CachedResourceRange? {
         if(position < request.position || position < 0 || length != -1L && length <= 0) return null
         if(length > 0) {
             if(length > Long.MAX_VALUE - position) return null
             if(request.length > 0 && (request.length > Long.MAX_VALUE - request.position || position + length > request.position + request.length)) return null
-            return CachedResourceRange(request.key, position, length)
+            return if(resources.accepts(request.key, request.uri, request.position, request.length, position + length))
+                CachedResourceRange(request.key, position, length) else null
         }
         val actual = resources.rangeFor(request.uri, request.position, request.length) ?: return null
         if(actual.key != request.key || actual.position != request.position || actual.endExclusive <= position) return null
@@ -55,6 +57,7 @@ internal class DashCacheRepresentation(
     val indexData: DashCacheResource?,
     media: Map<Long, DashCacheResource>,
     val periodDurationUs: Long = androidx.media3.common.C.TIME_UNSET,
+    val unvisitedMedia: ((RangedUri) -> DashCacheResource?)? = null,
 ) {
     val media: Map<Long, DashCacheResource> = Collections.unmodifiableMap(LinkedHashMap(media))
 }

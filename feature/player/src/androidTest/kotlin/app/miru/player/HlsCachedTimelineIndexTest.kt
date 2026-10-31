@@ -41,6 +41,20 @@ class HlsCachedTimelineIndexTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
 
+    @Test fun cancellingTheIndexWorkerStopsWhileResourceDependenciesAreStillBeingResolved() {
+        val playlist = parse(buildString { repeat(400) { append("#EXTINF:4,\ns$it.ts\n") } })
+        val job = kotlinx.coroutines.Job()
+        var resolved = 0
+        try {
+            HlsCachedTimelineIndex.track("v", playlist, 0, 0, null, { _, _, _ ->
+                if(++resolved == 3) job.cancel()
+                CachedResourceRange("owned", 0, 16)
+            }, context = job)
+            fail("A retired source must not finish the remaining dependency scan")
+        } catch(_: kotlinx.coroutines.CancellationException) { assertEquals(3, resolved) }
+        finally { job.cancel() }
+    }
+
     @Test fun independentVbrSegmentsKeepTheDeclaredTimeHoleInsteadOfByteProportions() {
         val playlist = parse("#EXTINF:2.5,\na.ts\n#EXTINF:1.5,\nb.ts\n#EXTINF:4,\nc.ts")
         val fixture = Resources().apply { put("a.ts", 13); put("b.ts", 50_000, cached = false); put("c.ts", 97) }

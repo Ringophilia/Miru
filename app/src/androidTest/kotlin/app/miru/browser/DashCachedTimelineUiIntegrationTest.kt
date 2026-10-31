@@ -143,7 +143,9 @@ class DashCachedTimelineUiIntegrationTest {
         finally { frame.recycle() }
         assertEquals("A fresh decoder must read cached blue, not ask the stopped origin", blueRequests,
             origin.calls.count { it.path == "/base.mp4" && it.from == 15_384L })
-        compose.waitUntil(10_000) { ranges(scenario).any { 9_000_000L in it.startUs until it.endUs } }
+        // The new source has only requested blue. Red remains on disk and must
+        // still appear, even though this session has not opened that media range.
+        compose.waitUntil(10_000) { ranges(scenario) == holes }
         // Removing the initialization/index span must revoke the disk proof even
         // though the prepared decoder can still retain both in memory.
         io { val cache = PlaybackCache.get(context); cache.getCachedSpans(key).single { it.position == 0L }.let(cache::removeSpan) }

@@ -131,20 +131,21 @@ internal class PlayerCachedTimeline(
             try {
                 val resources = session.cacheResourceSnapshot()
                 if(resources.revision != next.resourceRevision) return@launch
-                val tracks = if(hlsSelected != null) hlsSelected.mapIndexed { index, selectedPlaylist ->
-                    ensureActive()
-                    HlsCachedTimelineIndex.track("selected-$index", selectedPlaylist.playlist, requireNotNull(snapshot).initialStartTimeUs,
-                        next.positionInWindowUs, next.durationUs.takeIf { it >= 0 }, resources::rangeFor)
-                } else requireNotNull(dashSelected).mapIndexed { index, selectedRepresentation ->
-                    ensureActive()
-                    DashCachedTimelineIndex.track("selected-$index", selectedRepresentation, requireNotNull(dashSnapshot).independent(selectedRepresentation.representation),
-                        next.positionInWindowUs, next.durationUs.takeIf { it >= 0 }, resources, currentCoroutineContext())
-                }
                 withContext(Dispatchers.Main.immediate) {
                     if(!closed && generation.get() == epoch && valid(next)) {
                         published = next
-                        tracker.replace(tracks, next.durationUs.takeIf { it >= 0 }) {
-                            !closed && generation.get() == epoch && valid(next)
+                        tracker.replaceIndexed(next.durationUs.takeIf { it >= 0 },
+                            { !closed && generation.get() == epoch && valid(next) }) { workerContext, lengths ->
+                            val lookup = session.cacheResourceResolver(resources, lengths)
+                            if(hlsSelected != null) hlsSelected.mapIndexed { index, selectedPlaylist ->
+                                workerContext.ensureActive()
+                                HlsCachedTimelineIndex.track("selected-$index", selectedPlaylist.playlist, requireNotNull(snapshot).initialStartTimeUs,
+                                    next.positionInWindowUs, next.durationUs.takeIf { it >= 0 }, lookup::rangeFor, context = workerContext)
+                            } else requireNotNull(dashSelected).mapIndexed { index, selectedRepresentation ->
+                                workerContext.ensureActive()
+                                DashCachedTimelineIndex.track("selected-$index", selectedRepresentation, requireNotNull(dashSnapshot).independent(selectedRepresentation.representation),
+                                    next.positionInWindowUs, next.durationUs.takeIf { it >= 0 }, resources, workerContext, lookup)
+                            }
                         }
                     }
                 }

@@ -134,6 +134,20 @@ class DashCachedTimelineTest {
         assertEquals(listOf(CachedTimeRange(12_000_000, 14_000_000), CachedTimeRange(18_000_000, 22_000_000)), CachedTimelineCoverage.compute(listOf(track), spans))
     }
 
+    @Test fun overflowingSegmentBoundsCannotBypassTheEnumerationLimit() {
+        val representation = parsed(listXml()).getPeriod(0).adaptationSets.single().representations.single()
+        val index = object : DashCacheIndex {
+            override val firstSegment = Long.MIN_VALUE
+            override val segmentCount = -1L
+            override fun segmentAt(timeUs: Long) = if(timeUs == 0L) Long.MIN_VALUE else Long.MAX_VALUE
+            override fun startUs(segment: Long): Long = error("Must reject bounds before enumerating")
+            override fun durationUs(segment: Long): Long = error("Must reject bounds before enumerating")
+            override fun address(segment: Long): RangedUri = error("Must reject bounds before enumerating")
+        }
+        val selected = DashCacheRepresentation(0, representation, BASE, index, Any(), null, null, emptyMap())
+        assertTrue(DashCachedTimelineIndex.track("v", selected, true, 0, 12_000_000, CachedResourceBindings().snapshot()).intervals.isEmpty())
+    }
+
     @Test fun periodEndCannotPaintTheFollowingPeriodsTimeWithAnOverlongSidxReference() {
         val representation = parsed(listXml()).getPeriod(0).adaptationSets.single().representations.single()
         val index = DashWrappingSegmentIndex(ChunkIndex(intArrayOf(100, 200, 100), longArrayOf(0, 100, 300),

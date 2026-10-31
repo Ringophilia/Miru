@@ -11,6 +11,7 @@ import androidx.media3.exoplayer.LoadingInfo
 import androidx.media3.exoplayer.analytics.PlayerId
 import androidx.media3.exoplayer.dash.BaseUrlExclusionList
 import androidx.media3.exoplayer.dash.DashChunkSource
+import androidx.media3.exoplayer.dash.DashUtil
 import androidx.media3.exoplayer.dash.DefaultDashChunkSource
 import androidx.media3.exoplayer.dash.PlayerEmsgHandler.PlayerTrackEmsgHandler
 import androidx.media3.exoplayer.dash.manifest.DashManifest
@@ -33,6 +34,7 @@ internal class ObservedDashChunkSourceFactory(
     private val key: (DataSpec) -> String,
     private val maxSegmentsPerLoad: Int = 1,
     private val extractors: ChunkExtractor.Factory = BundledChunkExtractor.Factory(),
+    private val inferUnvisitedRequests: Boolean = false,
 ) : DashChunkSource.Factory {
     override fun setSubtitleParserFactory(factory: SubtitleParser.Factory): DashChunkSource.Factory {
         extractors.setSubtitleParserFactory(factory); return this
@@ -53,7 +55,7 @@ internal class ObservedDashChunkSourceFactory(
         transferListener?.let(data::addTransferListener)
         return ObservedDashChunkSource(extractors, errors, manifest, exclusions, periodIndex, adaptationSetIndices,
             selection, trackType, data, elapsedRealtimeOffsetMs, maxSegmentsPerLoad, enableEventMessageTrack,
-            closedCaptionFormats, emsg, playerId, cmcd, catalog, key)
+            closedCaptionFormats, emsg, playerId, cmcd, catalog, key, inferUnvisitedRequests)
     }
 }
 
@@ -61,9 +63,9 @@ internal class ObservedDashChunkSourceFactory(
 internal class ObservedDashChunkSource(
     extractors: ChunkExtractor.Factory, errors: LoaderErrorThrower, manifest: DashManifest, exclusions: BaseUrlExclusionList,
     periodIndex: Int, adaptationSetIndices: IntArray, selection: ExoTrackSelection, private val kind: Int,
-    data: DataSource, elapsedRealtimeOffsetMs: Long, maxSegmentsPerLoad: Int, enableEventMessageTrack: Boolean,
+    data: DataSource, elapsedRealtimeOffsetMs: Long, private val maxSegmentsPerLoad: Int, enableEventMessageTrack: Boolean,
     closedCaptionFormats: List<Format>, emsg: PlayerTrackEmsgHandler?, playerId: PlayerId, cmcd: CmcdConfiguration?,
-    private val catalog: DashCacheCatalog, private val key: (DataSpec) -> String,
+    private val catalog: DashCacheCatalog, private val key: (DataSpec) -> String, inferUnvisitedRequests: Boolean,
 ) : DefaultDashChunkSource(extractors, errors, manifest, exclusions, periodIndex, adaptationSetIndices, selection,
     kind, data, elapsedRealtimeOffsetMs, maxSegmentsPerLoad, enableEventMessageTrack, closedCaptionFormats, emsg, playerId, cmcd) {
     private val owner = Any()
@@ -75,6 +77,10 @@ internal class ObservedDashChunkSource(
     private val initialization = LinkedHashMap<Int, DashCacheResource>()
     private val indexes = LinkedHashMap<Int, DashCacheResource>()
     private val media = LinkedHashMap<Int, LinkedHashMap<Long, DashCacheResource>>()
+    // Main session's key contract ignores request flags. With one segment/load
+    // and no dynamic CMCD, DashUtil constructs the same future native request.
+    // Other factory configurations retain actual emitted parent requests only.
+    private val canInfer = inferUnvisitedRequests && maxSegmentsPerLoad == 1 && cmcd == null
 
     init { capture() }
 
@@ -161,9 +167,13 @@ internal class ObservedDashChunkSource(
                 override fun durationUs(segment: Long) = Math.subtractExact(holder.getSegmentEndTimeUs(segment), holder.getSegmentStartTimeUs(segment))
                 override fun address(segment: Long) = holder.getSegmentUrl(segment)
             }
+            val unvisited: ((RangedUri) -> DashCacheResource?)? = if(canInfer) { range ->
+                val spec = DashUtil.buildDataSpec(holder.representation, holder.selectedBaseUrl.url, range, 0)
+                child(request(spec), range, range.resolveUriString(holder.selectedBaseUrl.url))
+            } else null
             DashCacheRepresentation(track, holder.representation, holder.selectedBaseUrl.url, index, holder,
                 initialization[track], indexes[track].takeIf { holder.representation.indexUri != null }, media[track].orEmpty(),
-                currentManifest.getPeriodDurationUs(currentPeriod))
+                currentManifest.getPeriodDurationUs(currentPeriod), unvisited)
         }
         catalog.update(owner, DashCacheCatalog.Entry(currentManifest, currentPeriod, currentSelection.trackGroup, kind,
             currentSelection.selectedIndexInTrackGroup, loadRevision, snapshots))

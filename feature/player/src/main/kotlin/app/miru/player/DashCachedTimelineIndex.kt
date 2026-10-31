@@ -11,7 +11,7 @@ import kotlin.coroutines.CoroutineContext
 internal object DashCachedTimelineIndex {
     fun track(id: String, representation: DashCacheRepresentation, independent: Boolean,
         periodPositionInWindowUs: Long, windowDurationUs: Long?, resources: CachedResourceSnapshot,
-        context: CoroutineContext? = null): CachedTrackCoverage {
+        context: CoroutineContext? = null, lookup: CachedResourceLookup = resources.lookup): CachedTrackCoverage {
         val intervals = ArrayList<CachedMediaInterval>()
         val index = representation.index ?: return CachedTrackCoverage(id, intervals)
         if(!independent || representation.representation.format.drmInitData != null ||
@@ -20,7 +20,7 @@ internal object DashCachedTimelineIndex {
         if(representation.representation.initializationUri != null && representation.initialization == null ||
             representation.representation.indexUri != null && representation.indexData == null) return CachedTrackCoverage(id, intervals)
         val init = listOfNotNull(representation.initialization, representation.indexData)
-            .map { it.resolve(resources) ?: return CachedTrackCoverage(id, intervals) }
+            .map { it.resolve(lookup) ?: return CachedTrackCoverage(id, intervals) }
         val visibleStart = exact { Math.negateExact(periodPositionInWindowUs) } ?: return CachedTrackCoverage(id, intervals)
         val visibleEnd = exact { Math.subtractExact(windowDurationUs, periodPositionInWindowUs) } ?: return CachedTrackCoverage(id, intervals)
         val periodEnd = if(representation.periodDurationUs >= 0)
@@ -33,15 +33,16 @@ internal object DashCachedTimelineIndex {
             val end = exact { Math.addExact(index.firstSegment, index.segmentCount - 1) } ?: return CachedTrackCoverage(id, intervals)
             last = minOf(last, end)
         }
-        if(last < first || last - first > 100_000) return CachedTrackCoverage(id, intervals)
+        if(last < first || (exact { Math.subtractExact(last, first) } ?: return CachedTrackCoverage(id, intervals)) > 100_000)
+            return CachedTrackCoverage(id, intervals)
         var segment = first
         while(segment <= last) {
             context?.ensureActive()
-            val ref = representation.media[segment]
             val address = index.address(segment)
+            val ref = representation.media[segment] ?: representation.unvisitedMedia?.invoke(address)
             val sameResource = ref != null && (ref.resourceUri == null || ref.resourceUri == address.resolveUriString(representation.baseUrl)) &&
                 ref.position == address.start && ref.length == address.length
-            val media = if(sameResource) ref?.resolve(resources) else null
+            val media = if(sameResource) ref?.resolve(lookup) else null
             if(media != null) {
                 val duration = index.durationUs(segment)
                 val start = exact { Math.addExact(index.startUs(segment), periodPositionInWindowUs) }

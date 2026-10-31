@@ -5,6 +5,7 @@ package app.miru.player
 
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheSpan
+import androidx.media3.datasource.cache.ContentMetadata
 import java.io.Closeable
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicLong
@@ -17,9 +18,11 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
+import kotlin.coroutines.CoroutineContext
 
 /**
  * Watches only the keys in an exact, source-owned media index. The format adapters
@@ -39,13 +42,11 @@ internal class CachedTimelineTracker(
     private val calculate: (Collection<CachedTrackCoverage>, Map<String, Collection<CachedResourceRange>>, Long?) -> List<CachedTimeRange> =
         CachedTimelineCoverage::compute,
 ) : Closeable {
-    private class Selection(tracks: Collection<CachedTrackCoverage>, val durationUs: Long?, val isCurrent: () -> Boolean) {
-        val tracks: List<CachedTrackCoverage> = Collections.unmodifiableList(ArrayList(tracks))
-        val keys: Set<String> = this.tracks.asSequence().flatMap { it.intervals.asSequence() }
-            .flatMap { it.requiredBytes.asSequence() }.map { it.key }.toSet()
-
+    private class Selection(val durationUs: Long?, val isCurrent: () -> Boolean,
+        val build: (CoroutineContext, (String) -> Long) -> Collection<CachedTrackCoverage>) {
         init { require(durationUs == null || durationUs >= 0) }
     }
+    private class Snapshot(val spans: Map<String, List<CachedResourceRange>>, val lengths: Map<String, Long>, val revision: Long)
 
     private val gate = Any()
     private var selection: Selection? = null
@@ -61,33 +62,52 @@ internal class CachedTimelineTracker(
         override fun onSpanTouched(cache: Cache, oldSpan: CacheSpan, newSpan: CacheSpan) = Unit
     }
 
+    private val metadataWatcher = scope.launch(ioDispatcher) {
+        CacheMetadataEvents.revision(cache).collect { invalidate() }
+    }
     private val worker = scope.launch(ioDispatcher) {
         val registered = LinkedHashSet<String>()
+        fun capture(keys: Set<String>, metadataKeys: Set<String>): Snapshot = synchronized(cache) {
+            (registered - keys).forEach { key -> cache.removeListener(key, listener); registered.remove(key) }
+            (keys - registered).forEach { key ->
+                // Own cleanup even if registration throws after adding a listener.
+                registered.add(key)
+                cache.addListener(key, listener)
+            }
+            val spans = keys.associateWith { key -> cache.getCachedSpans(key).mapNotNull { span ->
+                if(span.key != key || !span.isCached || span.position < 0 ||
+                    span.length <= 0 || span.position > Long.MAX_VALUE - span.length) null
+                else CachedResourceRange(key, span.position, span.length)
+            } }
+            val lengths = metadataKeys.associateWith { ContentMetadata.getContentLength(cache.getContentMetadata(it)) }
+            Snapshot(spans, lengths, cacheRevision.get())
+        }
         try {
             for(ignored in invalidations) {
                 val current = synchronized(gate) { if(closed) null else selection } ?: continue
                 var capturedRevision = cacheRevision.get()
                 val result = try {
-                    val spans = synchronized(cache) {
-                        (registered - current.keys).forEach { key ->
-                            cache.removeListener(key, listener)
-                            registered.remove(key)
+                    var snapshot = capture(registered.toSet(), emptySet())
+                    var computed = emptyList<CachedTimeRange>()
+                    // Resolving init/key prerequisites may reveal further resource
+                    // keys. Register and recapture before accepting any such proof.
+                    // HLS's supported chain has at most four distinct resources;
+                    // the bound also prevents a changing provider from spinning.
+                    for(pass in 0 until 16) {
+                        coroutineContext.ensureActive()
+                        val queried = LinkedHashSet<String>()
+                        val tracks = current.build(coroutineContext) { key -> queried.add(key); snapshot.lengths[key] ?: -1L }
+                        val keys = tracks.asSequence().flatMap { it.intervals.asSequence() }
+                            .flatMap { it.requiredBytes.asSequence() }.map { it.key }.toSet() + queried
+                        if(keys != registered || queried != snapshot.lengths.keys) {
+                            snapshot = capture(keys, queried)
+                            continue
                         }
-                        (current.keys - registered).forEach { key ->
-                            // Retain cleanup ownership even if an implementation
-                            // throws after partially registering the listener.
-                            registered.add(key)
-                            cache.addListener(key, listener)
-                        }
-                        current.keys.associateWith { key ->
-                            cache.getCachedSpans(key).mapNotNull { span ->
-                                if(span.key != key || !span.isCached || span.position < 0 ||
-                                    span.length <= 0 || span.position > Long.MAX_VALUE - span.length) null
-                                else CachedResourceRange(key, span.position, span.length)
-                            }
-                        }.also { capturedRevision = cacheRevision.get() }
+                        computed = calculate(tracks, snapshot.spans, current.durationUs)
+                        break
                     }
-                    calculate(current.tracks, spans, current.durationUs).also { coroutineContext.ensureActive() }
+                    capturedRevision = snapshot.revision
+                    computed.also { coroutineContext.ensureActive() }
                 } catch(cancelled: CancellationException) {
                     throw cancelled
                 } catch(_: Exception) {
@@ -102,6 +122,7 @@ internal class CachedTimelineTracker(
                 }
             }
         } finally {
+            metadataWatcher.cancel()
             synchronized(gate) { closed = true; selection = null; mutable.value = emptyList() }
             invalidations.close()
             withContext(NonCancellable + ioDispatcher) { detach(registered) }
@@ -116,7 +137,14 @@ internal class CachedTimelineTracker(
 
     /** Replace the complete current window/period/representation selection. */
     fun replace(tracks: Collection<CachedTrackCoverage>, durationUs: Long? = null, isCurrent: () -> Boolean = { true }) {
-        val next = Selection(tracks, durationUs, isCurrent)
+        val immutable = Collections.unmodifiableList(ArrayList(tracks))
+        replaceIndexed(durationUs, isCurrent) { _, _ -> immutable }
+    }
+
+    /** Rebuild exact dependencies from coherent lengths when committed spans change. */
+    fun replaceIndexed(durationUs: Long?, isCurrent: () -> Boolean,
+        build: (CoroutineContext, (String) -> Long) -> Collection<CachedTrackCoverage>) {
+        val next = Selection(durationUs, isCurrent, build)
         synchronized(gate) {
             if(closed) return
             selection = next
@@ -136,7 +164,7 @@ internal class CachedTimelineTracker(
                 true
             }
         }
-        if(cancel) { invalidations.close(); worker.cancel() }
+        if(cancel) { invalidations.close(); metadataWatcher.cancel(); worker.cancel() }
     }
 
     private fun detach(registered: MutableSet<String>) = synchronized(cache) {

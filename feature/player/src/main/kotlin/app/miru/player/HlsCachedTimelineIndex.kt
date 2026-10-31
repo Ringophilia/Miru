@@ -7,6 +7,8 @@ import androidx.media3.common.C
 import androidx.media3.common.util.UriUtil
 import androidx.media3.exoplayer.hls.playlist.HlsMediaPlaylist
 import java.math.BigInteger
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /**
  * Maps one explicitly selected HLS playlist into the current window. Selection
@@ -25,6 +27,7 @@ internal object HlsCachedTimelineIndex {
         // Only a container/sample parser may supply missing random-access proof.
         // No "previous segment is probably enough" heuristic is permitted.
         provenDecodeStarts: Map<Int, Int> = emptyMap(),
+        context: CoroutineContext? = null,
     ): CachedTrackCoverage {
         val intervals = ArrayList<CachedMediaInterval>()
         if(initialStartTimeUs == C.TIME_UNSET || playlist.startTimeUs == C.TIME_UNSET || periodPositionInWindowUs == C.TIME_UNSET ||
@@ -35,14 +38,16 @@ internal object HlsCachedTimelineIndex {
 
         // Resolve init/key/media once even when a verified preroll chain shares
         // dependencies across several target segments.
-        val dependencies = playlist.segments.map { segment -> dependencies(playlist, segment, resolve) }
+        val dependencies = playlist.segments.map { segment -> context?.ensureActive(); dependencies(playlist, segment, resolve) }
         playlist.segments.forEachIndexed { index, segment ->
+            context?.ensureActive()
             if(segment.durationUs <= 0 || segment.relativeStartTimeUs < 0) return@forEachIndexed
             val decodeStart = if(playlist.hasIndependentSegments) index else provenDecodeStarts[index]
                 ?: return@forEachIndexed
             if(decodeStart !in 0..index) return@forEachIndexed
             val required = LinkedHashSet<CachedResourceRange>()
             for(previous in decodeStart..index) {
+                context?.ensureActive()
                 val predecessor = playlist.segments[previous]
                 // A discontinuity starts a different decoding context. A proof
                 // from the preceding context cannot establish random access here.

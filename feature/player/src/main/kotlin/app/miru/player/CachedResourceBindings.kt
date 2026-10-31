@@ -13,14 +13,25 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class CachedResourceSnapshot internal constructor(
     val revision: Long,
-    private val resources: Map<ResourceRequest, CachedResourceRange?>,
+    private val resources: Map<ResourceRequest, CachedResourceObservation>,
 ) {
     val resourceCount: Int get() = resources.size
 
     /** Match the original request, BEFORE replacing LENGTH_UNSET with an EOF length. */
     fun rangeFor(uri: String, position: Long = 0, requestedLength: Long = -1): CachedResourceRange? =
-        resources[ResourceRequest(uri, position, requestedLength)]
+        resources[ResourceRequest(uri, position, requestedLength)]?.range
+
+    internal fun observation(uri: String, position: Long, length: Long) = resources[ResourceRequest(uri, position, length)]
+    internal val lookup: CachedResourceLookup = object : CachedResourceLookup {
+        override fun rangeFor(uri: String, position: Long, requestedLength: Long) = this@CachedResourceSnapshot.rangeFor(uri, position, requestedLength)
+        override fun accepts(key: String, uri: String, position: Long, requestedLength: Long, endExclusive: Long): Boolean {
+            val actual = observation(uri, position, requestedLength)
+            return actual == null || !actual.retired && actual.key == key
+        }
+    }
 }
+
+internal class CachedResourceObservation(val key: String, val range: CachedResourceRange?, val retired: Boolean, val opened: Boolean)
 
 internal data class ResourceRequest(val uri: String, val position: Long, val length: Long) {
     override fun toString(): String = "ResourceRequest(position=$position, length=$length)"
@@ -36,7 +47,7 @@ internal class CachedResourceBindings(private val capacity: Int = 4096) : Closea
         internal val request: ResourceRequest,
         internal val key: String,
     )
-    private class Entry(val observation: Observation, var range: CachedResourceRange? = null)
+    private class Entry(val observation: Observation, var range: CachedResourceRange? = null, var retired: Boolean = false, var opened: Boolean = false)
     private val gate = Any()
     private val entries = LinkedHashMap<ResourceRequest, Entry>()
     private var closed = false
@@ -46,7 +57,9 @@ internal class CachedResourceBindings(private val capacity: Int = 4096) : Closea
     init { require(capacity > 0) }
 
     fun snapshot(): CachedResourceSnapshot = synchronized(gate) {
-        CachedResourceSnapshot(mutableRevision.value, entries.mapValues { it.value.range })
+        CachedResourceSnapshot(mutableRevision.value, entries.mapValues { (_, entry) ->
+            CachedResourceObservation(entry.observation.key, entry.range, entry.retired, entry.opened)
+        })
     }
 
     fun begin(uri: String, position: Long, length: Long, key: String): Observation? = synchronized(gate) {
@@ -63,6 +76,7 @@ internal class CachedResourceBindings(private val capacity: Int = 4096) : Closea
     }
 
     fun opened(observation: Observation?, resolvedLength: Long) = update(observation) { current ->
+        current.opened = true
         val requested = current.observation.request.length
         // A bounded request needs ALL requested bytes, even if a response claims
         // a shorter body. Do not shrink an init/segment requirement to fit it.
@@ -72,9 +86,11 @@ internal class CachedResourceBindings(private val capacity: Int = 4096) : Closea
             else -> resolvedLength
         }
         current.range = range(current.observation, length)
+        if(current.range == null && resolvedLength != -1L) current.retired = true
     }
 
     fun ended(observation: Observation?, bytesRead: Long) = update(observation) { current ->
+        current.opened = true
         val requested = current.observation.request.length
         val expected = current.range?.length
         current.range = when {
@@ -83,6 +99,7 @@ internal class CachedResourceBindings(private val capacity: Int = 4096) : Closea
             expected != null -> if(bytesRead == expected) current.range else null
             else -> range(current.observation, bytesRead)
         }
+        if(current.range == null) current.retired = true
     }
 
     fun failed(observation: Observation?) {
@@ -91,7 +108,10 @@ internal class CachedResourceBindings(private val capacity: Int = 4096) : Closea
             if(closed || entries[observation.request]?.observation !== observation) return
             // Failure retires this open, not just its current length. A late EOF
             // from that same reader cannot promote its prefix to a full segment.
-            entries.remove(observation.request)
+            val entry = requireNotNull(entries[observation.request])
+            if(entry.retired) return
+            entry.range = null
+            entry.retired = true
             changed()
         }
     }
@@ -107,10 +127,12 @@ internal class CachedResourceBindings(private val capacity: Int = 4096) : Closea
         synchronized(gate) {
             if(closed) return
             val entry = entries[observation.request] ?: return
-            if(entry.observation !== observation) return
+            if(entry.observation !== observation || entry.retired) return
             val previous = entry.range
+            val wasRetired = entry.retired
+            val wasOpened = entry.opened
             block(entry)
-            if(previous != entry.range) changed()
+            if(previous != entry.range || wasRetired != entry.retired || wasOpened != entry.opened) changed()
         }
     }
 

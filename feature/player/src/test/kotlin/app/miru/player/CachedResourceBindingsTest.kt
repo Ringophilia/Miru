@@ -96,6 +96,42 @@ class CachedResourceBindingsTest {
         assertEquals(1_000L, bindings.snapshot().rangeFor(URL)?.length)
     }
 
+    @Test fun aFailedRequestRemainsDistinctFromAnUnvisitedResourceInAnImmutableSnapshot() {
+        val bindings = CachedResourceBindings()
+        val old = bindings.begin(URL, 0, -1, "actual-key")
+        bindings.opened(old, -1)
+        val before = bindings.snapshot()
+        val revision = bindings.revision.value
+        bindings.failed(old)
+        val failed = bindings.snapshot()
+        assertTrue(failed.observation(URL, 0, -1)!!.retired)
+        assertFalse(before.observation(URL, 0, -1)!!.retired)
+        assertNull(failed.observation("$URL&unvisited=1", 0, -1))
+        assertTrue(bindings.revision.value > revision)
+        val retry = bindings.begin(URL, 0, -1, "retry-key")
+        bindings.opened(retry, 50)
+        bindings.ended(old, 99)
+        assertEquals("retry-key", bindings.snapshot().rangeFor(URL)?.key)
+        assertTrue(failed.observation(URL, 0, -1)!!.retired)
+    }
+
+    @Test fun resolvingAnUnknownOpenAndRejectingAShortResponseBothInvalidatePublication() {
+        val bindings = CachedResourceBindings()
+        val request = bindings.begin(URL, 0, -1, "unknown")
+        val initial = bindings.snapshot()
+        bindings.opened(request, -1)
+        assertTrue(bindings.revision.value > initial.revision)
+        assertFalse(initial.observation(URL, 0, -1)!!.opened)
+        assertTrue(bindings.snapshot().observation(URL, 0, -1)!!.opened)
+        val bounded = bindings.begin(URL, 0, 100, "bounded")
+        val beforeShort = bindings.revision.value
+        bindings.opened(bounded, 50)
+        assertTrue(bindings.revision.value > beforeShort)
+        assertTrue(bindings.snapshot().observation(URL, 0, 100)!!.retired)
+        bindings.ended(bounded, 100)
+        assertNull(bindings.snapshot().rangeFor(URL, 0, 100))
+    }
+
     @Test fun allOriginalRequestVariantsRemainDistinct() {
         val bindings = CachedResourceBindings()
         listOf(Triple(0L, -1L, "whole"), Triple(0L, 80L, "bounded"), Triple(10L, -1L, "tail"),
