@@ -16,7 +16,8 @@ param(
     [Parameter(Mandatory)][string]$StorePasswordEnvName,
     [Parameter(Mandatory)][string]$KeyPasswordEnvName,
     [Parameter(Mandatory)][string]$OutputApk,
-    [switch]$ValidateOnly
+    [switch]$ValidateOnly,
+    [switch]$KeepScratch
 )
 
 Set-StrictMode -Version Latest
@@ -197,6 +198,20 @@ try {
     $miruState.error = $_.Exception.Message
     Write-MiruJson $miruState $miruSummary
     throw
+} finally {
+    # Keep reviewable evidence, without retaining two more complete unsigned APKs per run.
+    $miruScratchRecords = @()
+    foreach ($miruScratchPath in @($miruRaw, $miruAligned, $miruSigned)) {
+        if (-not (Test-Path -LiteralPath $miruScratchPath)) { continue }
+        $miruScratchAbsolute = [IO.Path]::GetFullPath($miruScratchPath)
+        if (-not $miruScratchAbsolute.StartsWith($miruEvidence + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Scratch path escaped its private verification directory.' }
+        $miruScratchItem = Get-Item -LiteralPath $miruScratchAbsolute -Force
+        if (($miruScratchItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+            ((Get-Item -LiteralPath $miruEvidence -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Refusing reparse scratch path.' }
+        $miruScratchRecords += [ordered]@{name=$miruScratchItem.Name;bytes=$miruScratchItem.Length;sha256=(Get-MiruHash $miruScratchAbsolute);retained=[bool]$KeepScratch}
+        if (-not $KeepScratch) { Remove-Item -LiteralPath $miruScratchAbsolute -Force }
+    }
+    $miruState['scratch'] = $miruScratchRecords
+    Write-MiruJson $miruState $miruSummary
 }
-# Logs, JSON, classes and unsigned intermediate APKs are retained for review.
-# No recursive cleanup or mutation of the original/cache inputs is performed.
+# Logs, JSON and helper classes remain. Original/cache inputs are never removed.
