@@ -21,20 +21,21 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
 
-internal enum class CachedSourceKind { HLS, DASH }
+internal enum class CachedSourceKind { HLS, DASH, MP4 }
 
 /** Source-owned selection/index publication. Player access is on its application thread; IO is not. */
 internal class PlayerCachedTimeline(
     private val player: ExoPlayer,
     private val session: PlaybackSourceSession,
-    cache: Cache,
+    private val cache: Cache,
     parent: CoroutineScope,
     private val kind: CachedSourceKind = CachedSourceKind.HLS,
     private val publish: (List<CachedTimeRange>) -> Unit,
 ) : Closeable {
     private val catalog = if(kind == CachedSourceKind.HLS) requireNotNull(session.hlsCacheCatalog) else null
     private val dashCatalog = if(kind == CachedSourceKind.DASH) requireNotNull(session.dashCacheCatalog) else null
-    private val revision = catalog?.revision ?: requireNotNull(dashCatalog).revision
+    private val mp4Catalog = if(kind == CachedSourceKind.MP4) requireNotNull(session.mp4CacheCatalog) else null
+    private val revision = catalog?.revision ?: dashCatalog?.revision ?: requireNotNull(mp4Catalog).revision
     private val job = SupervisorJob(parent.coroutineContext[Job])
     private val scope = CoroutineScope(parent.coroutineContext + job)
     private val tracker = CachedTimelineTracker(cache, scope)
@@ -51,7 +52,7 @@ internal class PlayerCachedTimeline(
 
     private data class Input(val periodUid: Any, val positionInWindowUs: Long, val durationUs: Long,
         val tracks: Tracks, val parameters: TrackSelectionParameters, val downstream: Map<Int, Format>,
-        val catalogRevision: Long, val resourceRevision: Long, val manifest: Any?, val localPeriodIndex: Int)
+        val catalogRevision: Long, val resourceRevision: Long, val manifest: Any?, val localPeriodIndex: Int, val seekable: Boolean)
 
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
@@ -113,9 +114,10 @@ internal class PlayerCachedTimeline(
         val window = timeline.getWindow(period.windowIndex, Timeline.Window())
         val snapshot = catalog?.snapshot()
         val dashSnapshot = dashCatalog?.snapshot()
+        val mp4Snapshot = mp4Catalog?.snapshot()
         val next = Input(requireNotNull(period.uid), period.positionInWindowUs, window.durationUs,
-            player.currentTracks, player.trackSelectionParameters, downstream.toMap(), snapshot?.revision ?: requireNotNull(dashSnapshot).revision, session.cacheBindingRevision.value,
-            window.manifest, player.currentPeriodIndex - window.firstPeriodIndex)
+            player.currentTracks, player.trackSelectionParameters, downstream.toMap(), snapshot?.revision ?: dashSnapshot?.revision ?: requireNotNull(mp4Snapshot).revision, session.cacheBindingRevision.value,
+            window.manifest, player.currentPeriodIndex - window.firstPeriodIndex, window.isSeekable)
         if(input == next) return
         input = next
         invalidate()
@@ -125,6 +127,10 @@ internal class PlayerCachedTimeline(
         val dashSelected = if(dashSnapshot == null) null else {
             DashCachedSelection.select(dashSnapshot, next.manifest as? DashManifest ?: return,
                 next.localPeriodIndex, next.tracks, next.parameters, next.downstream) ?: return
+        }
+        val mp4Selected = if(mp4Snapshot == null) null else {
+            if(!next.seekable) return
+            Mp4CachedSelection.select(mp4Snapshot, next.tracks, next.parameters, next.downstream) ?: return
         }
         val epoch = generation.get()
         mapping = scope.launch(Dispatchers.IO) {
@@ -137,7 +143,9 @@ internal class PlayerCachedTimeline(
                         tracker.replaceIndexed(next.durationUs.takeIf { it >= 0 },
                             { !closed && generation.get() == epoch && valid(next) }) { workerContext, lengths ->
                             val lookup = session.cacheResourceResolver(resources, lengths)
-                            if(hlsSelected != null) hlsSelected.mapIndexed { index, selectedPlaylist ->
+                            if(mp4Selected != null) Mp4AvcCachedTimelineIndex.tracks(mp4Selected, session, cache,
+                                next.positionInWindowUs, next.durationUs, lengths, workerContext)
+                            else if(hlsSelected != null) hlsSelected.mapIndexed { index, selectedPlaylist ->
                                 workerContext.ensureActive()
                                 HlsCachedTimelineIndex.track("selected-$index", selectedPlaylist.playlist, requireNotNull(snapshot).initialStartTimeUs,
                                     next.positionInWindowUs, next.durationUs.takeIf { it >= 0 }, lookup::rangeFor, context = workerContext)

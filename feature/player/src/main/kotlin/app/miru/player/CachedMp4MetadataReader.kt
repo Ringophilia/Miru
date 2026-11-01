@@ -183,6 +183,8 @@ internal object CachedMp4MetadataReader {
             require(size.size >= 20)
             val count = uint(size, 16)
             samples = Math.addExact(samples, count); require(samples <= MAX_SAMPLES)
+            val descriptions = requireNotNull(stbl.getLeafBoxOfType(code("stsd"))).data.data
+            require(descriptions.size >= 16 && uint(descriptions, 12) in 1..256 && 16 + uint(descriptions, 12) * 8 <= descriptions.size)
             if(sizeBox.type == code("stsz") && uint(size, 12) == 0L) require(20L + count * 4 <= size.size)
             if(sizeBox.type == code("stz2")) {
                 val bits = size[15].toInt() and 255; require(bits in setOf(4, 8, 16))

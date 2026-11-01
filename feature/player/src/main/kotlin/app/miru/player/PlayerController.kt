@@ -15,6 +15,7 @@ import androidx.media3.exoplayer.*
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.dash.DashMediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.session.MediaSession
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -153,7 +154,7 @@ class PlayerController(
                 offline?.dataSourceFactory, forceProgressive)
             mainSourceSession = sourceSession
             val source = sourceSession.createMediaSource()
-            val cachedKind = when(source) { is HlsMediaSource -> CachedSourceKind.HLS; is DashMediaSource -> CachedSourceKind.DASH; else -> null }
+            val cachedKind = when(source) { is HlsMediaSource -> CachedSourceKind.HLS; is DashMediaSource -> CachedSourceKind.DASH; is ProgressiveMediaSource -> CachedSourceKind.MP4; else -> null }
             if(disk != null && cachedKind != null) {
                 cachedTimeline = PlayerCachedTimeline(created, sourceSession, disk, scope, cachedKind) { ranges ->
                     if(!released && revision == sourceRevision) mutableDiskRanges.value = ranges

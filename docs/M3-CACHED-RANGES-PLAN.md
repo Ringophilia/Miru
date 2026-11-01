@@ -8,7 +8,7 @@
 解码/像素通过。[0.5.13普通DASH](M3-DASH-CACHED-RANGES-VALIDATION.md)后续接入实际holder、sidx、
 PTO、merged子range和选中AV；当前UI7/7含停供新decoder的9秒PTS/蓝帧。整窗口多period/动态DASH、
 [0.5.14资源闭合](M3-CACHE-RESOURCE-CLOSURE-VALIDATION.md)补普通流跨会话未访问资源、SDK元数据及动态监听，
-完整Range/鉴权/未知资源矩阵、MP4/其他格式、复杂HLS与真机仍待，不能据局部通过调整完整P11状态。
+随后[0.5.15单视频AVC](M3-MP4-AVC-CACHED-TIMELINE-VALIDATION.md)已接入生产MP4磁盘时间轴，最终模块97/97、同包HLS/DASH/MP4界面11/11。完整Range/鉴权/未知资源矩阵、MP4多轨/复杂edit/其他格式、复杂HLS与真机仍待，不能据局部通过调整完整P11状态。
 不能用本批单测把现有进度条称为已有磁盘区段。
 
 ## 已实现的基础层
@@ -84,7 +84,7 @@ callback、parent取消、计算期间淘汰/取消、cache异常重试、touch�
    [原生冷启动预验](M3-MP4-NATIVE-SEEK-PREFLIGHT.md)已有单视频head-moov的实际磁盘洞、
    停供9秒PTS/RGB和5秒503缺口，独立2/2；生产索引、B帧/AV/复杂edit及其他容器仍待。
    [主源观察/只读结构](M3-MP4-CACHE-METADATA-VALIDATION.md)已有实际native身份和结构解析，
-   最终模块84/84；尚未发布MP4时间区段，duration/DTS与native来源/IO闭包须继续完成。
+   最终模块84/84；[读取签名/raw时序](M3-MP4-PROVENANCE-TIMING-VALIDATION.md)后单视频AVC已接入生产区段，其他配置的duration/DTS、native来源与完整decode/IO闭包仍继续完成。
    head/tail、co64/extended size、多mdat、edit gap、fragmented MP4与其他VBR封装须逐格式
    证明；未知/估计索引不画，但仍保留对应实现/验收工作。
 6. **真实磁盘和界面。** 0–4/8–12秒已缓存而4–8秒缺失的几何、实际请求、解码PTS/RGB和停源

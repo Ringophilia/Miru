@@ -6,3 +6,4 @@ feature/superres/src/main/assets/anime4k/** -text
 # Packet references are byte-pinned by the generated fixture manifest.
 app/src/androidTest/assets/media/cached-ranges/*.json -text
 app/src/androidTest/assets/media/cached-ranges/dash/** -text
+app/src/androidTest/assets/media/cached-ranges/long-* -text
