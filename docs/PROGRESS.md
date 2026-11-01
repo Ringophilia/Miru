@@ -261,6 +261,11 @@
 - 原long蓝帧失败与全部阶段输入保留。最终测试要求真实焦点、横屏及Surface/layout一致，原8秒/45通道RGB/PTS门不放宽；不据此宣称快速旋转/暂停完整稳定。完整常规146为145过/1个QUALITY benchmark超时失败（1133.900秒），MP4三项通过；本版新R8/ARM64及正式签名尚待。[完整证据与边界](M3-MP4-AVC-CACHED-TIMELINE-VALIDATION.md)。
 - 当前adapter只覆盖首个单视频AVC纵向范围；多轨AV/语言/字幕原生调度、复杂edit/PCM、其他codec与fragmented/其他封装等仍继续实现，不把当前拒绝范围当最终方案。用户要求的磁盘清理已释放63.8GB，后续使用有保留上限的验证脚本，历史报告不等同于仍保留旧APK。
 
+## Benchmark采样/释放分期（0.5.15后续候选）
+
+- 原同包整组145/146为QUALITY在45秒内37帧，另隔离1过/2在44722ms已有60帧但689ms释放跨过45秒；两种失败分别保留。已完成采样后改为独立10秒EGL释放期限，采样仍45秒/60帧，epoch/取消/错误及<16ms推荐门不变。
+- 新固定build-01冻结602项，JVM79/79含新增5项边界，lint0/27、71份owned素材保持。SwiftShader专项仍1过/2（QUALITY25帧），只读宿主NVIDIA GPU的API35/x86_64实例同包benchmark2/2（28.231秒）通过；不冒充Android物理SoC成绩。新模块97、界面11和完整常规146正在依次执行，未预记通过。[阶段证据](M3-BENCHMARK-PHASE-DEADLINE-VALIDATION.md)。
+
 ## M3 尚待推进
 
 - 离线已接入 Media3 DownloadManager / DownloadService、HLS / DASH 清晰度与关联音轨 / 字幕、独立非 LRU 缓存、统一下载页与 upstream-free 播放。直链 MP4 保留普通下载引擎；实现与准确验证边界见 `M3-OFFLINE-VALIDATION.md`。下载进行中进程终止、真机网络 / 重启与后台矩阵仍需专项，不能用已完成项的重启恢复代替。

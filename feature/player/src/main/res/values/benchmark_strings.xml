@@ -15,6 +15,7 @@
     <string name="superres_benchmark_limitations">不支持 GPU 硬件计时的设备会显示同步渲染耗时。结果仅代表当前设备和温度，不能代替真机性能验收。</string>
     <string name="superres_benchmark_hot">设备温度较高，请降温后再测试。</string>
     <string name="superres_benchmark_timeout">测试超时，未能取得足够的有效渲染帧。</string>
+    <string name="superres_benchmark_release_timeout">渲染器未能及时释放，测试已停止。</string>
     <string name="superres_benchmark_decode_failed">无法解码本地测试片段。</string>
     <string name="superres_benchmark_render_failed">超分渲染失败，未生成测试结果。</string>
     <string name="superres_benchmark_interrupted">测试已中断，请重新打开后再试。</string>

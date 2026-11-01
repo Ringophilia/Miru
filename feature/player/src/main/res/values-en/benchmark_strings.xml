@@ -15,6 +15,7 @@
     <string name="superres_benchmark_limitations">Devices without hardware GPU timers show synchronized render time. Results reflect the current device and temperature; they do not replace physical-device performance acceptance.</string>
     <string name="superres_benchmark_hot">The device is too warm. Let it cool down before testing again.</string>
     <string name="superres_benchmark_timeout">The benchmark timed out without enough valid rendered frames.</string>
+    <string name="superres_benchmark_release_timeout">The renderer did not release in time. The benchmark was stopped.</string>
     <string name="superres_benchmark_decode_failed">Could not decode the local benchmark clip.</string>
     <string name="superres_benchmark_render_failed">Super resolution rendering failed. No result was generated.</string>
     <string name="superres_benchmark_interrupted">The benchmark was interrupted. Reopen it to try again.</string>

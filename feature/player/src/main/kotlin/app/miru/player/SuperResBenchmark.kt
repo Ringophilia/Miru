@@ -124,7 +124,6 @@ private fun benchmarkTierName(tier: SuperResTier): String = stringResource(when(
 
 private const val BENCHMARK_OUTPUT_WIDTH = 1920
 private const val BENCHMARK_OUTPUT_HEIGHT = 1080
-private const val BENCHMARK_TIER_TIMEOUT_MS = 45_000L
 private const val BENCHMARK_DIAGNOSTIC_TAG = "MiruBenchmarkRun"
 private const val BENCHMARK_DIAGNOSTIC_INTERVAL_MS = 5_000L
 
@@ -134,7 +133,7 @@ private enum class BenchmarkEvent {
     FIRST_FRAME, PROGRESS, TIER_MEASURED, RELEASE_REQUESTED, RELEASE_CALLBACK,
     PLAYER_STATE, PLAYER_PLAYING, FINISHED, FAILED, CLOSED,
 }
-private enum class BenchmarkFailure { NONE, TIMEOUT, DECODE, RENDER, THERMAL, INTERRUPTED, OTHER }
+private enum class BenchmarkFailure { NONE, TIMEOUT, RELEASE_TIMEOUT, DECODE, RENDER, THERMAL, INTERRUPTED, OTHER }
 
 private data class SuperResBenchmarkResult(val tier: SuperResTier, val milliseconds: Double,
     val timing: SuperResTiming, val frames: Long, val passes: Int)
@@ -160,7 +159,7 @@ private class SuperResBenchmarkSession(context: Context, private val onState: (S
     private var output: Surface? = null
     private var epoch = 0L
     private var generation: Long? = null
-    private var deadline = 0L
+    private var deadline = BenchmarkPhaseDeadline(SystemClock.elapsedRealtime())
     private var closed = false
     private var started = false
     private val diagnosticRun = SystemClock.elapsedRealtimeNanos()
@@ -189,7 +188,10 @@ private class SuperResBenchmarkSession(context: Context, private val onState: (S
         override fun run() {
             if(closed || state.error != null || state.finished) return
             if(tooHot()) { fail(R.string.superres_benchmark_hot); return }
-            if(SystemClock.elapsedRealtime() >= deadline) { fail(R.string.superres_benchmark_timeout); return }
+            if(deadline.expired(SystemClock.elapsedRealtime())) {
+                fail(if(stage == BenchmarkStage.AWAITING_RELEASE) R.string.superres_benchmark_release_timeout else R.string.superres_benchmark_timeout)
+                return
+            }
             val active = renderer
             val sample = active?.status()
             if(sample != null) lastSample = sample
@@ -214,7 +216,7 @@ private class SuperResBenchmarkSession(context: Context, private val onState: (S
 
     init {
         // Also bound waiting for a visible 1080P buffer, before the first decoder is created.
-        deadline = SystemClock.elapsedRealtime() + BENCHMARK_TIER_TIMEOUT_MS
+        deadline = BenchmarkPhaseDeadline(SystemClock.elapsedRealtime())
         diagnose(BenchmarkEvent.CREATED)
         handler.post(poll)
     }
@@ -266,8 +268,8 @@ private class SuperResBenchmarkSession(context: Context, private val onState: (S
         val surface = output?.takeIf { it.isValid } ?: run { fail(R.string.superres_benchmark_interrupted); return }
         val passEpoch = ++epoch
         generation = null
-        deadline = SystemClock.elapsedRealtime() + BENCHMARK_TIER_TIMEOUT_MS
-        tierStartedAt = deadline - BENCHMARK_TIER_TIMEOUT_MS
+        tierStartedAt = SystemClock.elapsedRealtime()
+        deadline = BenchmarkPhaseDeadline(tierStartedAt)
         releaseRequestedAt = 0L
         releaseCallbackAt = 0L
         lastSample = null
@@ -303,6 +305,7 @@ private class SuperResBenchmarkSession(context: Context, private val onState: (S
 
     private fun completeTier(sample: SuperResStatus) {
         val tier = state.tier ?: return
+        if(!deadline.beginRelease(SystemClock.elapsedRealtime())) { fail(R.string.superres_benchmark_timeout); return }
         lastSample = sample
         diagnose(BenchmarkEvent.TIER_MEASURED, sample)
         handler.removeCallbacks(poll)
@@ -317,7 +320,7 @@ private class SuperResBenchmarkSession(context: Context, private val onState: (S
         val releaseStartedAt = SystemClock.elapsedRealtime()
         releaseRequestedAt = releaseStartedAt
         diagnose(BenchmarkEvent.RELEASE_REQUESTED, sample)
-        // Keep the same deadline active even if a driver's asynchronous EGL release stalls.
+        // Successful measurement and EGL disconnect own separate bounded phases.
         handler.postDelayed(poll, 100)
         // Await EGL's disconnect before a different renderer attaches to the same SurfaceView.
         completed.release {
@@ -328,6 +331,7 @@ private class SuperResBenchmarkSession(context: Context, private val onState: (S
             diagnose(BenchmarkEvent.RELEASE_CALLBACK, completed.status(), callbackEpoch = passEpoch,
                 callbackTier = tier, releaseStart = releaseStartedAt, callbackAt = callbackAt)
             if(closed || state.error != null || passEpoch != epoch) return@release
+            if(deadline.expired(callbackAt)) { fail(R.string.superres_benchmark_release_timeout); return@release }
             val next = SuperResTier.entries.getOrNull(tier.ordinal + 1)
             if(next != null) startTier(next) else {
                 publish(state.copy(finished = true))
@@ -354,13 +358,14 @@ private class SuperResBenchmarkSession(context: Context, private val onState: (S
         callbackTier: SuperResTier? = null, releaseStart: Long = releaseRequestedAt,
         callbackAt: Long = releaseCallbackAt) {
         val now = SystemClock.elapsedRealtime()
+        val deadlineMs = deadline.deadlineMs
         lastDiagnosticAt = now
         val currentPlayer = player
         val validFrames = sample?.takeIf(::validMeasurement)?.frames ?: 0L
         Log.i(BENCHMARK_DIAGNOSTIC_TAG, "run=$diagnosticRun event=$event stage=$stage tier=${state.tier} " +
             "failure=$failure nowMs=$now sessionElapsedMs=${now - sessionStartedAt} " +
             "stageElapsedMs=${now - stageStartedAt} tierElapsedMs=${if(tierStartedAt == 0L) -1L else now - tierStartedAt} " +
-            "deadlineMs=$deadline remainingMs=${deadline - now} epoch=$epoch expectedGeneration=${generation ?: -1L} " +
+            "deadlineMs=$deadlineMs remainingMs=${deadlineMs - now} epoch=$epoch expectedGeneration=${generation ?: -1L} " +
             "releaseRequestedMs=$releaseStart releaseCallbackMs=$callbackAt " +
             "releaseElapsedMs=${if(releaseStart == 0L) -1L else (if(callbackAt == 0L) now else callbackAt) - releaseStart} " +
             "callbackEpoch=$callbackEpoch callbackTier=$callbackTier closed=$closed finished=${state.finished} " +
@@ -388,6 +393,7 @@ private class SuperResBenchmarkSession(context: Context, private val onState: (S
         if(closed || state.error != null || state.finished) return
         val failure = when(message) {
             R.string.superres_benchmark_timeout -> BenchmarkFailure.TIMEOUT
+            R.string.superres_benchmark_release_timeout -> BenchmarkFailure.RELEASE_TIMEOUT
             R.string.superres_benchmark_decode_failed -> BenchmarkFailure.DECODE
             R.string.superres_benchmark_render_failed -> BenchmarkFailure.RENDER
             R.string.superres_benchmark_hot -> BenchmarkFailure.THERMAL

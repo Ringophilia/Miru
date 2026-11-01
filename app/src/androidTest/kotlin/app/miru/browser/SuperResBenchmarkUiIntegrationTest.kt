@@ -62,9 +62,10 @@ class SuperResBenchmarkUiIntegrationTest {
         openBenchmark()
         val results = linkedMapOf<SuperResTier, Measurement>()
         for(tier in SuperResTier.entries) {
-            // Production still owns its 45 s per-tier deadline. The extra 5 s here only
-            // lets its terminal UI state become observable; any timeout message fails.
-            compose.waitUntil(50_000) {
+            // Measurement still owns 45 s, then EGL disconnect gets at most 10 s.
+            // The first tier may also wait up to 45 s for the output surface.
+            // These are observation limits; every production timeout message still fails.
+            compose.waitUntil(if(tier == SuperResTier.FAST) 105_000 else 65_000) {
                 assertNoBenchmarkError()
                 measurement(tier)?.also { results[tier] = it } != null
             }
@@ -143,7 +144,7 @@ class SuperResBenchmarkUiIntegrationTest {
     }
 
     private fun assertNoBenchmarkError() {
-        val error = listOf(PlayerR.string.superres_benchmark_timeout, PlayerR.string.superres_benchmark_decode_failed,
+        val error = listOf(PlayerR.string.superres_benchmark_timeout, PlayerR.string.superres_benchmark_release_timeout, PlayerR.string.superres_benchmark_decode_failed,
             PlayerR.string.superres_benchmark_render_failed, PlayerR.string.superres_benchmark_hot,
             PlayerR.string.superres_benchmark_interrupted).map(::text).firstOrNull(::hasText)
         if(error != null) throw AssertionError("Actual benchmark failed: $error; results=${SuperResTier.entries.associateWith(::resultRows)}")
