@@ -37,7 +37,13 @@ internal class ObservedMp4ExtractorsFactory private constructor(
         observe(actual.createExtractors(uri, headers), IcyHeaders.parse(headers) == null)
     private fun observe(all: Array<Extractor>, addressingKnown: Boolean): Array<Extractor> {
         val profile = Mp4ParserProfile(trustedDefaults && addressingKnown, hagc, transcode, codecs)
-        return all.map { if(it is Mp4Extractor && addressingKnown) ObservedMp4Extractor(it, catalog, requests, profile) else it }.toTypedArray()
+        if(!addressingKnown) { requests.discardMetadata(); return all }
+        return all.map { if(it is Mp4Extractor) ObservedMp4Extractor(it, catalog, requests, profile) else object : ForwardingExtractor(it) {
+            override fun init(output: ExtractorOutput) { requests.discardMetadata(); super.init(output) }
+            override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int {
+                requests.discardMetadata(); return super.read(input, seekPosition)
+            }
+        } }.toTypedArray()
     }
 }
 
@@ -57,6 +63,8 @@ internal class ObservedMp4Extractor(actual: Extractor, private val catalog: Mp4C
     private var original: Mp4CacheRequest? = null
     private var closed = false
     private var supported = true
+    private var readStarted = false
+    private var proof: Mp4MetadataProof? = null
     override fun init(output: ExtractorOutput) {
         super.init(object : ExtractorOutput {
             override fun track(id: Int, type: Int): TrackOutput {
@@ -95,11 +103,15 @@ internal class ObservedMp4Extractor(actual: Extractor, private val catalog: Mp4C
                 }
             }
         }
+        readStarted = true
         return super.read(input, seekPosition)
     }
     override fun seek(position: Long, timeUs: Long) {
         super.seek(position, timeUs)
-        if(position == 0L) synchronized(gate) { if(!closed) { ended = false; map = null; capture() } }
+        if(position == 0L) synchronized(gate) { if(!closed) {
+            if(readStarted) requests.restartMetadata()
+            ended = false; map = null; proof = null; capture()
+        } }
     }
     override fun release() {
         synchronized(gate) { closed = true; tracks.clear(); map = null; original = null }
@@ -109,8 +121,10 @@ internal class ObservedMp4Extractor(actual: Extractor, private val catalog: Mp4C
         if(closed) return
         // An excessive/ambiguous native output never establishes an index.
         if(!supported) { catalog.remove(owner); return }
+        if(proof == null && ended && map != null && tracks.isNotEmpty() && tracks.values.all { it.format != null })
+            proof = requests.freezeMetadata()
         catalog.update(owner, Mp4CacheCatalog.Entry(profile, tracks.values.map {
             Mp4CacheCatalog.Track(it.id, it.type, it.ordinal, it.format, it.durationUs)
-        }, ended, map, length, original))
+        }, ended, map, length, original, proof))
     }
 }

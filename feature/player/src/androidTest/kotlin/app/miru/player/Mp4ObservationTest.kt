@@ -149,6 +149,7 @@ class Mp4ObservationTest {
                 val entry = requireNotNull(session.mp4CacheCatalog).snapshot().entries.single()
                 assertTrue(entry.profile.trustedDefaults)
                 assertTrue(entry.tracksEnded); assertTrue(requireNotNull(entry.seekMap).isSeekable)
+                assertNotNull(entry.metadataProof)
                 assertEquals(12_000_000L, entry.seekMap.durationUs)
                 assertEquals(file.length(), entry.fileLength)
                 val emitted = entry.tracks.single { it.type == C.TRACK_TYPE_VIDEO }

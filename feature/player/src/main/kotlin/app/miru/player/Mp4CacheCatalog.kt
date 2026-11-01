@@ -21,10 +21,10 @@ internal data class Mp4ParserProfile(val trustedDefaults: Boolean, val parseHagc
 internal class Mp4CacheCatalog : Closeable {
     class Track(val outputId: Int, val type: Int, val ordinal: Int, val format: Format?, val durationUs: Long)
     class Entry(val profile: Mp4ParserProfile, tracks: Collection<Track>, val tracksEnded: Boolean,
-        val seekMap: SeekMap?, val fileLength: Long, val request: Mp4CacheRequest?) {
+        val seekMap: SeekMap?, val fileLength: Long, val request: Mp4CacheRequest?, val metadataProof: Mp4MetadataProof? = null) {
         val tracks = Collections.unmodifiableList(ArrayList(tracks))
         fun sameAs(other: Entry) = profile == other.profile && tracksEnded == other.tracksEnded && seekMap === other.seekMap &&
-            fileLength == other.fileLength && (request === other.request || request?.sameAs(other.request) == true) &&
+            fileLength == other.fileLength && metadataProof === other.metadataProof && (request === other.request || request?.sameAs(other.request) == true) &&
             tracks.size == other.tracks.size && tracks.indices.all { i ->
                 val a = tracks[i]; val b = other.tracks[i]
                 a.outputId == b.outputId && a.type == b.type && a.ordinal == b.ordinal && a.format === b.format && a.durationUs == b.durationUs
