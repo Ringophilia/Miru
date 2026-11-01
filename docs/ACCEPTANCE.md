@@ -33,7 +33,7 @@ P0 是首个可用版本门，P1 是第二轮功能，P2 在规范中为“有�
 组合、敏感数据实际取证仍需各自证据。专项性能/隐私/发布/运行表24行仅PERF08在明确打包范围内
 verified，另9 implemented、14 pending；与上述67项不相加计算进度。
 
-当前0.5.14常规设备143/143通过；0.5.14 ARM64开发包108,135,802字节的体积/打包亦通过，两种范围分开。四个独立前置类与
+最近完成整组的0.5.14常规设备143/143通过（cf1c52a主包）；0.5.14 ARM64开发包108,135,802字节的体积/打包亦通过，两种范围分开。四个独立前置类与
 capability包排除不计通过。真机性能、ARM64/R8实际运行、正式签名、第三方分发审查和阶段录屏仍待。
 **M0–M3均未整阶段验收，M4/M5仍pending，IOS01–IOS08全pending。**
 
@@ -70,6 +70,7 @@ capability包排除不计通过。真机性能、ARM64/R8实际运行、正式�
 | E24 | [0.5.13普通DASH磁盘区段与布局](M3-DASH-CACHED-RANGES-VALIDATION.md)、`artifacts/m3-cached-ranges/dash-*` | 实际holder/原始父DataSpec的Template/Timeline/List/Base+sidx、PTO、period边界、merged子range、SAP旁路证明、原生选轨与AV交集；早期模块59/59。保留多period设置错误、两轮UI黑帧、过严物理尺寸诊断及首个布局候选比例失败。最终build-10冻结566项输入、JVM72/72、lint0/22、59项素材逐字节一致；控制器保存最近实际尺寸供layout-only，当前7/7 UI（33.159秒）含停供新decoder的9秒PTS/蓝帧、比例门及HLS4；最终同次模块59/59（50.155秒），误填类名的29过/2启动失败轮保留。同包常规142/142（1465.085秒）通过，四个独立前置类及capability仍排除不计通过。83f2da9干净源R8/lint成功7分48秒、0/22、567项输入无漂移；108,135,802字节ARM64开发包1538payload/对齐/同Debug证书/17库/4077+2+5资源验证通过。完整P11、R8/ARM64实际运行及正式签名仍待。 |
 | E25 | [0.5.14普通流跨会话资源闭合](M3-CACHE-RESOURCE-CLOSURE-VALIDATION.md)、`artifacts/m3-cached-ranges/closure-*` | 原始坐标/main headers key、当前SDK持久长度与committed spans、失败观察保留、IO动态依赖登记及实际主源/preview metadata事件；DASH普通单段/无CMCD配置补未访问资源。加强旧包UI为5过/3完整holes失败；首候选UI8/8，但模块66过/1失败（删除最后span也删除SDK长度），原失败保留。修为真实EOF恢复及metadata-only事件，第二候选模块69/69、UI8/8；另补清空后旧EOF256/新长度512反例。最终build-03冻结570项、JVM74/74、lint0/22、素材59项一致；最终同次模块70/70（23.273秒）、UI8/8（36.863秒）；同包常规143/143（954.367秒）通过，四个独立前置类及capability包仍排除不计通过。cf1c52a干净源R8/lint成功4分2秒，571项无漂移、0/22；108,135,802字节ARM64开发包1538payload/对齐/同Debug证书/17库/4077+2+5资源核验通过。P11全格式/复杂流、整窗口跨period、完整生命周期/Range/鉴权、正式签名与真机运行仍pending。 |
 | E26 | [MP4原生冷启动读路径预验](M3-MP4-NATIVE-SEEK-PREFLIGHT.md)、`artifacts/m3-cached-ranges/mp4-native-*` | 仅新增独立测试，0.5.14主490c9c逐字节未变，新test5c74fb；572项冻结/JVM74/lint0/22。owned 120样本精确移除[8482,15032)，真实HTTP/SDK seed后停供，新PlayerActivity在9秒实际PTS9000000/RGB[1,0,255]且无新增上游；5秒实际10117/8482洞内503并error。显式独立2/2（8.894秒），不并入旧143项；无生产MP4索引/UI，也不抵消原edit严格比较失败。 |
+| E27 | [MP4主源观察与缓存结构解析](M3-MP4-CACHE-METADATA-VALIDATION.md)、`artifacts/m3-cached-ranges/mp4-observer-*`/`mp4-metadata-*` | 实际默认extractor/输出/原DataSpec身份观察，完整公开工厂转发及preview/private/offline/ICY隔离；只读固定key缓存结构读取和公共BoxParser，未发布MP4区段。编译旧类名/数组错误、安装前0测试中止、原81过/3 raw-edit参考模式失败均保留；按独立elst整数tick修新oracle，无容差且旧edit门未改。最终579项输入/JVM74/lint0/22/69素材保持；同次模块84/84（27.859秒），同main/app-test另native2/2（15.044秒）；新主b59ecb尚无整组143/R8打包通过声明。实际native来源校验、duration/DTS/decode/I/O闭包、AV与时间条仍待。 |
 | SRC | 当前模块源码、Gradle、manifest、资源和 `design/tokens.json` | 证明存在代码 / 配置。单独不能证明运行正确、无泄漏、无掉帧或兼容所有站点。 |
 | LEGAL | [OPEN-SOURCE-REVIEW.md](OPEN-SOURCE-REVIEW.md)、[third_party/README.md](../third_party/README.md) | M0 源码公开范围的检查和后续依赖说明；不是含 uBO / 嵌套依赖的完整二进制分发审查。 |
 
@@ -143,7 +144,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | P8 P0 亮度 / 音量 | implemented | 左右半区、75%高度、窗口亮度 / STREAM_MUSIC；已加等价滑块语义。 | 真实上下滑、静音 / 系统限制、手势开关、触感和状态恢复。 |
 | P9 P0 流缓存 | implemented | 独立 SimpleCache LRU、签名参数规则、清单走网络、auth 摘要分区、私密绕过；E2 / E3。 | 真断网已看部分回拖、真实重签名 / 私密 / 缓存错误矩阵，8GB上限设置差异。 |
 | P10 P0 预缓冲 | implemented | DefaultLoadControl、默认60s / 半数 min≥15s、起播1s / 重缓冲2.5s / 回退30s、DataSaver判断。 | 300s设置缺失；系统计费 / 白名单 / DataSaver设备专项。 |
-| P11 P1 磁盘区段 | pending | E20–E23已串联普通HLS选轨/磁盘UI；E24/0.5.13新增当前period普通DASH实际holder/sidx、merged子range、PTO和选中AV，当前候选UI7/7含停供新decoder的9秒PTS/蓝帧与布局比例。MP4基线3/3、复杂2过1失败及edit差异保留。E25补普通HLS/当前period DASH的未访问缓存资源、SDK长度/原key与动态监听，旧包加强UI5过/3失败保留；最终模块70/70、UI8/8与同包常规143/143（954.367秒）已过；排除类不计通过。E26另有MP4原生冷启动独立2/2，未实现生产索引或替代edit失败。整窗口跨period/动态/非独立DASH、MP4/其他VBR、非独立/LL/复杂HLS及完整跨会话/未知资源/Range/鉴权矩阵尚未完成。 | 全格式、完整生命周期/鉴权/清理、实际解码/停源/几何及真机矩阵；不能以普通HLS受控通过替代完整要求，也不拼不同轮次宣称验完。 |
+| P11 P1 磁盘区段 | pending | E20–E23已串联普通HLS选轨/磁盘UI；E24/0.5.13新增当前period普通DASH实际holder/sidx、merged子range、PTO和选中AV，当前候选UI7/7含停供新decoder的9秒PTS/蓝帧与布局比例。MP4基线3/3、复杂2过1失败及edit差异保留。E25补普通HLS/当前period DASH的未访问缓存资源、SDK长度/原key与动态监听，旧包加强UI5过/3失败保留；最终模块70/70、UI8/8与同包常规143/143（954.367秒）已过；排除类不计通过。E26另有MP4原生冷启动独立2/2；E27生产观察/只读结构解析已接入，最终模块84/84，尚无duration/DTS/decode/I/O闭包或MP4区段发布，不替代edit失败。整窗口跨period/动态/非独立DASH、MP4/其他VBR、非独立/LL/复杂HLS及完整跨会话/未知资源/Range/鉴权矩阵尚未完成。 | 全格式、完整生命周期/鉴权/清理、实际解码/停源/几何及真机矩阵；不能以普通HLS受控通过替代完整要求，也不拼不同轮次宣称验完。 |
 | P12 P1 离线视频 | implemented | E4：真实DownloadManager/Service、HLS/DASH、独立非LRU缓存、停源音轨字幕和完成项强停后无网络UUID回放。E6：真实通知暂停/继续/取消及历史完成副本全片播放。 | 真机飞行模式 / 网络切换 / 后台 / 手机重启；下载进行中杀进程续传与重签名网站矩阵。 |
 | P13 P1 超分 | implemented | E5：Anime4K S/M/L与FSR真实渲染、统计/暂停比较分割线、切档及旋转同一播放器。 | 指定 8 Gen2 级设备 540P动画→1080P均衡<12ms；完整GPU/生命周期兼容矩阵。 |
 | P14 P1 超分 benchmark / 保护 | implemented | E5：真实720P片段、三档60真实帧和<16ms推荐/记忆代码；保护策略单测、实际shader错误直显。 | benchmark UI完整流程、倍速/HDR/PiP及真实热状态/过载设备矩阵；不能以策略单测代替硬件行为。 |

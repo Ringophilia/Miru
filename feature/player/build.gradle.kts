@@ -16,6 +16,7 @@ val trackTestAssets = tasks.register<PlayerTrackTestAssetsTask>("preparePlayerTr
     from(rootProject.file("app/src/androidTest/assets/media/m3-tracks")) { into("tracks") }
     from(rootProject.file("app/src/androidTest/assets/media/cached-ranges/dash")) { into("dash-cache") }
     from(rootProject.file("app/src/androidTest/assets/media/dash")) { into("dash-av") }
+    from(rootProject.file("app/src/androidTest/assets/media/cached-ranges")) { exclude("dash/**"); into("mp4-cache") }
     outputDirectory.set(layout.buildDirectory.dir("generated/player-track-test-assets"))
     into(outputDirectory)
 }

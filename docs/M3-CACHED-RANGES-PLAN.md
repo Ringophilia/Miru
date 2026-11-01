@@ -83,6 +83,8 @@ callback、parent取消、计算期间淘汰/取消、cache异常重试、touch�
    B帧数组非显示顺序，不能用相邻PTS算时长；按GOP/preroll/codec init和选中audio求闭包。
    [原生冷启动预验](M3-MP4-NATIVE-SEEK-PREFLIGHT.md)已有单视频head-moov的实际磁盘洞、
    停供9秒PTS/RGB和5秒503缺口，独立2/2；生产索引、B帧/AV/复杂edit及其他容器仍待。
+   [主源观察/只读结构](M3-MP4-CACHE-METADATA-VALIDATION.md)已有实际native身份和结构解析，
+   最终模块84/84；尚未发布MP4时间区段，duration/DTS与native来源/IO闭包须继续完成。
    head/tail、co64/extended size、多mdat、edit gap、fragmented MP4与其他VBR封装须逐格式
    证明；未知/估计索引不画，但仍保留对应实现/验收工作。
 6. **真实磁盘和界面。** 0–4/8–12秒已缓存而4–8秒缺失的几何、实际请求、解码PTS/RGB和停源

@@ -47,6 +47,7 @@ class PlaybackSourceSession(
     private val bindings = CachedResourceBindings()
     internal val hlsCacheCatalog = if(this.cache != null) HlsCacheCatalog() else null
     internal val dashCacheCatalog = if(this.cache != null) DashCacheCatalog() else null
+    internal val mp4CacheCatalog = if(this.cache != null) Mp4CacheCatalog() else null
     @Volatile private var closed = false
     /** Invalidation only; format adapters obtain a coherent snapshot on their IO worker. */
     val cacheBindingRevision = bindings.revision
@@ -57,7 +58,7 @@ class PlaybackSourceSession(
         check(cache != null && !closed) { "No active streaming-cache binding" }
         return DataSource.Factory { CacheBindingDataSource(CacheMetadataDataSource(factory.createDataSource(), cache), cacheKeyFactory, bindings) }
     }
-    override fun close() { closed = true; bindings.close(); hlsCacheCatalog?.close(); dashCacheCatalog?.close() }
+    override fun close() { closed = true; bindings.close(); hlsCacheCatalog?.close(); dashCacheCatalog?.close(); mp4CacheCatalog?.close() }
     private val configuration = requireNotNull(mediaItem.localConfiguration)
     private val url = configuration.uri.toString()
     // The v2 namespace prevents reuse of old comma/equal-joined partitions. Those
@@ -125,7 +126,10 @@ class PlaybackSourceSession(
                     ObservedDashChunkSourceFactory(media, dashCacheCatalog, ::cacheKey, inferUnvisitedRequests = true), manifest)
                     .setManifestParser(DashCacheManifestParser(dashCacheCatalog))
                 else DashMediaSource.Factory(DefaultDashChunkSource.Factory(media), manifest)
-            else -> ProgressiveMediaSource.Factory(if(adaptive) manifest else media)
+            else -> if(preview == null && !adaptive && mp4CacheCatalog != null) {
+                val requests = Mp4CacheRequestContext(::cacheKey)
+                ProgressiveMediaSource.Factory(requests.factory(media), ObservedMp4ExtractorsFactory(mp4CacheCatalog, requests))
+            } else ProgressiveMediaSource.Factory(if(adaptive) manifest else media)
         }
     }
 }
