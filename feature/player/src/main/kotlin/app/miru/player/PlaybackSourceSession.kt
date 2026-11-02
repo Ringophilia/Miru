@@ -24,6 +24,11 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import java.io.Closeable
 
+// Yield native progressive reads soon enough for prepare/initial-seek callbacks
+// to run before a small cached prefix is exhausted. This is checked after an
+// extractor read, not a cap on DataSource or sample read sizes.
+internal const val STREAM_CACHE_LOADING_CHECK_BYTES = 4 * 1024
+
 /**
  * Immutable current-header/source revision, shared by playback and preview policy.
  * The owner decides whether disk is allowed: private playback passes null. Offline
@@ -129,6 +134,7 @@ class PlaybackSourceSession(
             else -> if(preview == null && !adaptive && mp4CacheCatalog != null) {
                 val requests = Mp4CacheRequestContext(::cacheKey)
                 ProgressiveMediaSource.Factory(requests.factory(media), ObservedMp4ExtractorsFactory(mp4CacheCatalog, requests))
+                    .setContinueLoadingCheckIntervalBytes(STREAM_CACHE_LOADING_CHECK_BYTES)
             } else ProgressiveMediaSource.Factory(if(adaptive) manifest else media)
         }
     }
