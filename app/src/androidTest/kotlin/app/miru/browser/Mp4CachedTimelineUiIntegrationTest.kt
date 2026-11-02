@@ -9,6 +9,9 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
@@ -66,8 +69,9 @@ class Mp4CachedTimelineUiIntegrationTest {
     @Test fun cachedNinePublishesTheCompleteHoleAndMetadataRemovalWithdrawsIt() = probe(9_000, true, "nine")
     @Test fun uncachedFiveFailsAtTheByteHoleAndNeverPublishesThatTime() = probe(5_000, false, "green")
     @Test fun longMovieDrawsCachedIntervalsBeyondTheObservedMemoryBuffer() = probe(9_000, true, "long", true)
+    @Test fun pausedCachedSeekRecoversAfterFuturePrefetchFailure() = probe(9_000, true, "retry", true, true)
 
-    private fun probe(positionMs: Long, expectBlue: Boolean, name: String, longMovie: Boolean = false) {
+    private fun probe(positionMs: Long, expectBlue: Boolean, name: String, longMovie: Boolean = false, waitForPrefetchFailure: Boolean = false) {
         val assets = instrumentation.context.assets
         val reference = JSONObject(assets.open("media/cached-ranges/${if(longMovie) "long-colors" else "colors"}.samples.json").bufferedReader().use { it.readText() })
         val bytes = assets.open(reference.getString("asset")).use { it.readBytes() }
@@ -138,25 +142,41 @@ class Mp4CachedTimelineUiIntegrationTest {
                         launched.onActivity {
                             it.playback.player?.setVideoFrameMetadataListener { value, _, _, _ -> pts.set(value) }
                             snapshot = it.playback.state.value
-                            if(expectBlue && (snapshot.error || snapshot.timedOut)) throw AssertionError("Cold cached-blue MP4 failed: $snapshot; requests=${origin.calls.drop(before).map { call -> call.json() }}")
+                            if(expectBlue && (snapshot.timedOut || snapshot.error && !waitForPrefetchFailure)) throw AssertionError("Cold cached-blue MP4 failed: $snapshot; requests=${origin.calls.drop(before).map { call -> call.json() }}")
                             val output = findVideo(it.window.decorView)
                             val surface = output?.surfaceView
                             val frame = surface?.holder?.surfaceFrame
                             val visibleOutput = it.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+                                it.window.decorView.width > it.window.decorView.height &&
                                 it.window.decorView.hasWindowFocus() && output?.isLaidOut == true && !output.isLayoutRequested &&
                                 surface?.holder?.surface?.isValid == true && frame?.width() == surface.width && frame.height() == surface.height &&
                                 abs(surface.width * 90L - surface.height * 160L) <= 160L
-                            done = if(expectBlue) snapshot.ready && snapshot.duration == (if(longMovie) 120_000L else 12_000L) && snapshot.width == 160 && visibleOutput
+                            done = if(waitForPrefetchFailure) snapshot.error
+                                else if(expectBlue) snapshot.ready && snapshot.duration == (if(longMovie) 120_000L else 12_000L) && snapshot.width == 160 && visibleOutput
                                 else snapshot.error
-                            if(done) it.playback.pause()
+                            if(done) {
+                                report.put("pauseWindowSize", "${it.window.decorView.width}x${it.window.decorView.height}")
+                                    .put("pauseSurfaceSize", "${surface?.width}x${surface?.height}")
+                                it.playback.pause()
+                            }
                         }
                         done
                     }
                     report.put("player", snapshot.toString())
+                    if(waitForPrefetchFailure) launched.onActivity {
+                        val error = checkNotNull(it.playback.player?.playerError)
+                        assertEquals(androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS, error.errorCode)
+                        var cause: Throwable? = error; var status = 0
+                        repeat(8) { if(cause is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) status = (cause as androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException).responseCode; cause = cause?.cause }
+                        assertEquals(503, status)
+                        report.put("expectedPrefetchFailure", "native HTTP 503 before explicit paused cached seek")
+                    }
                     if(expectBlue) {
                         var view: RoutedVideoView? = null
                         launched.onActivity {
                             view = findVideo(it.window.decorView)
+                            report.put("beforeSeekNativeState", it.playback.player?.playbackState)
+                                .put("beforeSeekErrorCode", it.playback.player?.playerError?.errorCode)
                             it.playback.seek(positionMs)
                         }
                         compose.waitUntil(10_000) { abs(pts.get() - positionMs * 1000) <= 150_000 }
@@ -168,8 +188,38 @@ class Mp4CachedTimelineUiIntegrationTest {
                             listOf(CachedTimeRange(0, 4_000_000)) + (0..8).map { CachedTimeRange((8 + it * 12) * 1_000_000L, (16 + it * 12) * 1_000_000L) } + CachedTimeRange(116_000_000, 120_000_000)
                         compose.waitUntil(10_000) { var actual = emptyList<CachedTimeRange>(); launched.onActivity { actual = it.playback.diskRanges.value }; actual == holes }
                         report.put("diskRanges", holes.toString())
+                        if(waitForPrefetchFailure && compose.onAllNodesWithTag("player_seek_track", useUnmergedTree = true).fetchSemanticsNodes().isEmpty()) {
+                            // Waiting for a real error outlasts normal control auto-hide.
+                            // Reveal controls through the same public video tap as a user.
+                            val point = IntArray(2); var x = 0f; var y = 0f
+                            launched.onActivity {
+                                val surface = requireNotNull(findVideo(it.window.decorView)).surfaceView
+                                surface.getLocationOnScreen(point)
+                                x = point[0] + surface.width / 2f; y = point[1] + surface.height / 2f
+                            }
+                            val down = SystemClock.uptimeMillis()
+                            for(action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                                val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, y, 0).apply { this.source = InputDevice.SOURCE_TOUCHSCREEN }
+                                try { assertTrue(instrumentation.uiAutomation.injectInputEvent(event, true)) } finally { event.recycle() }
+                            }
+                        }
                         compose.waitUntil(5_000) { compose.onAllNodesWithTag("player_seek_track", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-                        val trackImage = compose.onNodeWithTag("player_seek_track", useUnmergedTree = true).captureToImage()
+                        var trackImage = compose.onNodeWithTag("player_seek_track", useUnmergedTree = true).captureToImage()
+                        if(longMovie) {
+                            // Backend publication precedes the next Compose draw. Observe the
+                            // actual rendered layer, retaining the original pixel thresholds.
+                            compose.waitUntil(5_000) {
+                                trackImage = compose.onNodeWithTag("player_seek_track", useUnmergedTree = true).captureToImage()
+                                val pixels = trackImage.toPixelMap()
+                                fun light(seconds: Int): Float {
+                                    val x = (pixels.width * seconds / 120f).toInt().coerceIn(1, pixels.width - 2)
+                                    return (-1..1).map { dx -> pixels[x + dx, pixels.height / 2].let { (it.red + it.green + it.blue) * 85f } }.average().toFloat()
+                                }
+                                val left = light(84); val hole = light(90); val right = light(94)
+                                report.put("lastTrackBrightness84_90_94", JSONArray(listOf(left, hole, right)))
+                                left - hole >= 30f && right - hole >= 30f
+                            }
+                        }
                         val strip = trackImage.asAndroidBitmap()
                         File(context.filesDir, "mp4-ui-$name-track-holes.png").outputStream().use { strip.compress(Bitmap.CompressFormat.PNG, 100, it) }
                         if(longMovie) {
@@ -210,6 +260,7 @@ class Mp4CachedTimelineUiIntegrationTest {
                         val view = findVideo(it.window.decorView)
                         report.put("failurePlayer", it.playback.state.value.toString()).put("failureDiskRanges", it.playback.diskRanges.value.toString())
                             .put("failureNativeState", native?.playbackState).put("failurePlaying", native?.playWhenReady)
+                            .put("failureErrorCode", native?.playerError?.errorCode)
                             .put("failureVideoSize", native?.videoSize.toString()).put("failureRoute", view?.state().toString())
                             .put("failureViewSize", "${view?.width}x${view?.height}").put("failureSurfaceSize", "${view?.surfaceView?.width}x${view?.surfaceView?.height}")
                     } }

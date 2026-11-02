@@ -178,9 +178,7 @@ class PlayerController(
                 }
                 override fun onPlayerError(error: PlaybackException) {
                     if(released || returnedToWeb || revision != sourceRevision || player !== created) return
-                    var cause: Throwable? = error
-                    var status = 0
-                    repeat(8) { if(cause is HttpDataSource.InvalidResponseCodeException) status = (cause as HttpDataSource.InvalidResponseCodeException).responseCode; cause = cause?.cause }
+                    val status = httpResponseStatus(error)
                     if(error.errorCode in setOf(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT) && connectivity.activeNetwork == null) {
                         waitingForNetwork = true
                         mutable.value = mutable.value.copy(error = false, buffering = true)
@@ -209,7 +207,7 @@ class PlayerController(
             if(saved > 0) mutable.value = mutable.value.copy(resumed = true)
             created.prepare(); created.playWhenReady = true
             speed(currentSpeed)
-            startup = scope.launch { delay(20_000); if(!mutable.value.ready && !mutable.value.error) { created.pause(); mutable.value = mutable.value.copy(timedOut = true, buffering = false) } }
+            watchStartup(created)
             ticker = scope.launch { while(isActive) { update(); if(System.currentTimeMillis() - lastSave >= 10_000) save(); delay(250) } }
             } catch(cancelled: CancellationException) { throw cancelled }
             catch(_: Exception) { mutable.value = mutable.value.copy(error = true, buffering = false) }
@@ -282,6 +280,28 @@ class PlayerController(
         player?.pause()
         mutable.value = mutable.value.copy(error = true, buffering = false)
         returnToWeb()
+    }
+
+    private fun httpResponseStatus(error: Throwable): Int {
+        var cause: Throwable? = error
+        var status = 0
+        repeat(8) {
+            if(cause is HttpDataSource.InvalidResponseCodeException) status = (cause as HttpDataSource.InvalidResponseCodeException).responseCode
+            cause = cause?.cause
+        }
+        return status
+    }
+
+    private fun watchStartup(target: ExoPlayer) {
+        startup?.cancel()
+        val revision = sourceRevision
+        startup = scope.launch {
+            delay(20_000)
+            if(!released && player === target && revision == sourceRevision && !mutable.value.ready && !mutable.value.error) {
+                target.pause()
+                mutable.value = mutable.value.copy(timedOut = true, buffering = false)
+            }
+        }
     }
 
     private fun update() {
@@ -468,7 +488,23 @@ class PlayerController(
 
     fun toggle() { player?.let { if(it.isPlaying) it.pause() else { if(it.playbackState == Player.STATE_ENDED) it.seekTo(0); it.play() } } }
     fun resume() { if(!released) player?.play() }
-    fun seek(position: Long) { player?.let { target -> target.seekTo(if(target.duration > 0) position.coerceIn(0, target.duration) else position.coerceAtLeast(0)) }; update() }
+    fun seek(position: Long) {
+        if(released || returnedToWeb) return
+        player?.let { target ->
+            val failure = target.playerError
+            val retrySource = failure?.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS && httpResponseStatus(failure) in 500..599
+            target.seekTo(if(target.duration > 0) position.coerceIn(0, target.duration) else position.coerceAtLeast(0))
+            if(retrySource) {
+                // seekTo changes an errored player's position but does not restart its
+                // source. Keep this player/session and its paused/playing intention.
+                // Authentication and decoder failures retain their dedicated paths.
+                mutable.value = mutable.value.copy(ready = false, error = false, timedOut = false, buffering = true)
+                target.prepare()
+                watchStartup(target)
+            }
+        }
+        update()
+    }
     fun seekBy(delta: Long) { player?.let { seek(it.currentPosition + delta) } }
     fun live() { player?.seekToDefaultPosition() }
     fun restart() { seek(0); mutable.value = mutable.value.copy(resumed = false) }

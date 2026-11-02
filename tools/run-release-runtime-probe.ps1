@@ -67,7 +67,12 @@ try {
         $report | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath (Join-Path $run 'report.json')
         if($report.status -ne 'PASSED') { $result.success=$false }
     } else { $result.success=$false }
-    & $adb -s $Device logcat -d -v threadtime -t 4000 *> (Join-Path $run 'logcat.log')
+    if($exitCode -eq 0) {
+        & $adb -s $Device logcat -d -v threadtime -t 4000 *> (Join-Path $run 'logcat.log')
+    } else {
+        "Skipped post-run logcat after instrumentation transport exit $exitCode; retain any live capture separately." |
+            Set-Content -LiteralPath (Join-Path $run 'logcat.log')
+    }
     if(-not $result.success) { throw 'R8 runtime probe failed; original runner/report/logcat retained' }
 } catch { $result['success']=$false;$result['error']=$_.Exception.Message;throw }
 finally {

@@ -95,7 +95,12 @@ try {
     $passed = @($codes | Where-Object { $_ -eq 0 }).Count
     $bad = @($codes | Where-Object { $_ -lt 0 })
     $ok = $raw -match "(?m)^OK \($Expected tests?\)\s*$"
-    & $Adb -s $Device logcat -d -v threadtime -t 6000 *> (Join-Path $miruRun 'logcat.log')
+    if($exitCode -eq 0) {
+        & $Adb -s $Device logcat -d -v threadtime -t 6000 *> (Join-Path $miruRun 'logcat.log')
+    } else {
+        "Skipped post-run logcat after instrumentation transport exit $exitCode; retain any live capture separately." |
+            Set-Content -LiteralPath (Join-Path $miruRun 'logcat.log')
+    }
     $miruResult = [ordered]@{finishedAt=(Get-Date -Format o);elapsedSeconds=((Get-Date)-$started).TotalSeconds;adbExit=$exitCode;passed=$passed;nonPassCodes=$bad;terminalOK=$ok;success=($exitCode -eq 0 -and $passed -eq $Expected -and $bad.Count -eq 0 -and $ok)}
     if(-not $miruResult.success) { throw 'Device regression failed; see retained runner.log and logcat.log' }
 } catch {

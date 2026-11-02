@@ -16,6 +16,7 @@ $miruMock = Join-Path $miruBuild 'mock-adb.ps1'
 @'
 $global:LASTEXITCODE = 0
 switch($args[2]) {
+    'logcat' { if($env:MIRU_VALIDATION_MOCK_MODE -eq 'transport-lost') { throw 'Must not query logcat after transport loss' } }
     'install' { $env:MIRU_VALIDATION_MOCK_APK = $args[-1] }
     'pull' {
         $destination = $args[-1]
@@ -29,7 +30,8 @@ switch($args[2]) {
             'getprop' { 'mock-device' }
             'am' {
                 'INSTRUMENTATION_STATUS_CODE: 0'
-                if($env:MIRU_VALIDATION_MOCK_MODE -eq 'bad-count') { 'OK (2 tests)' }
+                if($env:MIRU_VALIDATION_MOCK_MODE -eq 'transport-lost') { $global:LASTEXITCODE=255 }
+                elseif($env:MIRU_VALIDATION_MOCK_MODE -eq 'bad-count') { 'OK (2 tests)' }
                 else { 'OK (1 test)' }
             }
         }
@@ -41,7 +43,7 @@ $miruOriginalEnvironment = @{}
 foreach($name in $miruEnvironmentNames) { $miruOriginalEnvironment[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
 $miruChecks = @()
 try {
-    foreach($mode in @('success','bad-pull','bad-count')) {
+    foreach($mode in @('success','bad-pull','bad-count','transport-lost')) {
         $runName = "disk-cleanup-mock-$mode-$miruId"
         $run = Join-Path $miruRepository "artifacts/m3-cached-ranges/$runName"
         $env:MIRU_VALIDATION_MOCK_MODE = $mode
@@ -54,10 +56,13 @@ try {
             if($mode -eq 'success') { throw }
             if($mode -eq 'bad-pull' -and $_.Exception.Message -notlike '*hash/size mismatch*') { throw }
             if($mode -eq 'bad-count' -and $_.Exception.Message -notlike '*Device regression failed*') { throw }
+            if($mode -eq 'transport-lost' -and $_.Exception.Message -notlike '*Device regression failed*') { throw }
         }
         if($rejected -ne ($mode -ne 'success')) { throw "Unexpected rejection state for $mode" }
         $result = Get-Content -LiteralPath (Join-Path $run 'result.json') -Raw | ConvertFrom-Json
         if($result.success -ne ($mode -eq 'success')) { throw "Incorrect result success for $mode" }
+        if($mode -eq 'transport-lost' -and ($result.adbExit -ne 255 -or $result.terminalOK -or
+            (Get-Content -LiteralPath (Join-Path $run 'logcat.log') -Raw) -notlike 'Skipped post-run logcat*')) { throw 'Transport failure was not preserved without another logcat query' }
         $pull = Get-Content -LiteralPath $env:MIRU_VALIDATION_MOCK_TRACE -Raw
         if((Test-Path -LiteralPath $pull) -or (Test-Path -LiteralPath (Split-Path $pull -Parent))) { throw "Temporary pull leaked after $mode" }
         if(@(Get-ChildItem -LiteralPath $run -File -Filter '*.apk').Count -ne 0) { throw "Run-local APK copy leaked after $mode" }
