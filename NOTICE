@@ -19,3 +19,8 @@ the dependency license inventory are documented in third_party/README.md.
 Gradle Wrapper scripts and gradle/wrapper/gradle-wrapper.jar are distributed
 under Apache-2.0, not Miru's MPL-2.0. Original script notices are preserved.
 See third_party/gradle/Apache-2.0.txt and third_party/gradle/NOTICE.txt.
+
+Mp4ReadSchedule.kt adapts the Media3 Mp4Extractor 1.11.1 read scheduling policy.
+Copyright (C) 2016 The Android Open Source Project; adaptation copyright (c) 2026
+Ringophilia and xiaomao. This file is Apache-2.0, with its original notice retained.
+The Apache-2.0 license is included in app/src/main/assets/licenses/Apache-2.0.txt.

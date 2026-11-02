@@ -14,6 +14,7 @@
 | Google Play services FIDO | `21.3.1` | 以及 base `18.7.2`、basement `18.9.0`、tasks `18.3.2`，POM 声明 [Android SDK 专有许可](https://developer.android.com/studio/terms)；不是 MPL/Apache 授权 |
 | JUnit / Hamcrest | `4.13.2` / `1.3` | JUnit 声明 [EPL-1.0](https://github.com/junit-team/junit4/blob/r4.13.2/LICENSE-junit.txt)，Hamcrest 另有 BSD 条款；当前 release 解析图中也出现了测试支持组件，不能仅按“测试依赖”忽略 |
 | Gradle Wrapper | `9.3.1` | Apache-2.0；[许可原文](gradle/Apache-2.0.txt)及[说明](gradle/NOTICE.txt)，不重新授权为 MPL |
+| MP4读取调度移植 | Media3 Mp4Extractor `1.11.1` | `Mp4ReadSchedule.kt`保留AOSP版权和Apache-2.0文件头，仓库及包内NOTICE同步；[来源与验证](../docs/M3-MP4-READ-SCHEDULE-VALIDATION.md)，不重新授权为MPL。 |
 | uBlock Origin | `1.75.0`，官方 AMO 签名 XPI，未修改 | GPL-3.0；[来源与 SHA-256](ublock/NOTICE.md)、[许可全文](ublock/LICENSE.txt)、[固定版本源码](https://github.com/gorhill/uBlock/tree/1.75.0) |
 | OkHttp / Okio | OkHttp `4.12.0`，Okio 为其传递依赖 | Apache-2.0；[OkHttp 许可](https://github.com/square/okhttp/blob/parent-4.12.0/LICENSE.txt) |
 | AndroidX Room / DocumentFile | Room `2.8.5`、DocumentFile `1.1.0` | Apache-2.0；Room 编译器与 KSP 仅用于构建 |
