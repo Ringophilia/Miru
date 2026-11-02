@@ -55,8 +55,29 @@ HLS/DASH、private/offline以及preview原工厂路径保持各自行为；当�
   超分起播本轮通过，但未收集到旧失败状态的唯一根因，不能声称所有迟到repeat/起播问题已修复。
 - 七份原始JSON/PNG与SHA取回于该UI目录，`proof-files.json`绑定实际证据，没有把其他轮次PNG
   当作当前结果。模拟器为API35/x86_64、单一软件渲染实例，不替代真机性能。
-- 完整常规147项`startup-yield-routine-01`已实际启动，**尚无终态，不预记通过**。
+- 完整常规`startup-yield-routine-01`实际 **147/147，0失败/跳过，1004.529秒**，runner全程
+  1008.870秒。安装后pull回主/测试APK摘要与上述输入逐项一致；四份MP4报告与三个PNG从该整组
+  再次取回，均为该轮PASSED，`proof-files.json`保留SHA，未挪用独立15项的截图。
   四个独立前置类和capability包仍排除，不计通过。稀疏实时benchmark/错误捕获绑定真实runner
   PID/start-time，终态后自动结束捕获，不凭旧lease猜测进程存活。
 
-新R8/ARM64打包和运行、正式签名、全P11格式与生命周期、手机性能及M4/M5/iOS仍保持未完成。
+## a47f1e4 的 Release 和受控实际运行
+
+干净提交a47f1e4冻结617项输入，R8/shrink与release lint成功4分11秒、0错误/27警告。
+原AGP ARM64包111,299,363字节，SHA
+`02a45dc54b838b9a8f27089bf52d49840ca1aeb04a04a35fb0a5afc8ebc64820`。
+最终`artifacts/releases/Miru-0.5.18-arm64.apk`为 **108,152,186字节**，SHA
+`4d0b491488347dcede861284958290fe8f03cc55ed8f40b38723e1199c7d94cd`，严格小于110,000,000。
+1538项当前payload、SDK 16KB对齐/原Debug证书、17个ELF64/AArch64库及Gecko 4077+2+5资源
+验证通过，unsigned scratch已删除；证据在`startup-yield-release-build/`和发布包同名verification目录。
+
+仅覆盖ABI包装的x86_64 Release为116,675,144字节，SHA
+`60258e4aa2052bb352a8425294c51d0cbea6dfad1d0a6fd052c00888221a0aac`。
+其唯一classes.dex与最终ARM64包逐字节相等，SHA
+`9eef8687f7af8188cc1710741fc698c4bb5e462349e1683102b6558a5a31a10f`，另检查17个x86_64库与
+相同Gecko omni。框架探针在非debuggable目标实际公开seek/红帧、销毁后停源缓存重开及受控
+Gecko标题 **2/2通过，runner21.259秒**，输入/原报告/PNG在
+`artifacts/r8-device-smoke/startup-yield-runtime-01/`，DEX/ABI对应报告在相邻x86构建目录。
+
+这些是受控R8运行，**不等于ARM64原生库实际运行或全部Release矩阵**。正式签名、全P11格式与
+生命周期/鉴权/IO错误、手机性能及M4/M5/iOS仍保持未完成，历史全部失败及来源边界保留。
