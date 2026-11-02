@@ -12,7 +12,7 @@
 
 P0 是首个可用版本门，P1 是第二轮功能，P2 在规范中为“有余力再做”。P2 仍逐项保留，不会把“未做”写成“已验收”；如果维护者决定不纳入某次发行，需明确记录发行范围，而不能删去原需求。iOS 也是规范内的 M5，顺序为 Android M4 之后，不从目标中静默排除。
 
-## 当前未完摘要（2026-10-31）
+## 当前未完摘要（2026-11-02）
 
 第11节的67个功能ID为：**3 verified、48 implemented、16 pending**。这不是全规范的完成率：
 补充要求、设置、动效、隐私、性能、发布、风险和iOS表另列，且部分要求相互引用。
@@ -33,8 +33,10 @@ P0 是首个可用版本门，P1 是第二轮功能，P2 在规范中为“有�
 组合、敏感数据实际取证仍需各自证据。专项性能/隐私/发布/运行表24行仅PERF08在明确打包范围内
 verified，另9 implemented、14 pending；与上述67项不相加计算进度。
 
-最近完成整组的0.5.14常规设备143/143通过（cf1c52a主包）；0.5.14 ARM64开发包108,135,802字节的体积/打包亦通过，两种范围分开。四个独立前置类与
-capability包排除不计通过。真机性能、ARM64/R8实际运行、正式签名、第三方分发审查和阶段录屏仍待。
+最近完整全绿仍为0.5.14常规143/143；0.5.15完整终态分别为145/146和139/146，失败按各自输入保留。
+0.5.16 ARM64开发包108,152,186字节及相同DEX的x86 Release两项运行已通过（E31），不能替代本版Debug
+整组、全R8/ARM64物理机、正式签名或完整规格。四个独立前置类与capability包排除不计通过。
+真机性能、第三方分发审查和阶段录屏仍待。
 **M0–M3均未整阶段验收，M4/M5仍pending，IOS01–IOS08全pending。**
 
 ## 证据索引与使用边界
@@ -73,7 +75,8 @@ capability包排除不计通过。真机性能、ARM64/R8实际运行、正式�
 | E27 | [MP4主源观察与缓存结构解析](M3-MP4-CACHE-METADATA-VALIDATION.md)、`artifacts/m3-cached-ranges/mp4-observer-*`/`mp4-metadata-*` | 实际默认extractor/输出/原DataSpec身份观察，完整公开工厂转发及preview/private/offline/ICY隔离；只读固定key缓存结构读取和公共BoxParser，未发布MP4区段。编译旧类名/数组错误、安装前0测试中止、原81过/3 raw-edit参考模式失败均保留；按独立elst整数tick修新oracle，无容差且旧edit门未改。最终579项输入/JVM74/lint0/22/69素材保持；同次模块84/84（27.859秒），同main/app-test另native2/2（15.044秒）；新主b59ecb同包常规143/143（799.742秒）另已通过，四个独立前置类及capability仍排除；未作新R8/打包声明。实际native来源校验、duration/DTS/decode/I/O闭包、AV与时间条仍待。 |
 | E28 | [MP4读取签名与raw时序](M3-MP4-PROVENANCE-TIMING-VALIDATION.md)、`artifacts/m3-cached-ranges/mp4-proof-*`/`mp4-timing-*` | 按实际DataSource实例记录原open/key和metadata返回字节SHA，完成native输出后freeze、非MP4停止、readonly逐段验证/冲突拒绝；原始stts/ctts RLE整数PTS/DTS/duration，非邻接PTS推算。最终584项无漂移/JVM74/lint0/22/69素材；同次94/94（20.443秒），同候选native独立2/2（9.430秒），不拼入旧143。新主d52939尚无整组/R8打包通过声明；未完成post-edit/PCM/RAP/AV/完整IO闭包与MP4区段发布，P11仍pending。 |
 | E29 | [0.5.15单视频AVC磁盘时间轴](M3-MP4-AVC-CACHED-TIMELINE-VALIDATION.md)、`artifacts/m3-cached-ranges/mp4-ui-*` | 实际native owner/选轨、metadata读取签名、raw tick端点、IDR/GOP及单视频读取依赖接入生产PlayerCachedTimeline。最终build-07冻结592项、JVM74/74、lint0/27；71项owned素材逐字节保持。模块同次97/97（47.120秒）、HLS5+DASH3+MP4三项UI同包11/11（69.909秒）；120秒长片完整11段holes、memory15.9秒、实际Canvas84/94亮于90秒缺口，停供9秒PTS9000000/RGB蓝帧且metadata清理不重建player。保留早期long蓝帧失败，新增稳定窗口/Surface前提没有放宽8秒/RGB门。完整常规146为145过/1失败（1133.900秒），失败为超分benchmark QUALITY超时，MP4三项通过；本版R8/ARM64打包和运行仍待，P11多轨/复杂edit/其他封装与完整矩阵保持pending。 |
-| E30 | [Benchmark采样/释放阶段期限](M3-BENCHMARK-PHASE-DEADLINE-VALIDATION.md)、`artifacts/m3-cached-ranges/benchmark-release-*` | 保留原45秒/60帧采样门，完成有效测量后独立10秒EGL释放期限，重复/迟到不可续期且回调仍核对owner/epoch；双语释放错误。602项冻结输入、JVM79/79含新增5项阶段边界、lint0/27。新输入SwiftShader专项仍1过/2（QUALITY只有25帧），不抵消原整组37帧/原隔离60帧释放跨期的不同失败。同包在只读宿主GPU API35/x86_64实例实际2/2（28.231秒），三档62/63/61帧及无推荐/偏好保持/取消后台释放通过；未作物理SoC性能或ARM64声明。新模块97、界面11及完整常规146正依次执行，未预记全组通过。 |
+| E30 | [Benchmark采样/释放阶段期限](M3-BENCHMARK-PHASE-DEADLINE-VALIDATION.md)、`artifacts/m3-cached-ranges/benchmark-release-*` | 保留原45秒/60帧采样门，完成有效测量后独立10秒EGL释放期限，重复/迟到不可续期且回调仍核对owner/epoch；双语释放错误。602项冻结输入、JVM79/79含新增5项阶段边界、lint0/27。新输入SwiftShader专项仍1过/2（QUALITY只有25帧），不抵消原整组37帧/原隔离60帧释放跨期的不同失败。同包在只读宿主GPU API35/x86_64实例实际2/2（28.231秒），三档62/63/61帧及无推荐/偏好保持/取消后台释放通过；未作物理SoC性能或ARM64声明。新模块97/97（30.750秒）、界面11/11（52.873秒），完整常规139/146（2616.657秒），7项失败保留，不计整组全绿。 |
+| E31 | [0.5.16 R8实际运行与启动修复](R8-RUNTIME-VALIDATION.md)、`artifacts/r8-device-smoke/` | SnakeYAML2.2静态logger依赖包名，原0.5.15 R8浏览器启动空指针；只保留两个包名，类/成员仍重命名与缩减。603项冻结输入（b990c4c加审查的版本/规则两项变更），ARM64 R8/lint3分1秒、0/22；108,152,186字节、1538payload/对齐/同Debug证书/17库/Gecko完整性通过。x86包唯一DEX与ARM64逐字节同SHA bc8fc7a4...；非debuggable目标实际公开seek红帧、销毁后停源缓存重开、真实Gecko标题两项2/2（runner105.616秒）通过。保留初次测试APK运行库污染、旧包Gecko崩溃和红帧观察失败，不作全R8/ARM64物理机/正式签名声明。0.5.16 Debug整组仍待。 |
 | SRC | 当前模块源码、Gradle、manifest、资源和 `design/tokens.json` | 证明存在代码 / 配置。单独不能证明运行正确、无泄漏、无掉帧或兼容所有站点。 |
 | LEGAL | [OPEN-SOURCE-REVIEW.md](OPEN-SOURCE-REVIEW.md)、[third_party/README.md](../third_party/README.md) | M0 源码公开范围的检查和后续依赖说明；不是含 uBO / 嵌套依赖的完整二进制分发审查。 |
 
@@ -320,7 +323,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | PERF05 良好网络HLS起播<1.5s | pending | 真实首画 / 首音时间，不是ready布尔值；受控网络和release真机。 |
 | PERF06 判定后倍速<100ms | pending | 手势判定时间→实际PlaybackParameters事件；并与P2按下400ms要求分开计。 |
 | PERF07 10标签内存 / Gecko回收 | pending | 10个实际内容标签、后台回收 / 恢复 / 峰值内存，应用不额外限标签。 |
-| PERF08 ARM64 APK<110MB | verified（仅0.5.14体积/打包） | E25最终APK **108,135,802字节**，SHA `57c091e95da603073555728da03c3a5e90fb1268954b0d1d6c12a61357426d89`；1538payload逐项保持、SDK对齐/同Debug证书、17个ELF64/AArch64库及4077原项+两项精确修改+5官方新增Gecko资源验证通过。正式签名/ARM64及R8实际运行、完整发行门仍待，旧版证据保留。 |
+| PERF08 ARM64 APK<110MB | verified（仅0.5.16体积/打包） | E31最终APK108,152,186字节，SHA `f9f9e985cb8b1264355ca2e96527f071c9b1f088deaca8873cd441ae03ae9bf1`；1538payload、对齐/同Debug证书、17个ELF64/AArch64库和Gecko资源验证通过。相同DEX的x86 Release两项运行另记，不替代ARM64真机/全R8/正式签名门。 |
 | PERF09 超分均衡<12ms | pending | 指定8Gen2级设备、540P动画→1080P、稳定统计含保护；与设置benchmark<16ms推荐门分别验。 |
 | PRIV01 无账号 / Glean / Sync / FxA / 上传 | implemented | E0静态图与源码有证据；完整实际依赖、崩溃上传配置、抓包 / 日志取证、关于本机日志导出待补。 |
 | PRIV02 Cookie / Authorization不落盘 | implemented | 普通下载 / playback / media models内存、分区摘要；需最终Room / prefs / savedstate / files / logs取证和重启恢复认证测试。 |
@@ -331,7 +334,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | VIS02 移除动画全流程 | pending | 运行系统scale=0的全操作链，静态循环 / 跟手 / 无输入阻塞。 |
 | DEV01 模拟器+真机仪器测试 | implemented | API35/x86_64多批受控测试；完整0.5.3为77/79。0.5.4站点/混合下载7/7、真实系统3/3、生命周期2/2、JVM111项及lint0错误/22警告；固定APK常规87/87（641.35秒）。0.5.5/E10常规98/98（595.555秒）、fresh系统3/3（21.844秒）、普通/私密prompt11/11。0.5.6/E11完整102/106（1328.953秒）；0.5.7/E12完整103/106（883.116秒），余底栏页顶测试、图片复制后重开菜单和QUALITY超时；后续Core独立7/7及MIME上传13/13不抵消整套失败。0.5.8/E14上传整类15/15（170.368秒），新增capture生命周期独立3/3（65.015秒），同一测试APK随后整类18/18通过（199.276秒）；随后固定同包在新5600常规完整回归117/117（907.736秒）通过，含原上传8+MIME5+capture5；旧失败和排除类保留，不推定真机门。所有旧失败保留；两个强停重启类仍排除，系统权限类独立验证；0.5.8另启5602的真正首次启动1/1（36.811秒）及真实系统权限3/3（33.353秒）均通过。0.5.9/E15另有目录首批5/5及最终固定包跨模块单次49/49（602.313秒），原48/49失败保留；engine90/90含树10/10，仅API35/x86_64受控provider，尚无本版完整常规回归。0.5.11/E19同包常规135/135（881.462秒）已过，四个独立前置类及capability包排除不计通过，各专项和历史输入范围分别保留。release构建/打包仅按PERF08所列版本，0.5.8构建/打包见E14，0.5.9的R8/shrink构建与ARM64打包见E16，R8/ARM64运行仍待；API26–28 / 当前系统 / ARM64物理机仍缺。 0.5.12/E23最终固定同包常规139/139（941.713秒），含新增HLS磁盘UI4项；独立模块另41/41，JVM72/72及lint0/22。四个独立前置类和capability仍排除不计通过，完整真机/发布仍待。 0.5.13/E24同包常规142/142（1465.085秒），另最终模块59/59、UI7/7；代码83f2da9的R8/打包通过仍不代替ARM64/R8运行或完整真机验收。 0.5.14/E25固定同包常规143/143（954.367秒），另模块70/70、UI8/8与JVM74/74；cf1c52a的R8/ARM64打包通过仍不替代正式签名、ARM64/R8运行或完整规格验收。 |
 | SITE01 第11所有真实网站 / 登录 | pending | B1六站及R4媒体站点的兼容矩阵；需要真实账户时由人提供可用会话 / 完成认证，不猜测通过。 |
-| REL01 发布构建 / AAB或按ABI拆分 | implemented | 0.5.14/cf1c52a干净源R8/shrink，构建/lint成功（4分2秒，0错误/22警告），108,135,802字节ARM64开发包1538payload/同证书/对齐/完整性/体积验证通过（E25/PERF08）。AAB分发、正式签名、R8及ARM64实际运行验收未完，历史版本记录保留。 |
+| REL01 发布构建 / AAB或按ABI拆分 | implemented | E31：0.5.16版本/规则候选603项输入无漂移，R8/shrink、lint0/22，108,152,186字节ARM64开发包已核验；相同DEX的x86非debuggable包实际两项运行2/2。全R8矩阵、ARM64物理机、AAB分发与正式签名未完。 |
 | REL02 正式签名 | pending | 基线无keystore.properties，现包Android Debug证书；需维护者提供安全签名配置，不在源码 / 日志中存秘密。 |
 | REL03 完整第三方告知 / 对应源码 | pending | LEGAL仅旧快照；uBO GPL、过滤列表、Gecko嵌套依赖、Media3和将来shader真实产物须重新审查；关于需可取到全部许可和准确源码。 |
 | REL04 图标 / 素材来源 | implemented | 原画、trace脚本、PROVENANCE与项目许可排除说明已有；发布时维护者权利 / 服务条款确认仍保留，不因AI生成推定全授权。 |
@@ -371,7 +374,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | R5 鉴权 / 签名 | implemented | 401 / 403刷新一次、失败回网页、释放期间不重建已测；真实站点登录Cookie / token轮换需补。 |
 | R6 Transformer离线导出 | pending | P2实现前先验证支持；失败再用TS+Muxer，不预承诺能无重编码导出。 |
 | R7 GL SurfaceView同步 / HDR | implemented | E5实际同帧比较、暂停重绘/旋转/故障回退；HDR策略存在，真实HDR/驱动矩阵仍待补。 |
-| R8 ABI体积 | verified（仅0.5.14打包） | PERF08/E25：最终108,135,802字节<110,000,000，独立ZIP/ELF检查只有17个ARM64库；仍需正式签名/ARM64与R8运行及后续版本重验，旧版证据保留。 |
+| R8 ABI体积 | verified（仅0.5.16打包） | E31/PERF08：108,152,186字节<110,000,000，17个ARM64 ELF库；相同DEX在x86包中的两项运行另记。正式签名、ARM64物理机与完整R8矩阵仍待。 |
 | R9 uBO / Gecko分发许可 | pending | 全部第三方 / 列表 / 嵌套库实际产物审查与人工确认；旧M0开源检查不能覆盖含uBO发行。 |
 | R10 Google Play视频下载政策 | pending（条件项） | 仅在决定上架Play时需当时政策与站点限制核对；当前本地构建没有商店发布证据。保留此门，不主动上架。 |
 

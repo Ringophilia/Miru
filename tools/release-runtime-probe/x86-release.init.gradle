@@ -1,0 +1,10 @@
+// Verification-only packaging override. Keep the release optimizer/signing/resource configuration.
+allprojects { project ->
+    project.plugins.withId('com.android.application') {
+        project.androidComponents.finalizeDsl { android ->
+            def release = android.buildTypes.getByName('release')
+            release.ndk.abiFilters.clear()
+            release.ndk.abiFilters.add('x86_64')
+        }
+    }
+}
