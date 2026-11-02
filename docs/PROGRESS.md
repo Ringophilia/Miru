@@ -1,6 +1,6 @@
 # 实现进度
 
-开始日期：2026-10-22。最近整组a47f1e4/0.5.18为JVM79/79、模块99/99、选定15/15与完整147/147（1004.529秒），ARM64包及相同DEX的x86受控Release2/2通过；范围各自独立。当前同版本后续正在补MP4多轨AV：读取调度模型JVM90/90、native合并模块100/100，但尚未接AV解码/灰条，不挪用旧147证明新包。完整P11、B13、M0–M3、ARM64物理机/全R8与发行门继续，iOS在Android M4后开始；旧失败和映射见`ACCEPTANCE.md`。
+开始日期：2026-10-22。最近整组a47f1e4/0.5.18为完整147/147（1004.529秒）及对应ARM64打包/相同DEX的x86受控2/2；与当前后续输入不混用。当前多轨MP4读取模型和AV部分缓存解码基线JVM90/90、模块104/104，通过真实en/ja PCM及9秒蓝帧，但精确AAC preroll/每个时间单元和生产AV灰条仍未完成。完整P11、B13、M0–M3、物理机/全R8与发行门继续，iOS在Android M4后开始；旧失败和映射见`ACCEPTANCE.md`。
 
 ## 已实现的 M0 代码
 
@@ -290,6 +290,12 @@
 - 依据固定原生累计样本/物理offset/读超前/元数据优先规则，保留原parent坐标和小skip/大间隙重开；输入为真实post-edit表和seek样本，不推断codec可解码性。
 - owned AVC原视频120个packet不变，新增两条AAC音轨各518packet，独立raw参考。623项无漂移、JVM90/90、lint0/27；真实Mp4Extractor在四seek后的所有样本次序/PTS/实际消费字节与parent逐项符合，模块100/100（45.718秒）。原生测试不含decoder，未把它称为AV可播放证明。
 - scheduler仍未接生产AV区段；当前选轨/owner、gapless/preroll、AV解码PCM/PTS与真实灰条是下一步，不以旧147/R8证明这个新包。[范围与证据](M3-MP4-READ-SCHEDULE-VALIDATION.md)。
+
+## MP4 AV部分缓存冷解码基线（0.5.18后续）
+
+- 完整或留下三轨4–8秒真实packet洞的SimpleCache种子，删除原文件后再建ExoPlayer/Codec；真实owner选轨输出[0,1]/[0,2]，首视频PTS9与实际YUV蓝帧，sink在9.25–9.75媒体窗口PCM≥18000、440/880Hz±5及RMS门通过。
+- nullable构建、RGBA/YUV进程崩溃与renderer时基PCM0失败保留。按真实输出格式读取并使用sink实际时基回调后4/4，625项冻结/JVM90/lint0/27，合并104/104（27.935秒）。未改生产mapper/decoder，不挪用旧147/Release证明此包。
+- 首audio sink媒体时间约9.009342，不能据后续tone窗口证明精确初始preroll/gapless。接下来验证选中/未选中轨道缺口和各时间单元依赖，再发布生产AV灰条。[范围与实际记录](M3-MP4-AV-DECODE-PREFLIGHT.md)。
 
 ## M3 尚待推进
 
