@@ -64,4 +64,6 @@
     <string name="external_link_open">打开</string>
     <string name="external_link_open_web">打开网页</string>
     <string name="external_link_failed">暂时无法打开此链接。</string>
+    <string name="page_prompt_choice_title">选择选项</string>
+    <string name="page_prompt_unnamed_option">未命名选项</string>
 </resources>

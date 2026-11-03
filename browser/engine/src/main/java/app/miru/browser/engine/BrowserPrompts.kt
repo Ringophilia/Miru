@@ -416,6 +416,26 @@ class BrowserPrompts internal constructor(private val context: Context, private 
         finish(pending) { request.onConfirm(userName, password) }
     }
 
+    fun answerChoice(token: Long, selectedIds: Set<String>) {
+        val pending = current(token) ?: return
+        val choices = when(val request = pending.request) {
+            is PromptRequest.SingleChoice -> request.choices
+            is PromptRequest.MultipleChoice -> request.choices
+            is PromptRequest.MenuChoice -> request.choices
+            else -> return
+        }
+        if(!validChoiceSelection(projectChoices(choices), selectedIds, pending.request is PromptRequest.MultipleChoice)) return
+        val selected = nativeChoiceLeaves(choices).filter { it.id in selectedIds }
+        finish(pending) {
+            when(val request = pending.request) {
+                is PromptRequest.SingleChoice -> request.onConfirm(selected.single())
+                is PromptRequest.MultipleChoice -> request.onConfirm(selected.toTypedArray())
+                is PromptRequest.MenuChoice -> request.onConfirm(selected.single())
+                else -> Unit
+            }
+        }
+    }
+
     fun answerFolderUpload(token: Long, allow: Boolean) {
         val pending = current(token, BrowserPromptKind.FOLDER_CONFIRM) ?: return
         val request = pending.request as PromptRequest.FolderUploadPrompt
@@ -582,6 +602,9 @@ class BrowserPrompts internal constructor(private val context: Context, private 
         // Confirm.onDismiss is an extra per-observer wrapper lambda in Gecko.
         is PromptRequest.Confirm -> request.onConfirmPositiveButton
         is PromptRequest.TextPrompt -> request.onConfirm
+        is PromptRequest.SingleChoice -> request.onConfirm
+        is PromptRequest.MultipleChoice -> request.onConfirm
+        is PromptRequest.MenuChoice -> request.onConfirm
         is PromptRequest.BeforeUnload -> request.onLeave
         is PromptRequest.Repost -> request.onConfirm
         is PromptRequest.Authentication -> request.onConfirm
@@ -597,7 +620,8 @@ class BrowserPrompts internal constructor(private val context: Context, private 
 
     private fun supported(request: PromptRequest) = request is PromptRequest.Alert || request is PromptRequest.Confirm ||
         request is PromptRequest.TextPrompt || request is PromptRequest.BeforeUnload || request is PromptRequest.Repost ||
-        request is PromptRequest.Authentication || request is PromptRequest.Popup || (uploadRequest(request) && NativeFilePrompts.isManaged(request))
+        request is PromptRequest.Authentication || request is PromptRequest.Popup || request is PromptRequest.SingleChoice ||
+        request is PromptRequest.MultipleChoice || request is PromptRequest.MenuChoice || (uploadRequest(request) && NativeFilePrompts.isManaged(request))
 
     private fun uploadRequest(request: PromptRequest) = request is PromptRequest.File || request is PromptRequest.Folder ||
         request is PromptRequest.FolderUploadPrompt
@@ -627,6 +651,9 @@ class BrowserPrompts internal constructor(private val context: Context, private 
                 positiveButtonTitle = request.positiveButtonTitle, negativeButtonTitle = request.negativeButtonTitle, neutralButtonTitle = request.neutralButtonTitle)
             is PromptRequest.TextPrompt -> base.copy(title = request.title, inputLabel = request.inputLabel, inputValue = request.inputValue,
                 hasShownManyDialogs = request.hasShownManyDialogs)
+            is PromptRequest.SingleChoice -> base.copy(choices = projectChoices(request.choices))
+            is PromptRequest.MultipleChoice -> base.copy(choices = projectChoices(request.choices))
+            is PromptRequest.MenuChoice -> base.copy(choices = projectChoices(request.choices))
             is PromptRequest.BeforeUnload -> base.copy(title = request.title)
             is PromptRequest.Repost -> base
             is PromptRequest.Authentication -> base.copy(origin = request.uri?.let(::siteOrigin), title = request.title, message = request.message,
@@ -645,6 +672,9 @@ class BrowserPrompts internal constructor(private val context: Context, private 
         is PromptRequest.Alert -> BrowserPromptKind.ALERT
         is PromptRequest.Confirm -> BrowserPromptKind.CONFIRM
         is PromptRequest.TextPrompt -> BrowserPromptKind.TEXT
+        is PromptRequest.SingleChoice -> BrowserPromptKind.SINGLE_CHOICE
+        is PromptRequest.MultipleChoice -> BrowserPromptKind.MULTIPLE_CHOICE
+        is PromptRequest.MenuChoice -> BrowserPromptKind.MENU_CHOICE
         is PromptRequest.BeforeUnload -> BrowserPromptKind.BEFORE_UNLOAD
         is PromptRequest.Repost -> BrowserPromptKind.REPOST
         is PromptRequest.Authentication -> BrowserPromptKind.AUTHENTICATION

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package app.miru.browser.engine
 
-enum class BrowserPromptKind { ALERT, CONFIRM, TEXT, BEFORE_UNLOAD, REPOST, AUTHENTICATION, FILE, FOLDER, FOLDER_CONFIRM }
+enum class BrowserPromptKind { ALERT, CONFIRM, TEXT, BEFORE_UNLOAD, REPOST, AUTHENTICATION, FILE, FOLDER, FOLDER_CONFIRM, SINGLE_CHOICE, MULTIPLE_CHOICE, MENU_CHOICE }
 enum class BrowserPromptButton { POSITIVE, NEGATIVE, NEUTRAL }
 enum class BrowserAuthMethod { HOST, PROXY }
 enum class BrowserAuthLevel { NONE, PASSWORD_ENCRYPTED, SECURED }
@@ -34,6 +34,7 @@ data class BrowserPromptState(
     val fileMultiple: Boolean = false,
     val fileCapture: BrowserFileCapture = BrowserFileCapture.NONE,
     val folderName: String = "",
+    val choices: List<BrowserChoice> = emptyList(),
 ) {
     override fun toString() = "BrowserPromptState(token=$token, kind=$kind, private=$isPrivate)"
 }

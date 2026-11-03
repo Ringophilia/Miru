@@ -64,4 +64,6 @@
     <string name="external_link_open">Open</string>
     <string name="external_link_open_web">Open webpage</string>
     <string name="external_link_failed">Could not open this link.</string>
+    <string name="page_prompt_choice_title">Choose options</string>
+    <string name="page_prompt_unnamed_option">Unnamed option</string>
 </resources>

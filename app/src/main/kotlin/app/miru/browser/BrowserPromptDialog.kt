@@ -24,6 +24,7 @@ import app.miru.browser.engine.BrowserPrompts
 import app.miru.browser.engine.BrowserFileUploads
 import app.miru.browser.engine.BrowserUploadPhase
 import app.miru.browser.engine.BrowserUploadSource
+import app.miru.browser.engine.validChoiceSelection
 
 /** All drafts remain in this composition; private/form/password state is never saved. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -35,6 +36,8 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
     var username by remember(state.token) { mutableStateOf(state.userName) }
     var password by remember(state.token) { mutableStateOf("") }
     var stopDialogs by remember(state.token) { mutableStateOf(false) }
+    var selectedChoices by remember(state.token) { mutableStateOf(state.choices.filter { it.selected && !it.group && !it.separator }.map { it.id }.toSet()) }
+    val choicePrompt = state.kind in setOf(BrowserPromptKind.SINGLE_CHOICE, BrowserPromptKind.MULTIPLE_CHOICE, BrowserPromptKind.MENU_CHOICE)
     val allowMore = !stopDialogs
     fun dismiss() {
         when(state.kind) {
@@ -52,6 +55,7 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
         BrowserPromptKind.FOLDER_CONFIRM -> stringResource(R.string.upload_folder_confirm_title)
         BrowserPromptKind.AUTHENTICATION -> stringResource(if(state.authMethod == BrowserAuthMethod.PROXY)
             R.string.page_prompt_proxy_title else R.string.page_prompt_auth_title)
+        BrowserPromptKind.SINGLE_CHOICE, BrowserPromptKind.MULTIPLE_CHOICE, BrowserPromptKind.MENU_CHOICE -> stringResource(R.string.page_prompt_choice_title)
         else -> state.title.ifBlank { stringResource(R.string.page_prompt_title) }
     }
     val message = when(state.kind) {
@@ -70,6 +74,8 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
             Text(heading, style = MaterialTheme.typography.titleLarge)
             if(message.isNotBlank()) Text(message, style = MaterialTheme.typography.bodyLarge)
             when(state.kind) {
+                BrowserPromptKind.SINGLE_CHOICE, BrowserPromptKind.MULTIPLE_CHOICE, BrowserPromptKind.MENU_CHOICE ->
+                    BrowserChoiceList(state.choices, selectedChoices, state.kind == BrowserPromptKind.MULTIPLE_CHOICE) { selectedChoices = it }
                 BrowserPromptKind.TEXT -> OutlinedTextField(value = text, onValueChange = { text = it },
                     label = { Text(state.inputLabel.ifBlank { stringResource(R.string.page_prompt_input) }) },
                     modifier = Modifier.fillMaxWidth().testTag("page_prompt_text"))
@@ -130,7 +136,8 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
                         else -> stringResource(R.string.page_prompt_cancel)
                     })
                 }
-                FilledTonalButton(enabled = state.kind !in setOf(BrowserPromptKind.FILE, BrowserPromptKind.FOLDER) || !uploadBusy, onClick = {
+                FilledTonalButton(enabled = if(choicePrompt) validChoiceSelection(state.choices, selectedChoices, state.kind == BrowserPromptKind.MULTIPLE_CHOICE)
+                    else state.kind !in setOf(BrowserPromptKind.FILE, BrowserPromptKind.FOLDER) || !uploadBusy, onClick = {
                     when(state.kind) {
                         BrowserPromptKind.ALERT -> prompts.acknowledgeAlert(state.token, allowMore)
                         BrowserPromptKind.CONFIRM -> prompts.answerConfirm(state.token, BrowserPromptButton.POSITIVE, allowMore)
@@ -141,6 +148,7 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
                         BrowserPromptKind.FILE -> uploads.choose(state.token)
                         BrowserPromptKind.FOLDER -> uploads.choose(state.token)
                         BrowserPromptKind.FOLDER_CONFIRM -> prompts.answerFolderUpload(state.token, allow = true)
+                        BrowserPromptKind.SINGLE_CHOICE, BrowserPromptKind.MULTIPLE_CHOICE, BrowserPromptKind.MENU_CHOICE -> prompts.answerChoice(state.token, selectedChoices)
                     }
                 }, modifier = Modifier.testTag(when(state.kind) {
                     BrowserPromptKind.FILE -> "page_prompt_file_choose"

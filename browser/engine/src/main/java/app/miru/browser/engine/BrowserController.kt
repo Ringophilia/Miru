@@ -335,8 +335,12 @@ class BrowserController(
     }
 
     private fun ensureTab() {
-        if (store.state.tabs.isEmpty()) {
+        if (store.state.tabs.isEmpty() || (store.state.selectedTab == null && store.state.tabs.all { it.content.private })) {
             automaticNewTabId = tabs.addTab(url = NEW_TAB_URL, startLoading = false)
+        } else if (store.state.selectedTab == null) {
+            // AC keeps ordinary and private groups separate when choosing a fallback.
+            // Closing the final private tab must select an existing ordinary tab.
+            store.state.tabs.lastOrNull { !it.content.private }?.let { tabs.selectTab(it.id) }
         }
     }
 
