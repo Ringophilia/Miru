@@ -6,15 +6,17 @@
 
 - 固定Debug：`artifacts/m3-cached-ranges/daily-browser-checkpoint-01/`，构建3分39秒，播放器JVM90/90，Lint 0错误/29警告。
 - 全模块JVM和ARM64 R8/shrink：`daily-browser-release-build/`，构建6分38秒。264项中263通过、1跳过、0失败；跳过项是PreparedUploadFolderTest的符号链接拒绝用例，Windows创建测试符号链接缺少权限，不能计作通过。
-- 常规应用回归：`daily-browser-routine-01/`仍运行，预期163项。既定排除类是DownloadRestartTest、OfflineRestartTest、RuntimeSitePermissionIntegrationTest、AudioCaptureIntegrationTest，另排除capability包。排除不计通过。
-- 新无痕通知权限专项需要预先撤销通知权限，将在常规回归结束后按同一Debug快照单独运行。
+- 常规应用回归：`daily-browser-routine-01/`完成163项，160通过、3失败，JUnit2114.458秒、runner2124.102秒，整套不通过。失败为QUALITY基准超时、QUALITY真实渲染未在60秒内完成60帧，以及历史图标显示超时；后续隔离复测不能抵消本轮失败。既定排除类是DownloadRestartTest、OfflineRestartTest、RuntimeSitePermissionIntegrationTest、AudioCaptureIntegrationTest，另排除capability包。排除不计通过。
+- 同一Debug快照的无痕通知权限专项`daily-browser-permission-01/`已独立通过1/1（JUnit22.562秒、runner30.895秒），实际系统拒绝/不再询问/重新授权后通知恢复与关闭通过；测试后重新授予通知权限。
+- 同包图标隔离复测`daily-browser-icons-isolated-01/`通过2/2（JUnit46.085秒、runner51.227秒），真实历史图片渲染和无痕缓存隔离通过；无法据此解释整套中的一次显示超时，更不能抵消原失败。
+- 后续仅改图标测试夹具：先确认本次访问已写入历史，再通过真实搜索框定位自己的URL；超时报告本次记录是否存在、标题是否可见和页面是否持有图标，不输出其他历史内容。等待时限、实际图片像素和私密隔离断言未放宽。编译成功16秒，`daily-browser-icons-fixture-device-01/`两项通过；主APK仍是原检查点同一SHA，新测试APK及源文件哈希在`daily-browser-icons-fixture-01/result.json`。这不是整套重跑，也不证明原超时根因已解决。
 - 本轮没有重跑独立播放器设备模块，也没有扩展P11；常规回归中的已有播放器用例保留。
 
 设备为API35/x86_64 emulator-5554，Google SwiftShader软件GPU。仅模拟器结果；没有连接ARM64物理手机。没有本版本相同DEX的x86 Release运行证明，也没有正式发行签名。
 
 ## 功能证据
 
-以下是前几批0.5.20开发包的功能专项；本次0.5.21把同名类纳入163项常规回归，当前仍以该整套回归的最终结果为准。
+以下是前几批0.5.20开发包的功能专项；本次0.5.21把同名类纳入163项常规回归，整套已完成，160/163；图标用例在整套里失败，旧专项通过不抵消新失败。
 
 - OmniboxSuggestionsIntegrationTest（3项）：HTTP在线建议/最多五条/填入/中文搜索、四引擎选择、取消旧请求/开关/无痕、历史域名高亮后缀/退格/原协议回车。本地服务验证，公网提供商在手机网络上的可达性仍待试用。
 - WebsiteIconsIntegrationTest（2项）：真实Gecko页面声明图标，历史列表实际渲染，同进程复用、无痕不进入普通图标缓存、缺失回退。NTP/书签/标签页共享该UI接线；实际网站/ICO/SVG与重启后资源发现兼容仍有平台范围待验。图标只在内存缓存，图片上限8MB。
@@ -39,13 +41,18 @@ JDK为`C:\Program Files\Microsoft\jdk-21.0.12.101-hotspot`，SDK为`G:\Projects\
 ```powershell
 ./tools/build-player-validation.ps1 -BuildName daily-browser-checkpoint-01
 ./tools/run-device-validation.ps1 -App -Routine -BuildName daily-browser-checkpoint-01 -RunName daily-browser-routine-01 -Expected 163
+./tools/run-device-validation.ps1 -App -BuildName daily-browser-checkpoint-01 -RunName daily-browser-icons-isolated-01 -Selector app.miru.browser.WebsiteIconsIntegrationTest -Expected 2
 ./gradlew.bat testDebugUnitTest :core:common:test :app:assembleRelease :app:lintRelease --no-daemon --console=plain
 ./tools/clean-validation-artifacts.ps1 -Apply
 ```
 
 Release构建与压缩/签名/资源验证的具体命令及完整输入摘要，在`daily-browser-release-build/build.ps1`、`package.ps1`、`input.json`及各pipeline.json中保留。
 
+通知权限专项按[验证说明](VALIDATION-ARTIFACTS.md#private-notification-permission-case)先在宿主撤销权限/清除user-set和user-fixed，再以同一BuildName执行`app.miru.browser.capability.PrivateNotificationPermissionIntegrationTest`（Expected 1），最后重新授予权限。实际命令在`artifacts/daily-browser-checkpoint/batch-01/run-permission.ps1`和`permission-preparation.log`。
+
 ## 保留的失败和未覆盖项
+
+本轮整套的三项失败未清除：QUALITY基准的FAST/BALANCED已得到333.7/398.7ms每帧，QUALITY未在45秒测量窗内得到60帧；另一真实QUALITY链在60秒观察期限结束时为53帧、约795.5ms每帧，initialized/active为true但未满足原采样门。这些是当前SwiftShader环境的实际失败，不当作手机性能结论，不修改门槛换取通过。历史图标在进入历史页后等待图片节点5秒超时；同包隔离2/2，整套场景的根因仍待定位，不能先推断为纯测试问题或宣称已修复。
 
 此前onboarding-device-01的1过2失败是系统请求未使用Activity Result入口，已修复。device-02的2过1失败是测试框架按原Intent匹配生命周期、真实外部Intent更新后无法收尾；修复夹具后device-03三项通过。无痕通知device-01的2过1失败来自测试AppOps屏蔽后系统仍报通知可用；改为测试启动前撤销权限并点击真实系统拒绝按钮，单独能力用例验证。旧失败日志保留，不把失败轮写成通过。
 

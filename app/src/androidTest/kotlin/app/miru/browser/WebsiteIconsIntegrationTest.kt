@@ -34,12 +34,22 @@ class WebsiteIconsIntegrationTest {
         val count = origin.icons
         assertTrue(isGreen(runBlocking { container.browser.websiteIcons.load(url) }!!))
         assertEquals(count, origin.icons)
+        // Favicon discovery and history recording are independent engine callbacks.
+        compose.waitUntil(5000) { runBlocking { container.library.history.search(url, 1) }.any { it.url == url } }
         // Open the actual full-screen history route and inspect the rendered icon, not a fake UI.
         compose.runOnIdle { container.browser.newTab() }
         compose.onAllNodesWithText(compose.activity.getString(app.miru.ntp.R.string.ntp_search_hint))[1].performClick()
         compose.onNode(hasSetTextAction()).performTextInput("miru://history")
         compose.onNode(hasSetTextAction()).performImeAction()
-        compose.waitUntil(5000) { compose.onAllNodesWithTag("site-icon:$url", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription(compose.activity.getString(app.miru.history.R.string.history_search)).performTextInput(url)
+        try {
+            compose.waitUntil(5000) { compose.onAllNodesWithTag("site-icon:$url", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        } catch (timeout: ComposeTimeoutException) {
+            val recorded = runBlocking { container.library.history.search(url, 1) }.any { it.url == url }
+            val titleVisible = compose.onAllNodesWithText("Icon local page").fetchSemanticsNodes().isNotEmpty()
+            val pageIcon = container.browser.state.value.tabs.any { it.url == url && it.icon != null }
+            throw AssertionError("Owned history recorded=$recorded titleVisible=$titleVisible pageIcon=$pageIcon", timeout)
+        }
         val pixels = compose.onNodeWithTag("site-icon:$url", useUnmergedTree = true).captureToImage().toPixelMap()
         val center = pixels[pixels.width / 2, pixels.height / 2]
         assertTrue(center.green > 0.7f && center.red < 0.2f)
