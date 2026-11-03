@@ -56,4 +56,12 @@
     <string name="popup_site_allow">Allow pop-ups from this site</string>
     <string name="popup_site_detail">Allow scripts in this site’s page to open web windows</string>
     <string name="popup_site_private">Kept only until all private tabs are closed</string>
+    <string name="external_link_title">Open in %1$s?</string>
+    <string name="external_link_unavailable">No app can open this link</string>
+    <string name="external_link_other_app">another app</string>
+    <string name="external_link_private">The link will be shared with another app. Private browsing cannot control its records.</string>
+    <string name="external_link_fallback">You can open the webpage in this tab instead.</string>
+    <string name="external_link_open">Open</string>
+    <string name="external_link_open_web">Open webpage</string>
+    <string name="external_link_failed">Could not open this link.</string>
 </resources>

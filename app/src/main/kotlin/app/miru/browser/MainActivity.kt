@@ -242,6 +242,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     val pagePrompt by controller.prompts.prompt.collectAsStateWithLifecycle()
     val blockedPopup by controller.prompts.blockedPopup.collectAsStateWithLifecycle()
     val popupSite by controller.prompts.popupSite.collectAsStateWithLifecycle()
+    val externalLink by controller.externalLinks.prompt.collectAsStateWithLifecycle()
     val playerOptions by container.playerPreferences.settings.collectAsStateWithLifecycle(initialValue = app.miru.player.PlayerPreferences())
     val tab = snapshot.selectedTab
     val context = LocalContext.current
@@ -544,9 +545,9 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     } }
     val popupBlockedMessage = stringResource(R.string.popup_blocked)
     val popupAlwaysAllow = stringResource(R.string.popup_always_allow)
-    LaunchedEffect(blockedPopup?.token, route, editing, tabsVisible, pagePrompt?.token, sitePermissionPrompt?.token) {
+    LaunchedEffect(blockedPopup?.token, route, editing, tabsVisible, pagePrompt?.token, sitePermissionPrompt?.token, externalLink?.token) {
         val popup = blockedPopup ?: return@LaunchedEffect
-        if(route != Route.BROWSER || editing || tabsVisible || pagePrompt != null || sitePermissionPrompt != null) return@LaunchedEffect
+        if(route != Route.BROWSER || editing || tabsVisible || pagePrompt != null || sitePermissionPrompt != null || externalLink != null) return@LaunchedEffect
         if(snackbars.showWithAction(popupBlockedMessage, popupAlwaysAllow)) controller.prompts.allowPopup(popup.token)
         else controller.prompts.dismissPopup(popup.token)
     }
@@ -744,7 +745,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         scope.launch { if(snackbars.showWithAction(downloadStarted, viewLabel)) route = Route.DOWNLOADS }
                     } catch(_: Exception) { cancelOfflinePreparation(); showMessage(offlineFailed) }
                 }) }
-            if(siteInfo && sitePermissionPrompt == null && pagePrompt == null) ModalBottomSheet(onDismissRequest = { siteInfo = false }) {
+            if(siteInfo && sitePermissionPrompt == null && pagePrompt == null && externalLink == null) ModalBottomSheet(onDismissRequest = { siteInfo = false }) {
                 Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(AddressResolver.display(tab?.url.orEmpty()).ifBlank { stringResource(R.string.app_name) }, style = MaterialTheme.typography.titleLarge)
                     Text(stringResource(if(tab?.secure == true) R.string.connection_secure else R.string.connection_info), style = MaterialTheme.typography.bodyLarge)
@@ -783,6 +784,26 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
             }
             if(sitePermissionPrompt == null) pagePrompt?.let { prompt ->
                 key(prompt.token) { BrowserPromptDialog(prompt, controller.prompts, controller.uploads) }
+            }
+            if(sitePermissionPrompt == null && pagePrompt == null) externalLink?.let { link ->
+                ModalBottomSheet(onDismissRequest = { controller.externalLinks.dismiss(link.token) }) {
+                    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text(stringResource(if(link.canOpenApp) R.string.external_link_title else R.string.external_link_unavailable, link.appName ?: stringResource(R.string.external_link_other_app)), style = MaterialTheme.typography.titleLarge)
+                        Text(link.origin, style = MaterialTheme.typography.bodyMedium)
+                        Text(link.url, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        if(link.isPrivate) Text(stringResource(R.string.external_link_private), style = MaterialTheme.typography.bodySmall)
+                        if(!link.canOpenApp && link.canOpenWeb) {
+                            Text(stringResource(R.string.external_link_fallback), style = MaterialTheme.typography.bodyMedium)
+                            Text(link.webUrl.orEmpty(), style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = { controller.externalLinks.dismiss(link.token) }) { Text(stringResource(android.R.string.cancel)) }
+                            if(link.canOpenApp || link.canOpenWeb) FilledTonalButton(onClick = {
+                                if(!controller.externalLinks.open(link.token, activity)) showMessage(context.getString(R.string.external_link_failed))
+                            }) { Text(stringResource(if(link.canOpenApp) R.string.external_link_open else R.string.external_link_open_web)) }
+                        }
+                    }
+                }
             }
             if(permissionActivity.sitePermissionSettingsRequired && sitePermissionPrompt == null && pagePrompt == null) AlertDialog(
                 onDismissRequest = permissionActivity::dismissSitePermissionSettings,

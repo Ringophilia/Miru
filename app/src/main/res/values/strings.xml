@@ -56,4 +56,12 @@
     <string name="popup_site_allow">允许此网站弹出新窗口</string>
     <string name="popup_site_detail">允许当前网站页面中的脚本打开网页窗口</string>
     <string name="popup_site_private">仅保留到关闭全部无痕标签</string>
+    <string name="external_link_title">在%1$s中打开？</string>
+    <string name="external_link_unavailable">没有可打开此链接的 App</string>
+    <string name="external_link_other_app">其他 App</string>
+    <string name="external_link_private">此链接会交给外部 App，无痕模式无法控制对方的记录。</string>
+    <string name="external_link_fallback">可以改为在当前标签打开网页。</string>
+    <string name="external_link_open">打开</string>
+    <string name="external_link_open_web">打开网页</string>
+    <string name="external_link_failed">暂时无法打开此链接。</string>
 </resources>

@@ -80,6 +80,7 @@ class BrowserController(
     private val tabs = TabsUseCases(store)
     private val windows = mozilla.components.feature.tabs.WindowFeature(store, tabs)
     private val sessions = SessionUseCases(store)
+    val externalLinks = BrowserExternalLinks(applicationContext, applicationScope, store, ::navigate)
     val contextMenus = BrowserContextMenus(applicationScope, store)
     val prompts = BrowserPrompts(applicationContext, applicationScope, store)
     val uploads = BrowserFileUploads(applicationContext, applicationScope, prompts)
@@ -203,6 +204,7 @@ class BrowserController(
                     applicationContext,
                     defaultSettings = DefaultSettings(
                         remoteDebuggingEnabled = false,
+                        requestInterceptor = externalLinks,
                         javaScriptCanOpenWindowsAutomatically = false,
                         mediaPlaybackRequiresUserGesture = true,
                         loginAutofillEnabled = false,
