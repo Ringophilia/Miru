@@ -56,11 +56,29 @@ foreach($snapshot in $miruSnapshots | Sort-Object time -Descending | Select-Obje
     }
 }
 # A lock file is only a hint: verify both the live process and its start time.
+function Test-MiruLeaseOwner([int]$LeasePid,[long]$LeaseTicks) {
+    if($LeasePid -le 0 -or $LeaseTicks -lt 0 -or $LeaseTicks -gt [datetime]::MaxValue.Ticks) { throw 'Invalid lease process identity' }
+    $process=Get-Process -Id $LeasePid -ErrorAction SilentlyContinue
+    if(-not $process) { return $false }
+    try { return $process.StartTime.ToUniversalTime().Ticks -eq $LeaseTicks }
+    catch {
+        # A process may exit after Get-Process, or a reused PID may now belong
+        # to an inaccessible process. CIM may prove staleness, never ownership:
+        # a possibly matching but unreadable start time still fails closed.
+        if($IsWindows) {
+            $identity=Get-CimInstance -ClassName Win32_Process -Filter "ProcessId=$LeasePid" -ErrorAction Stop
+            if(-not $identity) { return $false }
+            if($identity.CreationDate -and [math]::Abs($identity.CreationDate.ToUniversalTime().Ticks-$LeaseTicks) -ge [timespan]::TicksPerMillisecond) { return $false }
+        } else {
+            if(-not (Get-Process -Id $LeasePid -ErrorAction SilentlyContinue)) { return $false }
+        }
+        throw
+    }
+}
 foreach($lease in Get-ChildItem -LiteralPath $miruRoot -Recurse -File -Filter '.active-validation-*.json') {
     try {
         $data = Get-Content -LiteralPath $lease.FullName -Raw | ConvertFrom-Json
-        $process = Get-Process -Id ([int]$data.pid) -ErrorAction SilentlyContinue
-        if($process -and $process.StartTime.ToUniversalTime().Ticks -eq [long]$data.processStartTicks) {
+        if(Test-MiruLeaseOwner ([int]$data.pid) ([long]$data.processStartTicks)) {
             foreach($apk in Get-ChildItem -LiteralPath $lease.DirectoryName -File -Filter '*.apk') { $null = $miruKeep.Add((Assert-MiruArtifactPath $apk.FullName)) }
         }
     } catch { throw "Cannot safely verify active validation lease: $($lease.FullName)" }

@@ -73,6 +73,39 @@ $second = & $miruCleaner -ArtifactRoot $miruCase -Keep 'investigation/main.apk' 
 Confirm-Miru ($second.removedFiles -eq 0) 'second cleanup is idempotent'
 $ledger = Get-Content -LiteralPath $applied.report -Raw | ConvertFrom-Json
 Confirm-Miru ($ledger.files.Count -eq 10 -and $ledger.removedBytes -gt 0) 'deletion ledger records exact paths and removed bytes'
+if($IsWindows) {
+    foreach($miruMode in @('exited','reused','unverifiable')) {
+        $miruMockRoot=Join-Path $miruWork ('lease-'+$miruMode)
+        New-Item -ItemType Directory -Path $miruMockRoot | Out-Null
+        $miruMockApk=Join-Path $miruMockRoot 'main.apk'
+        [IO.File]::WriteAllText($miruMockApk,'owned generated fixture')
+        $miruBirth=[datetime]::UtcNow.AddDays(-1)
+        @{pid=12345;processStartTicks=$miruBirth.Ticks} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $miruMockRoot '.active-validation-mock.json')
+        $miruRejected=$false
+        try {
+            $null=& {
+                param($Cleaner,$Root,$Mode,$Birth)
+                function Get-Process {
+                    [CmdletBinding()]param([int]$Id)
+                    $value=[pscustomobject]@{}
+                    $value | Add-Member -MemberType ScriptProperty -Name StartTime -Value { throw 'Start time became unreadable' }
+                    $value
+                }
+                function Get-CimInstance {
+                    [CmdletBinding()]param([string]$ClassName,[string]$Filter)
+                    if($Mode -eq 'exited') { return }
+                    [pscustomobject]@{CreationDate=$(if($Mode -eq 'reused'){$Birth.AddHours(1)}else{$Birth})}
+                }
+                & $Cleaner -ArtifactRoot $Root -Apply
+            } $miruCleaner $miruMockRoot $miruMode $miruBirth
+        } catch { $miruRejected=$_.Exception.Message -like '*Cannot safely verify active validation lease*' }
+        if($miruMode -eq 'unverifiable') {
+            Confirm-Miru ($miruRejected -and (Test-Path -LiteralPath $miruMockApk)) 'unreadable potentially live lease still blocks deletion'
+        } else {
+            Confirm-Miru (-not $miruRejected -and -not (Test-Path -LiteralPath $miruMockApk)) ("unreadable start time with CIM-proven $miruMode process permits stale-input cleanup")
+        }
+    }
+}
 } finally {
 # Do not leave the intentionally large test dependency behind.
 $absolute = [IO.Path]::GetFullPath($thirdParty)
