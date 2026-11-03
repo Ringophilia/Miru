@@ -15,6 +15,8 @@ import java.util.IdentityHashMap
 import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -25,7 +27,7 @@ import mozilla.components.concept.engine.EngineSession
 import mozilla.components.concept.engine.prompt.PromptRequest
 
 /** Main-thread, application-lifetime ownership of actual engine requests; never retains an Activity. */
-class BrowserPrompts internal constructor(private val context: Context, scope: CoroutineScope, private val store: BrowserStore) {
+class BrowserPrompts internal constructor(private val context: Context, private val scope: CoroutineScope, private val store: BrowserStore) {
     private val bindings = mutableMapOf<String, Binding>()
     // Gecko creates separate PromptRequest wrappers inside notifyObservers. The
     // native completion closure is shared by those wrappers, unlike their uid.
@@ -35,6 +37,16 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
     private val retired = mutableListOf<WeakReference<PromptRequest>>()
     private val mutablePrompt = MutableStateFlow<BrowserPromptState?>(null)
     val prompt = mutablePrompt.asStateFlow()
+    private val popupPreferences = context.getSharedPreferences("miru_popups", Context.MODE_PRIVATE)
+    private val popupPermissions = PopupPermissions(
+        { popupPreferences.getBoolean(it, false) },
+        { key, allowed -> popupPreferences.edit().apply { if (allowed) putBoolean(key, true) else remove(key) }.apply() },
+        { popupPreferences.edit().clear().apply() },
+    )
+    private val mutablePopup = MutableStateFlow<BlockedPopup?>(null)
+    val blockedPopup = mutablePopup.asStateFlow()
+    private val mutablePopupSite = MutableStateFlow<PopupSiteState?>(null)
+    val popupSite = mutablePopupSite.asStateFlow()
     private val mutableLifecycle = MutableStateFlow(0L)
     internal val lifecycleChanges = mutableLifecycle.asStateFlow()
     private var sequence = 0L
@@ -77,6 +89,7 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
         var storeRequest: PromptRequest? = null
         var accepted = false
         var inStore = false
+        var popupExpiry: Job? = null
     }
 
     init {
@@ -222,6 +235,23 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
         }
         pending.replacedStoreRequest = null
         pending.inStore = true
+        if(request is PromptRequest.Popup) {
+            val binding = pending.owner.binding
+            val origin = siteOrigin(pending.owner.nativePageUrl)
+            if(origin == null || !isWebPopupTarget(request.targetUri)) {
+                finish(pending) { request.onDeny() }
+                return
+            }
+            if(popupPermissions.allowed(origin, binding.isPrivate, binding.contextId)) {
+                finish(pending) { request.onAllow() }
+                return
+            }
+            // Do not leave Gecko's native result pending when the Activity is hidden.
+            pending.popupExpiry = scope.launch {
+                delay(6_000)
+                if(requests[pending.nativeKey] === pending) finish(pending) { request.onDeny() }
+            }
+        }
         publish()
     }
 
@@ -265,6 +295,7 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
     }
 
     private fun syncState(state: BrowserState) {
+        if(state.tabs.none { it.content.private }) popupPermissions.clearPrivate()
         if(selectedTabId != state.selectedTabId) {
             selectedTabId?.let { bindings[it]?.let(::invalidate) }
             selectedTabId = state.selectedTabId
@@ -291,7 +322,46 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
     }
 
     private fun publish() {
-        mutablePrompt.value = requests.values.filter { it.inStore && valid(it) }.minByOrNull { it.token }?.let(::project)
+        val ready = requests.values.filter { it.inStore && valid(it) }
+        mutablePrompt.value = ready.filterNot { it.request is PromptRequest.Popup }.minByOrNull { it.token }?.let(::project)
+        mutablePopup.value = ready.filter { it.request is PromptRequest.Popup }.minByOrNull { it.token }?.let {
+            BlockedPopup(it.token, it.owner.binding.tabId, siteOrigin(it.owner.nativePageUrl)!!, it.owner.binding.isPrivate)
+        }
+        val binding = bindings[store.state.selectedTabId]
+        val tab = store.state.tabs.firstOrNull { it.id == binding?.tabId }
+        val origin = binding?.nativePageUrl?.let(::siteOrigin)
+        mutablePopupSite.value = if(binding != null && tab?.engineState?.engineSession === binding.session && origin != null) {
+            PopupSiteState(binding.tabId, origin, binding.isPrivate, popupPermissions.allowed(origin, binding.isPrivate, binding.contextId))
+        } else null
+    }
+
+    /** AC's popup request has no frame origin. This permission belongs to the selected top-level site. */
+    fun allowPopup(token: Long) {
+        val pending = requests.values.firstOrNull { it.token == token && it.request is PromptRequest.Popup } ?: return
+        if(!pending.inStore || !valid(pending)) return
+        val binding = pending.owner.binding
+        if(!popupPermissions.set(pending.owner.nativePageUrl, binding.isPrivate, binding.contextId, true)) return
+        finish(pending) { (pending.request as PromptRequest.Popup).onAllow() }
+    }
+
+    fun dismissPopup(token: Long) {
+        requests.values.firstOrNull { it.token == token && it.request is PromptRequest.Popup }?.let { pending ->
+            finish(pending) { (pending.request as PromptRequest.Popup).onDeny() }
+        }
+    }
+
+    fun setPopupAllowed(site: PopupSiteState, allowed: Boolean) {
+        if(mutablePopupSite.value != site) return
+        val binding = bindings[site.tabId] ?: return
+        if(siteOrigin(binding.nativePageUrl) != site.origin || store.state.selectedTabId != site.tabId) return
+        popupPermissions.set(site.origin, binding.isPrivate, binding.contextId, allowed)
+        publish()
+    }
+
+    internal fun clearPopupPermissions() {
+        popupPermissions.clearAll()
+        requests.values.filter { it.request is PromptRequest.Popup }.toList().forEach { pending -> finish(pending) { cancel(pending.request) } }
+        publish()
     }
 
     private fun current(token: Long, kind: BrowserPromptKind? = null): Pending? {
@@ -457,6 +527,7 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
     private fun retire(pending: Pending, completeNative: Boolean = true): Boolean {
         if(requests[pending.nativeKey] !== pending) return false
         requests.remove(pending.nativeKey)
+        pending.popupExpiry?.cancel()
         pending.aliases.forEach { retired += WeakReference(it) }
         if(completeNative) rememberCompleted(pending.nativeKey)
         return true
@@ -526,7 +597,7 @@ class BrowserPrompts internal constructor(private val context: Context, scope: C
 
     private fun supported(request: PromptRequest) = request is PromptRequest.Alert || request is PromptRequest.Confirm ||
         request is PromptRequest.TextPrompt || request is PromptRequest.BeforeUnload || request is PromptRequest.Repost ||
-        request is PromptRequest.Authentication || (uploadRequest(request) && NativeFilePrompts.isManaged(request))
+        request is PromptRequest.Authentication || request is PromptRequest.Popup || (uploadRequest(request) && NativeFilePrompts.isManaged(request))
 
     private fun uploadRequest(request: PromptRequest) = request is PromptRequest.File || request is PromptRequest.Folder ||
         request is PromptRequest.FolderUploadPrompt

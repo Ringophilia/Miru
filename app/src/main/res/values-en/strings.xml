@@ -51,4 +51,9 @@
     <string name="intro_start">Start browsing</string>
     <string name="intro_save_failed">Could not save your choice. Please try again.</string>
     <string name="intro_default_unavailable">Default app settings are unavailable. You can change this later in system settings.</string>
+    <string name="popup_blocked">Pop-up window blocked</string>
+    <string name="popup_always_allow">Always allow</string>
+    <string name="popup_site_allow">Allow pop-ups from this site</string>
+    <string name="popup_site_detail">Allow scripts in this site’s page to open web windows</string>
+    <string name="popup_site_private">Kept only until all private tabs are closed</string>
 </resources>

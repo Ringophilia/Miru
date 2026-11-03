@@ -78,6 +78,7 @@ class BrowserController(
         middleware = listOf(UndoMiddleware(clearAfterMillis = 6_000), deferredEngine),
     )
     private val tabs = TabsUseCases(store)
+    private val windows = mozilla.components.feature.tabs.WindowFeature(store, tabs)
     private val sessions = SessionUseCases(store)
     val contextMenus = BrowserContextMenus(applicationScope, store)
     val prompts = BrowserPrompts(applicationContext, applicationScope, store)
@@ -95,7 +96,10 @@ class BrowserController(
         },
         inspectGrantFocus = ::inspectPermissionGrantFocus,
     )
-    private val dataCleaner = BrowserDataCleaner(::requireEngine, ::resetFormData, permissions::clearAllSiteSettings)
+    private val dataCleaner = BrowserDataCleaner(::requireEngine, ::resetFormData) { clearNative ->
+        permissions.clearAllSiteSettings(clearNative)
+        prompts.clearPopupPermissions()
+    }
     private val cookieBridge = CookieBridge(applicationScope, store)
     val media = cookieBridge.media.state
     val mediaHints = cookieBridge.hints
@@ -145,6 +149,7 @@ class BrowserController(
     init {
         applicationScope.launch(Dispatchers.Main.immediate) {
             store.stateFlow.collect {
+                if(isReady && !resettingForms && it.tabs.isEmpty()) { ensureTab(); return@collect }
                 thumbnails.keys.retainAll(it.tabs.filterNot { tab -> tab.content.private }.map { tab -> tab.id }.toSet())
                 it.tabs.forEach { tab ->
                     tab.content.download?.takeIf { download -> observedDownloads.add(download.id) }?.let { download ->
@@ -254,6 +259,8 @@ class BrowserController(
                         EngineMiddleware.create(createdEngine, applicationScope),
                     store,
                 )
+                windows.stop()
+                windows.start()
                 isReady = true
                 mutableState.value = snapshot(store.state)
                 // SessionStorage serializes Gecko engineSessionState, including the navigation stack,

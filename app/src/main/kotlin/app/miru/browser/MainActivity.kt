@@ -240,6 +240,8 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     val runtimePermissionRequest by controller.permissions.runtimeRequest.collectAsStateWithLifecycle()
     val sitePermissions by controller.permissions.siteState.collectAsStateWithLifecycle()
     val pagePrompt by controller.prompts.prompt.collectAsStateWithLifecycle()
+    val blockedPopup by controller.prompts.blockedPopup.collectAsStateWithLifecycle()
+    val popupSite by controller.prompts.popupSite.collectAsStateWithLifecycle()
     val playerOptions by container.playerPreferences.settings.collectAsStateWithLifecycle(initialValue = app.miru.player.PlayerPreferences())
     val tab = snapshot.selectedTab
     val context = LocalContext.current
@@ -540,6 +542,14 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     LaunchedEffect(controller) { controller.uploads.errors.collect { error ->
         snackbars.showMessage(uploadMessages.getValue(error))
     } }
+    val popupBlockedMessage = stringResource(R.string.popup_blocked)
+    val popupAlwaysAllow = stringResource(R.string.popup_always_allow)
+    LaunchedEffect(blockedPopup?.token, route, editing, tabsVisible, pagePrompt?.token, sitePermissionPrompt?.token) {
+        val popup = blockedPopup ?: return@LaunchedEffect
+        if(route != Route.BROWSER || editing || tabsVisible || pagePrompt != null || sitePermissionPrompt != null) return@LaunchedEffect
+        if(snackbars.showWithAction(popupBlockedMessage, popupAlwaysAllow)) controller.prompts.allowPopup(popup.token)
+        else controller.prompts.dismissPopup(popup.token)
+    }
     DisposableEffect(Unit) { onDispose { downloadQueue.forEach { runCatching { it.bodyStream?.close() } } } }
     LaunchedEffect(finding, findQuery, tab?.id) { if(finding) { delay(150); controller.findAll(findQuery) } else controller.clearFind() }
     val privateDownloadDialog = offlineSelection?.source?.isPrivate == true || pendingDownload?.isPrivate == true
@@ -743,8 +753,22 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         HorizontalDivider()
                         SitePermissionControls(state,
                             onChange = { kind, choice -> controller.permissions.setForSite(state.token, kind, choice) },
-                            onReset = { controller.permissions.resetSite(state.token) },
+                            onReset = {
+                                popupSite?.takeIf { it.tabId == state.tabId && it.origin == state.origin }?.let { controller.prompts.setPopupAllowed(it, false) }
+                                controller.permissions.resetSite(state.token)
+                            },
                             onSystemSettings = permissionActivity::openSitePermissionSettings)
+                    }
+                    popupSite?.takeIf { it.tabId == tab?.id }?.let { state ->
+                        val label = stringResource(R.string.popup_site_allow)
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(label)
+                                Text(stringResource(if(state.isPrivate) R.string.popup_site_private else R.string.popup_site_detail), style = MaterialTheme.typography.bodySmall)
+                            }
+                            Switch(state.allowed, onCheckedChange = { controller.prompts.setPopupAllowed(state, it) },
+                                modifier = Modifier.semantics { contentDescription = label })
+                        }
                     }
                     HorizontalDivider()
                     TextButton(onClick = { siteInfo = false; adblockPanel = true }) { Text(stringResource(app.miru.adblock.R.string.title)) }

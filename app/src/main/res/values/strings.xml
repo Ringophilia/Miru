@@ -51,4 +51,9 @@
     <string name="intro_start">开始浏览</string>
     <string name="intro_save_failed">暂时无法保存，请重试。</string>
     <string name="intro_default_unavailable">系统默认应用入口不可用，可稍后在系统设置中更改。</string>
+    <string name="popup_blocked">已阻止弹出窗口</string>
+    <string name="popup_always_allow">始终允许</string>
+    <string name="popup_site_allow">允许此网站弹出新窗口</string>
+    <string name="popup_site_detail">允许当前网站页面中的脚本打开网页窗口</string>
+    <string name="popup_site_private">仅保留到关闭全部无痕标签</string>
 </resources>
