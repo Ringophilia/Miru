@@ -33,6 +33,26 @@ The build helper freezes source hashes, requires successful Gradle/JVM/lint task
 
 Release optimization deletes generated unsigned and unpublished signed scratch in `finally`, preserving logs, hashes and reports. A deliberate `-KeepScratch` investigation is the exception and must be cleaned afterward. Run retention after publishing a release so the previous stock input can be pruned safely.
 
+## Private notification permission case
+
+The regular `PrivateTabsNotificationIntegrationTest` class covers notification actions and Gecko private-cookie cleanup. The separate `app.miru.browser.capability.PrivateNotificationPermissionIntegrationTest` needs a controlled API 33+ device with no private tabs open and notification permission revoked before instrumentation. Revocation ends the app process, so it cannot be performed inside the test. This capability class is excluded from `-Routine`; run it separately at the relevant checkpoint. It clicks the real system denial button, checks that browsing remains usable without repeated prompts, then grants permission and verifies the restored notification's close action.
+
+Use fresh run names and a currently retained feature snapshot. The commands below revoke and finally grant the test application's notification permission:
+
+```powershell
+$adb = Join-Path $env:ANDROID_HOME 'platform-tools/adb.exe'
+try {
+    & $adb -s emulator-5554 shell pm revoke app.miru.browser android.permission.POST_NOTIFICATIONS
+    & $adb -s emulator-5554 shell pm clear-permission-flags app.miru.browser android.permission.POST_NOTIFICATIONS user-set
+    & $adb -s emulator-5554 shell pm clear-permission-flags app.miru.browser android.permission.POST_NOTIFICATIONS user-fixed
+    ./tools/run-device-validation.ps1 -App -BuildName private-notification-build-02 `
+        -RunName private-notification-permission-check `
+        -Selector app.miru.browser.capability.PrivateNotificationPermissionIntegrationTest -Expected 1
+} finally {
+    & $adb -s emulator-5554 shell pm grant app.miru.browser android.permission.POST_NOTIFICATIONS
+}
+```
+
 ## Cleaning
 
 ```powershell

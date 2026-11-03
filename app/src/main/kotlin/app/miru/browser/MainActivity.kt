@@ -122,6 +122,7 @@ import app.miru.toolbar.MiruToolbar
 import app.miru.toolbar.ToolbarState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import mozilla.components.concept.engine.EngineSession
 
@@ -173,7 +174,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); readIntent(intent) }
     override fun onStart() { super.onStart(); container.downloads.onAppForeground(); container.offline.onAppForeground() }
-    override fun onResume() { super.onResume(); container.browser.permissions.refreshSite() }
+    override fun onResume() { super.onResume(); container.browser.permissions.refreshSite(); container.privateTabsNotifications.refresh() }
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         container.browser.permissions.onHostWindowFocusChanged(this, hasFocus)
@@ -301,7 +302,24 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     val offlineUnavailable = stringResource(R.string.offline_unavailable)
     val activeDownloads = downloadItems.count { it.status in setOf("queued", "running", "waiting_network") } +
         offlineItems.count { it.status in setOf("queued", "running", "waiting_network") }
-    val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val privateNotificationsDenied = stringResource(R.string.private_notifications_denied)
+    val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        container.privateTabsNotifications.refresh()
+        if (!granted && controller.state.value.tabs.any { it.isPrivate }) {
+            scope.launch { snackbars.showMessage(privateNotificationsDenied) }
+        }
+    }
+    val hasPrivateTabs = snapshot.tabs.any { it.isPrivate }
+    LaunchedEffect(hasPrivateTabs, runtimePermissionRequest?.token, sitePermissionPrompt, pagePrompt) {
+        if (hasPrivateTabs && runtimePermissionRequest == null && sitePermissionPrompt == null && pagePrompt == null &&
+            Build.VERSION.SDK_INT >= 33 && activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            // Read the stored value before requesting, including on Activity recreation.
+            if (!container.settings.settings.first().privateNotificationPrompted) {
+                container.settings.setPrivateNotificationPrompted(true)
+                notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
     val adblockUi = AdblockUiState(
         phase = if(adblock.status.name == "STARTING") AdblockPhase.INSTALLING else AdblockPhase.valueOf(adblock.status.name),
         version = adblock.version.orEmpty(),

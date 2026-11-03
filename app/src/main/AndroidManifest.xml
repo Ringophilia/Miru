@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -31,6 +32,7 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/upload_capture_paths" />
         </provider>
         <activity android:name=".UploadPickerActivity" android:exported="false" />
+        <receiver android:name=".ClosePrivateTabsReceiver" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

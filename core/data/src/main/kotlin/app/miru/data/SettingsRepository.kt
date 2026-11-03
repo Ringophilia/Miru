@@ -27,6 +27,7 @@ data class BrowserSettings(
     val toolbarPosition: ToolbarPosition = ToolbarPosition.TOP,
     val searchEngine: SearchEngine = SearchEngine.GOOGLE,
     val searchSuggestions: Boolean = true,
+    val privateNotificationPrompted: Boolean = false,
 )
 
 class SettingsRepository(context: Context) {
@@ -37,6 +38,7 @@ class SettingsRepository(context: Context) {
     private val positionKey = stringPreferencesKey("appearance.toolbarPosition")
     private val searchKey = stringPreferencesKey("search.engine")
     private val suggestionsKey = booleanPreferencesKey("search.suggestions")
+    private val privateNotificationKey = booleanPreferencesKey("privacy.privateNotificationPrompted")
     val settings: Flow<BrowserSettings> = store.data.catch { error ->
         if (error is IOException) emit(emptyPreferences()) else throw error
     }.map { values ->
@@ -47,6 +49,7 @@ class SettingsRepository(context: Context) {
             toolbarPosition = enumValue<ToolbarPosition>(values[positionKey]) ?: ToolbarPosition.TOP,
             searchEngine = enumValue<SearchEngine>(values[searchKey]) ?: SearchEngine.GOOGLE,
             searchSuggestions = values[suggestionsKey] ?: true,
+            privateNotificationPrompted = values[privateNotificationKey] ?: false,
         )
     }
     suspend fun setTheme(value: ThemeMode) { store.edit { it[themeKey] = value.name } }
@@ -55,6 +58,7 @@ class SettingsRepository(context: Context) {
     suspend fun setToolbarPosition(value: ToolbarPosition) { store.edit { it[positionKey] = value.name } }
     suspend fun setSearchEngine(value: SearchEngine) { store.edit { it[searchKey] = value.name } }
     suspend fun setSearchSuggestions(value: Boolean) { store.edit { it[suggestionsKey] = value } }
+    suspend fun setPrivateNotificationPrompted(value: Boolean) { store.edit { it[privateNotificationKey] = value } }
 
     private inline fun <reified T : Enum<T>> enumValue(value: String?): T? = enumValues<T>().firstOrNull { it.name == value }
 }

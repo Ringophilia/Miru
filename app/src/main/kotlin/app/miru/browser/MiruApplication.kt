@@ -43,6 +43,7 @@ class AppContainer(application: Application) {
     internal var searchSuggestions = app.miru.browser.engine.SearchSuggestionClient()
     val downloads = DownloadCoordinator.get(application)
     val browser = BrowserController(application, scope, LibraryHistoryDelegate(library))
+    val privateTabsNotifications = PrivateTabsNotifications(application, browser, scope)
     val playerPreferences = PlayerPreferencesRepository(application)
     val mediaProbe = MediaResolutionProbe(application)
     val offline = OfflineCoordinator.get(application)

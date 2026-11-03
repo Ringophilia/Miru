@@ -331,6 +331,16 @@ class BrowserController(
         }
     }
 
+    fun closePrivateTabsPermanently() {
+        // An old notification can start a fresh process with nothing private left to close.
+        // Leave its ordinary-session restoration untouched in that case.
+        if (store.state.tabs.none { it.content.private } && store.state.undoHistory.tabs.none { it.state.private }) return
+        if (store.state.selectedTab?.content?.private == true) exitWebFullScreen()
+        interactedBeforeRestore = true
+        closePrivateTabsPermanently(store)
+        automaticNewTabId = null
+    }
+
     fun undoClose() {
         val undo = store.state.undoHistory
         if (undo.tabs.isEmpty()) return

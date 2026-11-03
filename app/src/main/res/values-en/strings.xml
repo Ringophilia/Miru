@@ -35,4 +35,8 @@
     <string name="suggest_open">Open address</string>
     <string name="fill_address">Fill in address bar</string>
     <string name="suggest_online">Search suggestion</string>
+    <string name="private_notification_channel">Private tabs</string>
+    <string name="private_close_all">Close all private tabs</string>
+    <string name="private_notification_detail">Private browsing is active. Tap to close all private tabs.</string>
+    <string name="private_notifications_denied">Notifications are off. You can still close all private tabs from the tab list.</string>
 </resources>

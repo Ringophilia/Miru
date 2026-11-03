@@ -35,4 +35,8 @@
     <string name="suggest_open">打开网址</string>
     <string name="fill_address">填入地址栏</string>
     <string name="suggest_online">搜索建议</string>
+    <string name="private_notification_channel">无痕标签</string>
+    <string name="private_close_all">关闭所有无痕标签</string>
+    <string name="private_notification_detail">无痕浏览正在进行，点按即可全部关闭</string>
+    <string name="private_notifications_denied">通知未开启；仍可在标签页列表关闭所有无痕标签</string>
 </resources>
