@@ -30,6 +30,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -90,7 +91,25 @@ public final class ReleaseRuntimeProbe extends Instrumentation {
             finishActivity();
             pass("releaseBrowserEntryRendersTheServedDocument");
             }
-            report.put("status", "PASSED").put("passed", passed).put("scope", "x86_64 release black-box entry/actual decoder/cache re-open only; not full R8, ARM64 or physical performance acceptance");
+            byte[] av;
+            try(InputStream input=getContext().getAssets().open("av-colors.mp4")) { av=readAll(input); }
+            String avHash=hex(MessageDigest.getInstance("SHA-256").digest(av));
+            check(avHash.equals("d7b52d4d692af18d1b7264d991a7affcc1b2de599d4acdb19f979222ef1ce9fa"),"Owned AVC/AAC digest differs");
+            try(Origin origin=new Origin(av)) {
+                launchPlayer(origin.url);
+                seekThroughPublicControls(9000,12000);
+                JSONArray first=awaitFrame(new int[]{0,0,255},"av-first-blue.png");
+                check(origin.success.get()>0,"AV playback did not consume its real source");
+                finishActivity();int before=origin.total.get();origin.available.set(false);
+                launchPlayer(origin.url);
+                seekThroughPublicControls(9000,12000);
+                JSONArray cached=awaitFrame(new int[]{0,0,255},"av-cached-blue.png");
+                check(origin.total.get()==before,"AV cold re-open fetched the stopped source");
+                report.put("avMovieSha256",avHash).put("avFirstRgb",first).put("avCachedRgb",cached)
+                        .put("avRequestedSeekMs",9000).put("avUpstreamRequests",before);
+                finishActivity();pass("releaseMuxedAvColdReopenOutputsBlueFromCache");
+            }
+            report.put("status", "PASSED").put("passed", passed).put("scope", "x86_64 release public entries, actual video frames and single/muxed cache cold re-open; not PCM identity, disk-layer geometry, full R8, ARM64 or physical performance acceptance");
             writeReport();
             Bundle result = new Bundle(); result.putString("report",report.toString());result.putString(REPORT_KEY_STREAMRESULT, "\nOK (" + passed + " tests)\n"); finish(Activity.RESULT_OK, result);
         } catch(Throwable failure) {
@@ -108,6 +127,11 @@ public final class ReleaseRuntimeProbe extends Instrumentation {
     }
 
     private JSONArray awaitRedFrame() throws Exception {
+        JSONArray frames=report.optJSONArray("frames");
+        return awaitFrame(new int[]{255,0,0},frames==null||frames.length()==0?"first-red.png":"cached-red.png");
+    }
+
+    private JSONArray awaitFrame(int[] expected,String name) throws Exception {
         long deadline = SystemClock.elapsedRealtime() + 25000;
         JSONArray last = new JSONArray();
         while(SystemClock.elapsedRealtime() < deadline) {
@@ -124,10 +148,10 @@ public final class ReleaseRuntimeProbe extends Instrumentation {
                     long r=0,g=0,b=0;
                     for(int y=15;y<=35;y++) for(int x=55;x<=95;x++) { int color=bitmap.getPixel(x,y);r+=Color.red(color);g+=Color.green(color);b+=Color.blue(color); }
                     double count=21*41;last=new JSONArray().put(r/count).put(g/count).put(b/count);
-                    if(Math.abs(r/count-255)<=45 && g/count<=45 && b/count<=45) {
+                    if(Math.abs(r/count-expected[0])<=45 && Math.abs(g/count-expected[1])<=45 && Math.abs(b/count-expected[2])<=45) {
                         ByteArrayOutputStream png=new ByteArrayOutputStream();bitmap.compress(Bitmap.CompressFormat.PNG,100,png);
                         JSONArray frames=report.optJSONArray("frames");if(frames==null){frames=new JSONArray();report.put("frames",frames);}
-                        frames.put(new JSONObject().put("name",frames.length()==0?"first-red.png":"cached-red.png")
+                        frames.put(new JSONObject().put("name",name)
                                 .put("sha256",hex(MessageDigest.getInstance("SHA-256").digest(png.toByteArray())))
                                 .put("pngBase64",android.util.Base64.encodeToString(png.toByteArray(),android.util.Base64.NO_WRAP)));
                         return last;
@@ -136,20 +160,24 @@ public final class ReleaseRuntimeProbe extends Instrumentation {
             } finally { bitmap.recycle(); }
             SystemClock.sleep(40);
         }
-        throw new AssertionError("Release decoder did not present owned red frame; last RGB=" + last);
+        throw new AssertionError("Release decoder did not present owned frame " + name + "; last RGB=" + last);
     }
 
     private void seekOwnedRedThroughPublicControls() throws Exception {
+        seekThroughPublicControls(1000,12000);
+    }
+    private void seekThroughPublicControls(int positionMs,int durationMs) throws Exception {
         long deadline=SystemClock.elapsedRealtime()+15000,lastTap=0;
         while(SystemClock.elapsedRealtime()<deadline) {
             AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();
             AccessibilityNodeInfo pause=control(root,"Pause","暂停",0);
             if(pause!=null) { pause.performAction(AccessibilityNodeInfo.ACTION_CLICK);SystemClock.sleep(100);root=getUiAutomation().getRootInActiveWindow(); }
-            AccessibilityNodeInfo slider=seekControl(root,0);
+            AccessibilityNodeInfo slider=seekControl(root,0,durationMs);
             if(slider!=null) {
-                Bundle arguments=new Bundle();arguments.putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE,1000f);
+                Bundle arguments=new Bundle();arguments.putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE,(float)positionMs);
                 check(slider.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.getId(),arguments),"Public progress action was rejected");
-                report.put("requestedSeekMs",1000).put("seekRoute","public accessibility progress action");
+                if(positionMs==1000)report.put("requestedSeekMs",1000);
+                report.put("seekRoute","public accessibility progress action");
                 return;
             }
             if(SystemClock.elapsedRealtime()-lastTap>=1000) {
@@ -166,13 +194,13 @@ public final class ReleaseRuntimeProbe extends Instrumentation {
             }
             SystemClock.sleep(100);
         }
-        throw new AssertionError("The public twelve-second playback progress control did not become available");
+        throw new AssertionError("The public playback progress control did not become available: "+durationMs);
     }
-    private static AccessibilityNodeInfo seekControl(AccessibilityNodeInfo node,int depth) {
+    private static AccessibilityNodeInfo seekControl(AccessibilityNodeInfo node,int depth,int durationMs) {
         if(node==null||depth>50)return null;
         AccessibilityNodeInfo.RangeInfo range=node.getRangeInfo();
-        if(node.isVisibleToUser()&&range!=null&&range.getMin()==0f&&range.getMax()==12000f)return node;
-        for(int i=0;i<node.getChildCount();i++){AccessibilityNodeInfo found=seekControl(node.getChild(i),depth+1);if(found!=null)return found;}
+        if(node.isVisibleToUser()&&range!=null&&range.getMin()==0f&&range.getMax()==(float)durationMs)return node;
+        for(int i=0;i<node.getChildCount();i++){AccessibilityNodeInfo found=seekControl(node.getChild(i),depth+1,durationMs);if(found!=null)return found;}
         return null;
     }
     private static AccessibilityNodeInfo control(AccessibilityNodeInfo node,String english,String chinese,int depth) {
@@ -203,7 +231,7 @@ public final class ReleaseRuntimeProbe extends Instrumentation {
         for(int i=0;i<node.getChildCount();i++)if(containsLabel(node.getChild(i),label,depth+1))return true;
         return false;
     }
-    private void pass(String name) { passed++;Bundle state=new Bundle();state.putString("class",getClass().getName());state.putString("test",name);state.putInt("current",passed);state.putInt("numtests",2);sendStatus(0,state); }
+    private void pass(String name) { passed++;Bundle state=new Bundle();state.putString("class",getClass().getName());state.putString("test",name);state.putInt("current",passed);state.putInt("numtests",3);sendStatus(0,state); }
     private void writeReport() throws Exception { try(OutputStream output=new java.io.FileOutputStream(new File(getTargetContext().getFilesDir(),"release-runtime-probe.json"))) { output.write(report.toString(2).getBytes(StandardCharsets.UTF_8)); } }
     private static byte[] readAll(InputStream input) throws Exception { ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] block=new byte[4096];for(int n;(n=input.read(block))!=-1;)out.write(block,0,n);return out.toByteArray(); }
     private static String hex(byte[] data) { StringBuilder out=new StringBuilder();for(byte b:data)out.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return out.toString(); }
@@ -214,7 +242,7 @@ public final class ReleaseRuntimeProbe extends Instrumentation {
         final AtomicInteger total=new AtomicInteger(),success=new AtomicInteger(),pages=new AtomicInteger();
         final ServerSocket server;final String url;final byte[] body;
         Origin(byte[] body) throws Exception {
-            this.body=body;server=new ServerSocket(0,16,InetAddress.getByName("127.0.0.1"));url="http://127.0.0.1:"+server.getLocalPort()+"/owned.mp4";
+            this.body=body;server=new ServerSocket(0,16,InetAddress.getByName("127.0.0.1"));url="http://127.0.0.1:"+server.getLocalPort()+"/probe-"+UUID.randomUUID()+"/owned.mp4";
             Thread listener=new Thread(() -> { while(running.get()) { try { Socket socket=server.accept();Thread worker=new Thread(() -> serve(socket));worker.setDaemon(true);worker.start(); } catch(Exception error) { if(running.get())throw new RuntimeException(error); } } });listener.setDaemon(true);listener.start();
         }
         void serve(Socket socket) { try(Socket request=socket) {
@@ -224,7 +252,7 @@ public final class ReleaseRuntimeProbe extends Instrumentation {
                 String[] range=line.substring(line.indexOf('=')+1).split("-",-1);start=Long.parseLong(range[0]);if(!range[1].isEmpty())end=Math.min(end,Long.parseLong(range[1]));
             }
             OutputStream out=request.getOutputStream();
-            if(first.split(" ")[1].startsWith("/owned.mp4/page")) {
+            if(first.split(" ")[1].endsWith("/owned.mp4/page")) {
                 byte[] html="<!doctype html><html><head><title>Runtime probe</title></head><body><h1>Miru R8 runtime content</h1></body></html>".getBytes(StandardCharsets.UTF_8);
                 pages.incrementAndGet();out.write(("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: "+html.length+"\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));out.write(html);out.flush();return;
             }

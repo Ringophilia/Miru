@@ -7,11 +7,15 @@ $repository=Split-Path $PSScriptRoot -Parent
 $project=Join-Path $PSScriptRoot 'release-runtime-probe'
 $evidence=Join-Path $repository 'artifacts/r8-device-smoke'
 $run=Join-Path $evidence $RunName
-if(Test-Path -LiteralPath $run) { throw 'Use a fresh probe build name' }
+$manifest=Join-Path $evidence ($RunName+'.json')
+if((Test-Path -LiteralPath $run) -or (Test-Path -LiteralPath $manifest)) { throw 'Use a fresh probe build name' }
 New-Item -ItemType Directory -Path $run -Force | Out-Null
 function Get-ProbeSources {
     @('settings.gradle.kts','build.gradle.kts','gradle.properties','src/main/AndroidManifest.xml','src/main/java/app/miru/releaseprobe/ReleaseRuntimeProbe.java') | ForEach-Object {
         [ordered]@{path=$_;sha256=(Get-FileHash -LiteralPath (Join-Path $project $_)).Hash.ToLowerInvariant()}
+    }
+    @('app/src/androidTest/assets/media/seek-preview/colors.mp4','app/src/androidTest/assets/media/cached-ranges/av-colors.mp4') | ForEach-Object {
+        [ordered]@{path=$_;sha256=(Get-FileHash -LiteralPath (Join-Path $repository $_)).Hash.ToLowerInvariant()}
     }
 }
 $before=@(Get-ProbeSources)
@@ -28,5 +32,8 @@ try {
     $manifest=Join-Path $evidence ($RunName+'.json')
     & python (Join-Path $PSScriptRoot 'verify_release_runtime_probe.py') --apk $apk --report $manifest
     if($LASTEXITCODE -ne 0) { throw 'Probe defines foreign runtime classes; refusing it' }
+    $verified=Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+    $verified | Add-Member -NotePropertyName testCount -NotePropertyValue 3
+    $verified | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifest -Encoding utf8
     Write-Output "Probe manifest: $manifest"
 } finally { Pop-Location }

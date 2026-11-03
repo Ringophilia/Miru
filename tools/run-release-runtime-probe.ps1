@@ -24,6 +24,8 @@ $comparison=Get-Content -LiteralPath (Join-Path $evidence "$BuildDirectory/arm64
 $harness=Get-Content -LiteralPath (Join-Path $evidence $HarnessManifest) -Raw | ConvertFrom-Json
 if($comparison.status -ne 'PASSED') { throw 'Exact R8 DEX/ABI comparison failed' }
 if($harness.noRuntimeDependencies -ne $true) { throw 'A release probe must have no runtime dependencies that can override optimized target classes' }
+$expected=if($harness.PSObject.Properties.Name -contains 'testCount') { [int]$harness.testCount } else { 2 }
+if($expected -notin @(2,3)) { throw 'Unknown probe test count' }
 $lease=Join-Path $evidence ($BuildDirectory+'/.active-validation-'+$PID+'-runtime.json')
 [ordered]@{pid=$PID;processStartTicks=(Get-Process -Id $PID).StartTime.ToUniversalTime().Ticks} | ConvertTo-Json | Set-Content -LiteralPath $lease
 $temporary=Join-Path ([IO.Path]::GetTempPath()) ('miru-r8-apk-verify-'+[guid]::NewGuid().ToString('N'))
@@ -54,18 +56,23 @@ try {
     $codes=@([regex]::Matches($raw,'INSTRUMENTATION_STATUS_CODE: (-?\d+)') | ForEach-Object { [int]$_.Groups[1].Value })
     $passed=@($codes | Where-Object { $_ -eq 0 }).Count
     $bad=@($codes | Where-Object { $_ -lt 0 })
-    $ok=$raw -match '(?m)^OK \(2 tests\)\s*$'
-    $result=[ordered]@{finishedAt=(Get-Date -Format o);elapsedSeconds=((Get-Date)-$started).TotalSeconds;adbExit=$exitCode;passed=$passed;nonPassCodes=$bad;terminalOK=$ok;success=($exitCode -eq 0 -and $passed -eq 2 -and $bad.Count -eq 0 -and $ok);apks=$records}
+    $ok=$raw -match "(?m)^OK \($expected tests\)\s*$"
+    $result=[ordered]@{finishedAt=(Get-Date -Format o);elapsedSeconds=((Get-Date)-$started).TotalSeconds;adbExit=$exitCode;passed=$passed;expected=$expected;nonPassCodes=$bad;terminalOK=$ok;success=($exitCode -eq 0 -and $passed -eq $expected -and $bad.Count -eq 0 -and $ok);apks=$records}
     $reportLine=[regex]::Match($raw,'(?m)^INSTRUMENTATION_RESULT: report=(.+)$')
     if($reportLine.Success) {
         $report=$reportLine.Groups[1].Value.Trim() | ConvertFrom-Json
+        $report | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath (Join-Path $run 'report.json')
+        $frameNames=@($report.frames | ForEach-Object name)
+        $expectedFrames=if($expected -eq 3) { @('first-red.png','cached-red.png','av-first-blue.png','av-cached-blue.png') } else { @('first-red.png','cached-red.png') }
+        $completeFrames=$frameNames.Count -eq $expectedFrames.Count -and -not (Compare-Object $frameNames $expectedFrames -CaseSensitive)
+        $seenFrames=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
         foreach($frame in $report.frames) {
-            if($frame.name -notin @('first-red.png','cached-red.png')) { throw 'Unknown proof image name' }
+            if($frame.name -notin @('first-red.png','cached-red.png','av-first-blue.png','av-cached-blue.png')) { throw 'Unknown proof image name' }
+            if(-not $seenFrames.Add($frame.name)) { throw 'Duplicate native proof image' }
             [IO.File]::WriteAllBytes((Join-Path $run $frame.name),[Convert]::FromBase64String($frame.pngBase64))
             if((Get-FileHash -LiteralPath (Join-Path $run $frame.name)).Hash.ToLowerInvariant() -cne $frame.sha256) { throw 'Proof image transport hash differs' }
         }
-        $report | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath (Join-Path $run 'report.json')
-        if($report.status -ne 'PASSED') { $result.success=$false }
+        if($report.status -ne 'PASSED' -or [int]$report.passed -ne $expected -or -not $completeFrames) { $result.success=$false }
     } else { $result.success=$false }
     if($exitCode -eq 0) {
         & $adb -s $Device logcat -d -v threadtime -t 4000 *> (Join-Path $run 'logcat.log')

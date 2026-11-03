@@ -28,7 +28,14 @@ The runner installs directly from pinned paths, verifies installed bytes using t
 and deletes pulls in finally. It protects the release input with a live process/start-time lease.
 Evidence is logs, native PNGs and JSON, without APK copies in each run directory.
 
-The probe seeks through the public playback slider and requires actual red pixels, destroys the
-first Activity before stopped-origin re-open, checks that no new media request occurs, and
-requires a heading from a genuinely served Gecko document. It rejects debuggable targets.
-These are two controlled runtime checks, not full R8/ARM64/physical performance acceptance.
+The probe uses the public playback slider and actual PixelCopy output. It destroys the first
+Activity before each stopped-origin re-open and checks for zero new source requests. The three
+checks cover single-video red frames, a genuinely served Gecko document heading, and muxed
+AVC/dual-AAC input whose 9-second blue frame is decoded again from cache. It rejects debuggable
+targets. The muxed check does not measure PCM identity or prove the separate disk-layer pixels.
+
+The build freezes both owned media inputs as well as harness source and records `testCount: 3`
+in its manifest. The runner uses that count, validates all four native PNG names/hashes, and
+still accepts the earlier two-test manifests with their two PNGs. Missing terminal output or
+incomplete counts cannot pass. These are controlled runtime checks; full R8, ARM64 native,
+disk-layer geometry and physical performance acceptance remain separate.
