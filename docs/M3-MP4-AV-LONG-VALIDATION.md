@@ -51,7 +51,7 @@ raw参考SHA `0feea6c3df5726d6bdd29a22ec5c132f612524373cbda7e5dfd36f809ea00e74`�
 
 ## 完整目标仍继续
 
-最终新输入的`mp4-av-long-routine-01`完整151项常规已启动，尚待终态；先前149/149仅对应
+最终新输入的`mp4-av-long-routine-01`完整151项常规终态为 **150通过/1失败**（runner1154.714秒）：OfflineDownloadsUiIntegrationTest点击混合下载撤销后超过原3秒，两类pending都未清除。完整设备日志显示删除后447ms点击但没有Snackbar action或后端undo调用，最终6秒到期；同包隔离复现随后1/1、446ms收到action并完成撤销，不抵消整组失败。时序日志在`mp4-av-undo-observation-01`，原因仍待验证。先前149/149仅对应
 旧build-06。既定四个独立前置类及capability包仍排除，不算通过。新R8/ARM64打包及运行未完成。
 更长片长的CPU/内存/取消与反复缓存事件、音轨切换、初始AAC preroll/gapless、精确末帧EOS，
 原单视频路径的内部seek、重排/复杂edit/其他codec/封装和完整鉴权/资源矩阵仍须逐项补齐。
