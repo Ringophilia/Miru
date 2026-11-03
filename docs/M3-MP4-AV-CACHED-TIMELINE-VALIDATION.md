@@ -57,7 +57,7 @@ AVC/AAC-LC配置、能逐样本精确对齐的单edit；复杂edit、重排/其�
 
 最终build-06的`mp4-av-index-ui-01`同包17项应用专项 **17/17，JUnit202.295秒**，含HLS/DASH、
 MP4六项、上传、离线通知、预览、超分切换和网页交互。新AV两项的JSON和PNG另取回该轮目录。
-完整149项常规首轮`mp4-av-index-routine-01`仅记录第1项启动，无通过或JUnit终态；恢复时runner、ADB instrumentation与模拟器进程均已消失，原因未定，另存中断观察记录。恢复WfmAdApi35软件GPU实例后，同一冻结包的`mp4-av-index-routine-02`已重新启动，尚待终态，结果不借用旧包。
+完整149项常规首轮`mp4-av-index-routine-01`仅记录第1项启动，无通过或JUnit终态；恢复时runner、ADB instrumentation与模拟器进程均已消失，原因未定，另存中断观察记录。恢复WfmAdApi35软件GPU实例后，同一冻结包的`mp4-av-index-routine-02`完成 **149/149，JUnit1114.743秒，0失败/跳过**，runner1118.874秒、ADB0、149个status0及终态OK。四个独立前置类（DownloadRestartTest、OfflineRestartTest、RuntimeSitePermissionIntegrationTest、AudioCaptureIntegrationTest）与capability包仍按原规则排除，不算已通过。
 短AV截图会受已播放/内存层遮挡，尚不作为独立AV磁盘像素几何证据；须补长AV、多语言切换、
 长期片长下的构建耗时/取消与内存。精确初始AAC preroll/gapless、复杂时轴/重排/其他封装、
 完整鉴权与跨会话矩阵、物理机与新R8/发行门仍待。旧0.5.18的147项和Release不用于证明本包。
