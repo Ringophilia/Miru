@@ -160,9 +160,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         if (savedInstanceState == null) readIntent(intent)
         incomingOffline = savedInstanceState?.getString("miru.pendingOffline") ?: incomingOffline
-        setContent { MiruApp(container, incoming, incomingOffline,
-            onIncomingOfflineConsumed = { incomingOffline = null; intent.removeExtra("miru.offline.id") },
-            onIncomingConsumed = { incoming = null }, onExit = { moveTaskToBack(true) }, onDefaultBrowser = ::requestDefaultBrowser) }
+        setContent {
+            androidx.compose.runtime.CompositionLocalProvider(
+                app.miru.design.LocalSiteIconLoader provides remember(container) { container.browser.websiteIcons::load },
+            ) {
+                MiruApp(container, incoming, incomingOffline,
+                    onIncomingOfflineConsumed = { incomingOffline = null; intent.removeExtra("miru.offline.id") },
+                    onIncomingConsumed = { incoming = null }, onExit = { moveTaskToBack(true) }, onDefaultBrowser = ::requestDefaultBrowser)
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); readIntent(intent) }
@@ -643,7 +649,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                     }
                 }
                 if(tabsVisible) {
-                    TabsTray(tabs = snapshot.tabs.map { TabItem(it.id, it.title, it.url, it.isPrivate, thumbnail = it.thumbnail) }, selectedTabId = snapshot.selectedTabId, incognito = privateGroup, onIncognitoChanged = { privateGroup = it }, onSelect = { controller.selectTab(it); tabsVisible = false }, onClose = ::closeTab, onNewTab = { controller.newTab(isPrivate = privateGroup); tabsVisible = false }, onCloseAll = {
+                    TabsTray(tabs = snapshot.tabs.map { TabItem(it.id, it.title, it.url, it.isPrivate, thumbnail = it.thumbnail, icon = it.icon) }, selectedTabId = snapshot.selectedTabId, incognito = privateGroup, onIncognitoChanged = { privateGroup = it }, onSelect = { controller.selectTab(it); tabsVisible = false }, onClose = ::closeTab, onNewTab = { controller.newTab(isPrivate = privateGroup); tabsVisible = false }, onCloseAll = {
                         controller.closeAllTabs(privateGroup)
                         scope.launch { if (snackbars.showUndo(closedAllMessage, undoLabel)) controller.undoClose() }
                     }, onDismiss = { tabsVisible = false })

@@ -4,6 +4,8 @@
 package app.miru.design
 
 import android.net.Uri
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -15,7 +17,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -38,12 +44,27 @@ import kotlinx.coroutines.withTimeoutOrNull
 fun siteHost(url: String): String =
     runCatching { Uri.parse(url).host }.getOrNull()?.removePrefix("www.")?.takeIf { it.isNotBlank() } ?: url
 
-/**
- * Fallback site icon (spec 6.5): the first letter on a color derived from the domain,
- * so sites that share an initial are still distinguishable.
- */
+val LocalSiteIconLoader = staticCompositionLocalOf<(suspend (String) -> Bitmap?)?> { null }
+
+/** Real site icon, or a first letter on a stable domain color when unavailable. */
 @Composable
-fun SiteIcon(url: String, title: String, modifier: Modifier = Modifier, size: Dp = 40.dp) {
+fun SiteIcon(url: String, title: String, modifier: Modifier = Modifier, size: Dp = 40.dp,
+             bitmap: Bitmap? = null, isPrivate: Boolean = false) {
+    val loader = LocalSiteIconLoader.current
+    val loaded by produceState<Bitmap?>(null, url, loader, isPrivate, bitmap) {
+        value = null
+        if (bitmap == null && !isPrivate) value = loader?.invoke(url)
+    }
+    val image = bitmap ?: loaded
+    if (image != null && !image.isRecycled) {
+        Box(modifier.testTag("site-icon:$url").size(size)
+            .background(MaterialTheme.colorScheme.surfaceContainer, if (size >= 40.dp) CircleShape else RoundedCornerShape(4.dp)),
+            contentAlignment = Alignment.Center) {
+            Image(image.asImageBitmap(), null, Modifier.size(if (size >= 40.dp) 28.dp else size)
+                .clip(RoundedCornerShape(4.dp)), contentScale = ContentScale.Fit)
+        }
+        return
+    }
     val host = siteHost(url)
     val letter = (title.firstOrNull { it.isLetterOrDigit() } ?: host.firstOrNull { it.isLetterOrDigit() } ?: '?').uppercase()
     val hue = (host.hashCode().toLong() and 0xffffffffL) % 360

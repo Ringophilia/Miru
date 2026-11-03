@@ -30,6 +30,7 @@ data class BrowserTab(
     val secure: Boolean = false,
     val crashed: Boolean = false,
     val thumbnail: Bitmap? = null,
+    val icon: Bitmap? = null,
     val findCurrent: Int = 0,
     val findTotal: Int = 0,
     val fullScreen: Boolean = false,

@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | Mozilla Reference Browser 参考代码 | `61267efe132591f6f1dfd58185ebd8dbff6aa816` | MPL-2.0；保留 `BrowserController.kt` 文件头，来源见 [UPSTREAM.md](../docs/UPSTREAM.md) |
 | Mozilla Android Components | `158.0.2` | MPL-2.0；[许可原文](mozilla/MPL-2.0.txt) |
+| 网站图标解码 | Android Components `browser-icons 158.0.2`，传递引入 AndroidSVG `1.4` | 前者 MPL-2.0；[AndroidSVG](https://github.com/BigBadaboom/androidsvg) POM 声明 Apache-2.0，使用包内既有 Apache-2.0 许可；未接入第三方网站图标查询服务。 |
 | GeckoView | `158.0.20261021001945` | POM 声明 MPL-2.0；内部第三方代码仍保留各自许可 |
 | Miru Gecko 定位策略修改 | 0.5.4开发批次，固定上述Gecko模块 | MPL-2.0；只移除定位结果的原生持久化写入，网站决策由Miru管理；[原件、修改后源码与精确摘要](mozilla-permission-policy/README.md)。不能套用0.5.3原4079项全保留的记录，运行时与完整发行审查另验。 |
 | Mozilla application-services | `158.0.1` | MPL-2.0 及内部 Rust/C/C++ 第三方条款；[源码](https://github.com/mozilla/application-services)，POM 的子组件条款在下方清单中保留 |

@@ -26,6 +26,7 @@ dependencies {
     implementation("org.mozilla.components:concept-storage:${libs.versions.mozilla.get()}")
     implementation(libs.mozilla.browser.engine.gecko)
     implementation(libs.mozilla.browser.state)
+    implementation("org.mozilla.components:browser-icons:${libs.versions.mozilla.get()}")
     implementation(libs.mozilla.browser.session.storage)
     implementation(libs.mozilla.feature.session)
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.2.0")

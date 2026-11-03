@@ -173,7 +173,6 @@ private fun ShortcutTile(shortcut: Shortcut?, onClick: () -> Unit, onEdit: () ->
                     Icon(Icons.Outlined.Add, null, tint = MaterialTheme.colorScheme.primary)
                 }
             } else {
-                // Color per domain keeps Google and GitHub ("G") apart until favicons are available.
                 SiteIcon(shortcut.url, shortcut.title, size = 48.dp)
             }
             Spacer(Modifier.height(8.dp))

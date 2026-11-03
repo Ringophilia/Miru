@@ -38,6 +38,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.miru.design.MiruMotion
+import app.miru.design.SiteIcon
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -47,6 +48,7 @@ data class TabItem(
     val url: String,
     val incognito: Boolean,
     val thumbnail: Bitmap? = null,
+    val icon: Bitmap? = null,
 )
 
 @Composable
@@ -172,7 +174,7 @@ private fun TabCard(tab: TabItem, selected: Boolean, onSelect: () -> Unit, onClo
             .clickable(onClick = onSelect),
     ) {
         Row(Modifier.fillMaxWidth().height(48.dp).padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(if (tab.incognito) Icons.Outlined.VisibilityOff else Icons.Outlined.Public, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            SiteIcon(tab.url, tab.title, size = 16.dp, bitmap = tab.icon, isPrivate = tab.incognito)
             Spacer(Modifier.width(8.dp))
             Text(tab.title.ifBlank { newTab }, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) { Icon(Icons.Outlined.Close, closeLabel, Modifier.size(18.dp)) }

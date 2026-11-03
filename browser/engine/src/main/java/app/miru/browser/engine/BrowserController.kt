@@ -70,6 +70,7 @@ class BrowserController(
     private val historyDelegate: HistoryTrackingDelegate? = null,
 ) {
     private val applicationContext = context.applicationContext
+    val websiteIcons = WebsiteIcons(applicationContext)
     private val deferredEngine = DeferredEngineMiddleware()
     private val initialTab = createTab(NEW_TAB_URL)
     private val store = BrowserStore(
@@ -209,6 +210,7 @@ class BrowserController(
                 // No telemetry SDK, crash uploader, Firefox account, experiments, or sync is initialized.
                 createdEngine.notifyTelemetryPrefChanged(false)
                 engine = createdEngine
+                websiteIcons.install(createdEngine, store)
                 // Install only Miru's own extension with ensureBuiltIn. The signed uBO XPI uses install(file://).
                 ublock.start(createdEngine)
                 val earlyState = pendingReadiness?.take()
@@ -579,6 +581,7 @@ class BrowserController(
     }
 
     fun onTrimMemory(level: Int) {
+        websiteIcons.clearMemory()
         store.dispatch(SystemAction.LowMemoryAction(level))
     }
 
@@ -611,6 +614,7 @@ class BrowserController(
                 secure = tab.content.securityInfo.isSecure,
                 crashed = tab.engineState.crashed,
                 thumbnail = if (tab.content.private) null else thumbnails[tab.id],
+                icon = tab.content.icon,
                 findCurrent = tab.content.findResults.lastOrNull()?.let { if (it.numberOfMatches > 0) it.activeMatchOrdinal + 1 else 0 } ?: 0,
                 findTotal = tab.content.findResults.lastOrNull()?.numberOfMatches ?: 0,
                 fullScreen = tab.content.fullScreen,
