@@ -12,7 +12,7 @@
 
 P0 是首个可用版本门，P1 是第二轮功能，P2 在规范中为“有余力再做”。P2 仍逐项保留，不会把“未做”写成“已验收”；如果维护者决定不纳入某次发行，需明确记录发行范围，而不能删去原需求。iOS 也是规范内的 M5，顺序为 Android M4 之后，不从目标中静默排除。
 
-## 当前未完摘要（2026-11-02）
+## 当前未完摘要（2026-11-04）
 
 第11节的67个功能ID为：**3 verified、48 implemented、16 pending**。这不是全规范的完成率：
 补充要求、设置、动效、隐私、性能、发布、风险和iOS表另列，且部分要求相互引用。
@@ -28,8 +28,10 @@ P0 是首个可用版本门，P1 是第二轮功能，P2 在规范中为“有�
 | P23（P2） | 截图、下一集、投屏、MP4导出 |
 | D5、D7 | 下载动效；存储占用/剩余条 |
 
-48个`implemented`条目还包括实际功能缺项，例如书签文件夹、在线建议/内联补全、无痕关闭通知、
-完整设置范围，以及网站、系统生命周期、provider与解码器兼容验证。§7动效、无障碍、字体/主题
+48个`implemented`条目还包括实际功能缺项，例如书签文件夹、查询保持/自定义搜索模板、
+完整设置范围，以及网站、系统生命周期、provider与解码器兼容验证。第一组日常功能已经实现，
+在线建议/内联域名、网站图标、六预设、无痕通知和首次引导的专项证据见E40；当前检查点的
+完整163项常规回归仍在运行，不计作通过。§7动效、无障碍、字体/主题
 组合、敏感数据实际取证仍需各自证据。专项性能/隐私/发布/运行表24行仅PERF08在明确打包范围内
 verified，另9 implemented、14 pending；与上述67项不相加计算进度。
 
@@ -38,6 +40,11 @@ verified，另9 implemented、14 pending；与上述67项不相加计算进度�
 与完整147、独立99/15分别保留输入边界。旧0.5.15完整145/146、139/146与0.5.17选定失败均保留。
 全P11、完整R8/ARM64物理机、正式签名、手机性能、分发审查和阶段录屏仍待。
 **M0–M3均未整阶段验收，M4/M5仍pending，IOS01–IOS08全pending。**
+
+以上0.5.18为原摘要保留的历史输入。0.5.20完整151项与Release记录见E38/E39；当前0.5.21/code29
+固定659项源码无漂移，JVM263通过/1符号链接权限跳过/0失败、Debug/Release Lint均0错误/29警告。
+ARM64开发包108,468,497字节、1548项payload/对齐/17库/Gecko资源验证通过；未做本版ARM64或
+相同DEX的x86 Release运行验收。常规回归结束后再补最终结果。当前排序以AGENTS.md为准，P11/P2冻结。
 
 ## 证据索引与使用边界
 
@@ -85,6 +92,7 @@ verified，另9 implemented、14 pending；与上述67项不相加计算进度�
 | E37 | [120秒AV画布与查询优化](M3-MP4-AV-LONG-VALIDATION.md)、`artifacts/m3-cached-ranges/mp4-av-long-*` | owned 1200视频＋双5169 AAC逐包固定；原11项native过但索引12.1/8.8秒，新增长AV UI0/2等待磁盘层超时，原失败保留。按实际父坐标限256项key记忆、唯一metadata查询；631项冻结/JVM90/lint0/27，同包模块111/111（76.310秒）、MP4 UI8/8（67.853秒），本次full/partial索引1.60/1.21秒。真实memory15.9秒，画布84/90/94秒亮度117.7/51.7/117.7，11段holes及同player清理、未来503后新PTS9/蓝帧通过。新151常规150过/1混合下载撤销失败，完整时序保留、同包隔离1/1不抵消；旧149不借用；更长片长/取消/内存、精确preroll/EOS、复杂格式/矩阵和新Release/物理机仍待。 |
 | E38 | [0.5.20单视频边界与撤销焦点](M3-SEEK-UNDO-BOUNDARY-VALIDATION.md)、`artifacts/m3-cached-ranges/seek-undo-fix-*`及两条before负例 | 单视频3.950秒需要4秒绿帧，8960字节洞实际新player错误2005却仍被覆盖的旧包2过/1失败保留；普通单视频使用native时间单元闭包，已知末视频帧在单/AV尾部均实际PTS11.9蓝帧。旧搜索Focused=true断言0/1，结合键盘动画和丢失action时序，下载多选/删除clearFocus，不改6秒/3秒门。633项冻结/JVM90/lint0/27，模块114/114（81.009秒）、同包MP4八项＋混合下载9/9（67.117秒）通过；同包完整151/151（1262.152秒，0跳过，既定独立前置/capability排除不计通过）；重排/复杂流、AAC精确输出、全P11及新Release/物理机仍待。 |
 | E39 | [0.5.20 Release与受控运行](M3-SEEK-UNDO-RELEASE-VALIDATION.md)、`artifacts/m3-cached-ranges/seek-undo-release-build`、`artifacts/r8-device-smoke/seek-undo-*` | 25559eb与151项Debug应用输入一致，634项完整冻结无漂移；ARM64 R8/shrink/lint2分38秒、0/27。108156282字节开发签名包的1538payload/16KB对齐/同Debug证书/17AArch64库/Gecko4077+2+5通过。x86唯一DEX逐字节同SHA4864a7a3…，框架探针无目标应用类/额外运行库，公开单视频缓存重开、真实Gecko页、AV完整预热后9秒蓝帧停源新Activity重开3/3（35.907秒），AV206[0,176805]且重开前后请求各1。harness打包错误与四轮2/3导航/预热失败保留；不作PCM、部分洞/R8灰条、ARM64 native、全部R8或正式签名/全规范声明。 |
+| E40 | [第一组日常浏览检查点](DAILY-BROWSER-CHECKPOINT.md)、`artifacts/m3-cached-ranges/daily-browser-*`及各功能专项 | 地址栏3、favicon2、六色2、无痕通知2+权限1、引导3项模拟器功能专项已过。0.5.21同源659项冻结，JVM263过/1因Windows符号链接权限跳过，Lint0/29；108468497字节ARM64开发包1548项payload/16KB对齐/17AArch64库/Gecko资源通过。163项常规回归仍运行，权限用例需同快照单独验证；真机/公网/完整R8和正式签名未证，不提升整个功能ID或阶段。 |
 | SRC | 当前模块源码、Gradle、manifest、资源和 `design/tokens.json` | 证明存在代码 / 配置。单独不能证明运行正确、无泄漏、无掉帧或兼容所有站点。 |
 | LEGAL | [OPEN-SOURCE-REVIEW.md](OPEN-SOURCE-REVIEW.md)、[third_party/README.md](../third_party/README.md) | M0 源码公开范围的检查和后续依赖说明；不是含 uBO / 嵌套依赖的完整二进制分发审查。 |
 
@@ -98,23 +106,23 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | --- | --- | --- | --- |
 | B1 P0 网页浏览 | implemented | `BrowserController` / GeckoView；E0、E3 的真实本地导航。 | Google、YouTube、Bilibili、知乎、GitHub、淘宝移动版正常浏览和登录；真实网站媒体 / 权限 / 文件交互。 |
 | B2 P0 多标签 / 后台 / 恢复 | implemented | BrowserStore 单一状态源、SessionStorage；E0 force-stop 后页二恢复并可回页一。 | 当前交付完整多标签与历史栈杀进程回归、后台标签 / 低内存 / 设备重启矩阵。 |
-| B3 P0 地址栏 | implemented | URL / 中文搜索、历史 / 书签 / 已开标签建议，AddressResolverTest。 | 在线 suggest、内联补全（github→github.com）、查询保持、自定义模板及隐私开关。 |
+| B3 P0 地址栏 | implemented | URL / 中文搜索、历史 / 书签 / 已开标签建议；E40补当前四引擎在线建议/最多5条/填入、取消旧请求、关闭开关与无痕禁用，历史域名高亮补全/退格/按原协议打开。 | 查询保持、自定义模板、剪贴板/长按完整行为，实际搜索提供商和手机网络兼容。 |
 | B4 P0 NTP | implemented | 原生 Logo / 同输入状态 / 快捷方式，E0 / BrowserUiTest。 | 指定中端真机冷启动可交互 <800 ms；访问频率排序与完整 §5.2 行为。 |
 | B5 P0 标签切换器 | implemented | 2 列、当前描边、普通 / 无痕、缩略图、关闭撤销；E0 / E3。 | 40% / 1000 dp/s 阈值和当前速度 spring、关闭后导航栈撤销、关全组完整恢复、容器变换。 |
 | B6 P0 主菜单 | implemented | `MiruMenu` 260 dp、导航 / 书签 / 下载 / 分享 / 查找 / 桌面站点 / 设置。 | §5.6 全部适用项；添加主屏入口目前不可用，P2 最近标签未做；动效 / 状态逐项核对。 |
 | B7 P0 历史 | verified | `BrowsingLibraryTest` / BrowserUiTest / E0 / E3 覆盖搜索、日期分组、删 / 清与撤销。 | 此行仅核心 CRUD；favicon、清 Cookie / 缓存入口和 Places 偏差另列。 |
-| B8 P0 书签；文件夹 P1 | implemented | 星标、平铺列表、编辑 / 删 / 撤销及建议；E0 / E3。 | 文件夹树和默认“移动设备书签”；星标动画、favicon、Places 偏差。 |
-| B9 P0 无痕 | implemented | 私密标签不恢复、FLAG_SECURE、不写历史 / 播放进度 / 流缓存、Cookie jar 分离，E0–E3。 | 关最后无痕标签后 Cookie / 表单 / 内存私密状态完整清理审计、常驻关闭通知、所有返回 / 下载路径。 |
+| B8 P0 书签；文件夹 P1 | implemented | 星标、平铺列表、编辑 / 删 / 撤销及建议；E0 / E3；E40补共享favicon组件接线。 | 文件夹树和默认“移动设备书签”；星标动画、真实网站图标兼容与Places偏差。 |
+| B9 P0 无痕 | implemented | 私密标签不恢复、FLAG_SECURE、不写历史 / 播放进度 / 流缓存、Cookie jar 分离，E0–E3；E40补真实通知后台关闭/普通标签保留/禁止撤销、Cookie清除、通知权限拒绝及重新授权。 | 关最后无痕标签后表单 / 内存私密状态完整清理审计、所有返回 / 下载路径与系统版本/真机矩阵；Android14+可手动划掉通知，拒绝权限时不显示。 |
 | B10 P0 下拉刷新 / 隐藏栏 | implemented | E8：真实Gecko compositor滚动、APZ允许接管、SwipeRefreshFeature+M3指示、DynamicToolbar负裁剪；顶底栏滚动/页顶刷新通过。E15显式TOP/位置、唯一新doc双rAF及精确GET/实际刷新，Core7/7并随49/49集成通过；SDK缓存数值只作诊断。 | 网站既有手势/嵌套滚动、固定底部元素、键盘/焦点/旋转/字体完整真机矩阵。 |
 | B11 P0 上下文菜单 | implemented | E8：真实Engine hit链接/图片/视频菜单；链接文字、HTTP图片原字节/私密敏感剪贴板、新无痕标签、SVG只读URI通过。 | blob原文档图片完整动作、实际跨应用分享、视频原生播放/下载及各项菜单入口全部专项；站点已有手势兼容。 |
 | B12 P0 页内查找 | verified | `BrowserUiTest` 通过真实 Gecko 查找；聚焦键盘、计数 / 上下 / 关闭已有。 | 保留全站 / 长页回归。 |
 | B13 P0 权限 / 站点设置 | pending | E9/97d8be1：三项权限面板、普通/私密选择与B20联动；真实音视频live、临时GEO新文档再问。站点/混合下载7/7、真实系统3/3；生命周期2/2（16.548秒）证明Activity重建保留请求、CAMERA撤销后实际native录制停止且MIC选择保留。E11文件上传原8，E13五种accept真实系统过滤/字节；E14拍照/录像与三项capture生命周期，上传整类18/18。E15目录首批5/5，真实TREE/原生二次确认、深层relativePath/原bytes、空根change、私密关闭、真DENY及不保真整体失败；最终49/49含目录5、文件18、提示11、站点/生命周期8、Core7。E16真实录音、E17 prepared MIME/mtime/重复路径和部分目录生命周期、E18 fresh/系统权限亦有局部证据，最新E19常规135/135。 | 系统永久拒绝、系统弹窗中的旋转/取消/迟到结果、完整持久化/私密隔离及多页活动流撤销矩阵仍需证据。E10页面提示普通9/9、普通/私密合跑11/11，完整prompt矩阵仍待。E17已覆盖TREE取消保留旧FileList、确认时重建与迟到系统结果；原生拒绝保留旧选择、完整两阶段/迟到native事务、进程死亡、其他provider特殊metadata仍未闭合；录音取消/私密/完整生命周期、空Intent及其他capture handler矩阵仍待。通知、弹窗、自动播放、文件上传其余矩阵、其他页面提示、证书与站点数据管理仍未闭合。 |
-| B14 P0 默认浏览器 / Intent | implemented | RoleManager、http(s)、SEND 文字 / URL、WEB_SEARCH；播放器独立 VIEW filter。 | 首启可跳过引导、系统默认浏览器实际选择、外部返回来源 App、协议拉起确认及文件类型矩阵。 |
+| B14 P0 默认浏览器 / Intent | implemented | RoleManager、http(s)、SEND 文字 / URL、WEB_SEARCH；E40补一屏可跳过引导、真实系统设默认/取消、已默认状态、外链旋转后保留且不重复开标签；修复Role请求未用ActivityResult导致系统取不到调用方。 | 外部返回来源 App、协议拉起确认及文件类型矩阵；API26–28和真机行为。 |
 | B15 P1 地址栏顶 / 底 | implemented | DataStore 即时生效、键盘避让，E0 截图。 | 完整无重启 / 主题 / 字体 / 旋转 / 表单设备矩阵和二选一卡片示意 UI。 |
 | B16 P1 横滑工具栏 | pending | 无接入。 | 相邻标签截图跟手、阈值、速度 spring 与无标签边界。 |
 | B17 P0 桌面版 | implemented | 切 UA / reload、菜单复选框。 | 受控 UA 断言和实际站点 / 恢复行为验收。 |
 | B18 P1 主屏幕 / PWA | pending | 菜单枚举存在，动作未接入。 | AC PWA、系统添加和安装后的启动 / icon / scope。 |
-| B19 P0 主题 | implemented | 系统 / 浅 / 深、动态取色、品牌色与无痕色；E0 / E2 系统栏。 | 六预设 UI / 持久化、深浅×顶底×字体 1.3x、颜色 token / 图标审查。 |
+| B19 P0 主题 | implemented | 系统 / 浅 / 深、动态取色、品牌色与无痕色；E40补六预设UI/持久化/即时生效、动态色与预设恢复、Activity重建/无痕深色、主色按钮文字对比度。 | 深浅×顶底×字体1.3x组合、完整颜色token/图标审查、真机与API26–28动态色降级。 |
 | B20 P0 清浏览数据 | implemented | E8：真实设置勾选/时间范围/确认/逐项结果；普通与私密Cookie、localStorage、表单导航、历史与播放进度直接删除/保留断言。网页/播放缓存、站点权限、HTTP认证已有API接线。 | 缓存/权限/认证各类真实删除、表单清理后强停恢复、书签/下载/离线保留完整取证。Gecko不支持的时间筛选明确禁用，不能视为API已有该能力。 |
 | B21 P1 DNS / HTTPS / 三方 Cookie | pending | Gecko 推荐 tracking protection 不等同这些用户设置。 | DoH 自动 / 关 / 自定义，HTTPS-only，阻第三方 Cookie 默认开与实际请求验证。 |
 | B22 P2 分组 / 最近关闭 | pending | 普通 / 无痕分组不等同自定义标签组；只有短期撤销。 | 分组与最近关闭页面 / 列表恢复。 |
@@ -195,18 +203,18 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | ARCH-03 §3.2 | implemented | 独立PlayerActivity/BrowserStore、普通FGS与Media3离线DownloadService已有；后台播放PlayerService仍缺失。 |
 | ARCH-04 §3.3 | implemented | 自有ensureBuiltIn bridge、native ports、all frame DOM、MSE原请求规则已有；uBO file install分离。需全生命周期与共享模块协议用例。 |
 | ROUTE-01 §4 | implemented | NTP、tabs / downloads / history / bookmarks / settings / adblock与内部地址路由已有。播放器用不透明一次性token（保护私密，不应恢复明文src）；逐个验证内部route、外部VIEW/SEND/WEB_SEARCH与错误地址。 |
-| UX-01 §1 / 5.1 | implemented | 无账号 / feed / 运营位、SplashScreen、原生首帧后建Gecko，符合现有API主线程创建约束。需首次引导、启动耗时；不能把“异步Application建Gecko”字面要求当作已满足，主线程API偏差须保留说明。 |
+| UX-01 §1 / 5.1 | implemented | 无账号 / feed / 运营位、SplashScreen、原生首帧后建Gecko，符合现有API主线程创建约束；E40补首启可跳过引导，广告拦截说明按实际状态显示。启动耗时仍待；不能把“异步Application建Gecko”字面要求当作已满足，主线程API偏差须保留说明。 |
 | UX-02 §5.2 | implemented | NTP共享输入、快捷方式编辑 / 添加 / 移除撤销、无痕隐藏已有。缺访问最多8项 / 系统语言预置核对、长按新 / 私密标签、P1语音与继续观看、P2壁纸。 |
-| UX-03 §5.3 | implemented | 顶 / 底栏、焦点取消 / 全选、建议填入、进度条已有。缺eTLD+1 / 搜索词保持、适宜条件下剪贴板URL建议、长按复制 / 粘贴前往 / 分享、在线建议、自定义搜索模板 / 内联域名。 |
+| UX-03 §5.3 | implemented | 顶 / 底栏、焦点取消 / 全选、建议填入、进度条已有；E40补在线建议和内联域名高亮/退格/提交。缺eTLD+1 / 搜索词保持、适宜条件下剪贴板URL建议、长按复制 / 粘贴前往 / 分享、自定义搜索模板。 |
 | UX-04 §5.3–5.4 | pending | E9已有三项站点权限面板、最终源码站点回归、真实系统允许/拒绝及近似定位专项证据；系统完整生命周期仍待。证书 / Cookie数据 / 本站uBO开关、外部intent:// / market:// / weixin://确认，拦弹窗Snackbar“始终允许”、文件选择及其他权限/页面提示仍须实现和验证。 |
-| UX-05 §5.5 | implemented | 网格与撤销已有；拖拽排序P1、多选标签、全部关闭还原、favicon及明确滑动阈值待补。 |
+| UX-05 §5.5 | implemented | 网格与撤销已有，E40补favicon接线；拖拽排序P1、多选标签、全部关闭还原及明确滑动阈值待补。 |
 | UX-06 §5.7 / 9 | implemented | 原版uBO站点唯一真源已保留。缺AddonUpdater、默认额外Cookie提示列表、logger入口和累计数据；不得直接改uBO存储冒充已接入。 |
 | UX-07 §5.8 | implemented | 接管 / fail回网页 / 短视频折叠已有；og:title优先与同页编号、缩略图 / 站点 / 复制按钮、全DRM / blob / 超时返回网页保证待补。 |
-| UX-08 §5.9–5.10 | implemented | 普通下载改名 / 分享 / 打开和历史书签已有。文件管理器定位、relative date、存储条、文件夹和原生favicon缺失。Places改SQLite已说明冲突，尚未取得最终偏差验收。 |
-| UX-09 §5.12 | implemented | 私密FLAG_SECURE / 标签排除恢复 / 不写播放缓存进度已有。常驻“关闭所有无痕标签”通知缺失；显式离线下载仍可用但先提示文件保留，不能把私密禁止离线当作完成。 |
-| THEME-01 §6.1–6.2 | implemented | 品牌浅深色、动态色默认关、JSON token、无痕配色已有。六预设选择器、组件硬编码色审查、完整player token / semantic体系需补。 |
+| UX-08 §5.9–5.10 | implemented | 普通下载改名 / 分享 / 打开和历史书签已有；E40补共享网站图标组件，真实Gecko声明和历史列表渲染专项通过。文件管理器定位、relative date、存储条、文件夹仍缺；网站图标全站兼容待试用。Places改SQLite已说明冲突，尚未取得最终偏差验收。 |
+| UX-09 §5.12 | implemented | 私密FLAG_SECURE / 标签排除恢复 / 不写播放缓存进度已有；E40补常驻关闭通知/权限/后台关闭和Cookie清理。Android14+允许手动划掉通知；完整私密取证仍待。显式离线下载仍可用但先提示文件保留，不能把私密禁止离线当作完成。 |
+| THEME-01 §6.1–6.2 | implemented | 品牌浅深色、动态色默认关、JSON token、无痕配色已有；E40补六预设选择器/保存/即时应用和深色调80。组件硬编码色审查、完整player token / semantic体系需补。 |
 | THEME-02 §6.3–6.4 | implemented | 系统字体 / typography / 4dp栅格、关键44/56dp胶囊 / 48dp点击区部分实现。所有数字tnum、行高、圆角、0dp tonal、面板≤90%屏高、Snackbar4s / 撤销6s须截图与测量核对。 |
-| THEME-03 §6.5–6.6 | implemented | 当前品牌图标 / monochrome与来源文件已有。Material Symbols Rounded outlined风格、selected filled、真实favicon及fallback、下载 / 播放进度视觉全审查。 |
+| THEME-03 §6.5–6.6 | implemented | 当前品牌图标 / monochrome与来源文件已有；E40补真实favicon及首字母fallback，内存上限8MB/无痕不进入普通缓存。Material Symbols Rounded outlined风格、selected filled、全站图标兼容和下载 / 播放进度视觉全审查仍待。 |
 | PLAYER-01 §8.1 | implemented | 请求头清单 / 分片同传和跨来源认证隔离已E2 / E3验证。无改写清单；外部视频 / 本地 / 离线 / 直输询问各入口待最终完整验证。 |
 | PLAYER-02 §8.2 | implemented | 竖屏16:9 / 标题 / 站点 / 按比例默认方向 / 手动全屏已有E3布局。缺竖屏本页其他视频列表、画质侧栏；P2选集 / 刘海画面延伸设置未做。 |
 | PLAYER-03 §8.3 | implemented | 单击260、双击280/80、750连击、10dp slop在PlayerGestures集中。分区硬编码 / 所有手势常量统一、虚拟时钟边界测试、倍速失败Toast和P1换档 / 捏合仍缺。 |
@@ -220,7 +228,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | DOWNLOAD-03 §10.2–10.3 | implemented | Room普通下载 / segments schema已有。离线kind=video统一字段、thumbnail_path、speed / ETA、所有分类扩展名（含视频m3u8 / APK组合包）核对。 |
 | DATA-01 §12.1 | implemented | 无账号 / 云同步 / 主动telemetry初始化、Gecko notifyTelemetryPrefChanged(false)，备份排除，E0静态依赖记录。未做网络抓包；Crash Reporter上传禁用与本机日志导出入口 / 全依赖无遥测需最终证明。 |
 | DATA-02 §12.1 | implemented | 下载 / 播放凭据仅内存，重启Cookie bridge重取，progress / resolution摘要分区。对Room / cache / logs / Intent / saved-state做真实敏感值取证，签名URL和referrer隐私单独审查。 |
-| DATA-03 §12.1 | implemented | E8全局清理包含播放进度/播放缓存，范围及实际删除证据有限；默认搜索建议可关闭（在线建议尚未接）、默认关的退出清理仍未做。 |
+| DATA-03 §12.1 | implemented | E8全局清理包含播放进度/播放缓存，范围及实际删除证据有限；E40在线搜索建议可关闭/无痕不请求，默认关的退出清理仍未做。 |
 | REUSE-01 §13–14 | implemented | 纯JS classifier、design/tokens.json、PlayerGestures集中常量已有。需扩充VAST共享用例、Swift token生成、完整手势 / shader / benchmark / Metal移植；不引入Cove片源协议。 |
 | COPY-01 附录B | implemented | 已有中英strings、动词与单位大体一致。源码仍见直接“x / P / kind / ratio”等格式，需全可见文案 / 资源 / 单位与错误可操作性审查。 |
 
@@ -230,8 +238,8 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 
 | ID / 设置组 | 状态 | 基线事实与差异 |
 | --- | --- | --- |
-| SET-01 search.engine=google | implemented | 四内置引擎和DataStore；缺自定义%s、在线建议开关、首页数量 / 继续观看设置。 |
-| SET-02 theme=system / dynamic=false / accent=ringoRed / toolbar=top | implemented | 前三默认及顶栏正确；accent还未作为用户设置，六预设 / 示意卡片未接。 |
+| SET-01 search.engine=google | implemented | 四内置引擎和DataStore，E40补在线建议开关/无痕禁用；缺自定义%s、首页数量 / 继续观看设置。 |
+| SET-02 theme=system / dynamic=false / accent=ringoRed / toolbar=top | implemented | 默认值正确；E40补accent持久化和六预设选择器/动态色切换恢复。地址栏位置示意卡片和完整主题/布局/字体矩阵仍待。 |
 | SET-03 blockThirdPartyCookies=true / httpsOnly=false | pending | 没有对应DataStore / UI，不以recommended tracking policy替代。DoH与退出清理同待。 |
 | SET-04 adblock.enabled=true | implemented | 总开关保存并应用；首装稳定性 / 例外网站 / 高级控制和Cookie列表见A1–A4。 |
 | SET-05 autoTakeover=false / webLongPressSpeed=true | implemented | DataStore与当前 / 新frame即时配置已验证。 |
@@ -331,7 +339,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | PERF05 良好网络HLS起播<1.5s | pending | 真实首画 / 首音时间，不是ready布尔值；受控网络和release真机。 |
 | PERF06 判定后倍速<100ms | pending | 手势判定时间→实际PlaybackParameters事件；并与P2按下400ms要求分开计。 |
 | PERF07 10标签内存 / Gecko回收 | pending | 10个实际内容标签、后台回收 / 恢复 / 峰值内存，应用不额外限标签。 |
-| PERF08 ARM64 APK<110MB | verified（仅0.5.18体积/打包） | E33最终108,152,186字节，SHA `4d0b491488347dcede861284958290fe8f03cc55ed8f40b38723e1199c7d94cd`，1538payload/对齐/同Debug证书/17个AArch64库和Gecko资源通过。完全相同DEX的x86受控两项运行另记，ARM64物理机/全R8/正式签名仍待。 |
+| PERF08 ARM64 APK<110MB | verified（仅0.5.21体积/打包） | E40最终108,468,497字节，SHA `aa6dd530561e76ad8cb84c1f63ccac4103bc1d6b35f80357b371a084c0f4804b`，1548payload/16KB对齐/同Debug证书/17个AArch64库/Gecko资源通过。本版ARM64或相同DEX的x86 Release运行、完整R8/正式签名仍待；旧E33/E39运行证据不移用。 |
 | PERF09 超分均衡<12ms | pending | 指定8Gen2级设备、540P动画→1080P、稳定统计含保护；与设置benchmark<16ms推荐门分别验。 |
 | PRIV01 无账号 / Glean / Sync / FxA / 上传 | implemented | E0静态图与源码有证据；完整实际依赖、崩溃上传配置、抓包 / 日志取证、关于本机日志导出待补。 |
 | PRIV02 Cookie / Authorization不落盘 | implemented | 普通下载 / playback / media models内存、分区摘要；需最终Room / prefs / savedstate / files / logs取证和重启恢复认证测试。 |
@@ -342,7 +350,7 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | VIS02 移除动画全流程 | pending | 运行系统scale=0的全操作链，静态循环 / 跟手 / 无输入阻塞。 |
 | DEV01 模拟器+真机仪器测试 | implemented | API35/x86_64多批受控测试；完整0.5.3为77/79。0.5.4站点/混合下载7/7、真实系统3/3、生命周期2/2、JVM111项及lint0错误/22警告；固定APK常规87/87（641.35秒）。0.5.5/E10常规98/98（595.555秒）、fresh系统3/3（21.844秒）、普通/私密prompt11/11。0.5.6/E11完整102/106（1328.953秒）；0.5.7/E12完整103/106（883.116秒），余底栏页顶测试、图片复制后重开菜单和QUALITY超时；后续Core独立7/7及MIME上传13/13不抵消整套失败。0.5.8/E14上传整类15/15（170.368秒），新增capture生命周期独立3/3（65.015秒），同一测试APK随后整类18/18通过（199.276秒）；随后固定同包在新5600常规完整回归117/117（907.736秒）通过，含原上传8+MIME5+capture5；旧失败和排除类保留，不推定真机门。所有旧失败保留；两个强停重启类仍排除，系统权限类独立验证；0.5.8另启5602的真正首次启动1/1（36.811秒）及真实系统权限3/3（33.353秒）均通过。0.5.9/E15另有目录首批5/5及最终固定包跨模块单次49/49（602.313秒），原48/49失败保留；engine90/90含树10/10，仅API35/x86_64受控provider，尚无本版完整常规回归。0.5.11/E19同包常规135/135（881.462秒）已过，四个独立前置类及capability包排除不计通过，各专项和历史输入范围分别保留。release构建/打包仅按PERF08所列版本，0.5.8构建/打包见E14，0.5.9的R8/shrink构建与ARM64打包见E16，R8/ARM64运行仍待；API26–28 / 当前系统 / ARM64物理机仍缺。 0.5.12/E23最终固定同包常规139/139（941.713秒），含新增HLS磁盘UI4项；独立模块另41/41，JVM72/72及lint0/22。四个独立前置类和capability仍排除不计通过，完整真机/发布仍待。 0.5.13/E24同包常规142/142（1465.085秒），另最终模块59/59、UI7/7；代码83f2da9的R8/打包通过仍不代替ARM64/R8运行或完整真机验收。 0.5.14/E25固定同包常规143/143（954.367秒），另模块70/70、UI8/8与JVM74/74；cf1c52a的R8/ARM64打包通过仍不替代正式签名、ARM64/R8运行或完整规格验收。  0.5.18/E33固定同包147/147（1004.529秒）通过，JVM79/79、模块99/99、选定15/15分别归档；四个独立前置类及capability仍排除，物理机和完整规格未闭合。 |
 | SITE01 第11所有真实网站 / 登录 | pending | B1六站及R4媒体站点的兼容矩阵；需要真实账户时由人提供可用会话 / 完成认证，不猜测通过。 |
-| REL01 发布构建 / AAB或按ABI拆分 | implemented | E33：a47f1e4干净源617项无漂移，0.5.18 R8/shrink成功4分11秒、lint0/27，108,152,186字节ARM64开发包完整性通过；相同DEX的x86非debuggable包实际受控2/2。全R8矩阵、ARM64物理机、AAB分发与正式签名未完。 |
+| REL01 发布构建 / AAB或按ABI拆分 | implemented | E40：64e37fa干净源659项与Debug一致无漂移，0.5.21 R8/shrink及全模块JVM成功6分38秒、lint0/29；108,468,497字节ARM64开发包完整性通过。本版ARM64/完整R8运行、AAB分发与正式签名未完。旧版x86同DEX受控运行见E33/E39，不作本版运行证据。 |
 | REL02 正式签名 | pending | 基线无keystore.properties，现包Android Debug证书；需维护者提供安全签名配置，不在源码 / 日志中存秘密。 |
 | REL03 完整第三方告知 / 对应源码 | pending | LEGAL仅旧快照；uBO GPL、过滤列表、Gecko嵌套依赖、Media3和将来shader真实产物须重新审查；关于需可取到全部许可和准确源码。 |
 | REL04 图标 / 素材来源 | implemented | 原画、trace脚本、PROVENANCE与项目许可排除说明已有；发布时维护者权利 / 服务条款确认仍保留，不因AI生成推定全授权。 |
@@ -382,15 +390,17 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 | R5 鉴权 / 签名 | implemented | 401 / 403刷新一次、失败回网页、释放期间不重建已测；真实站点登录Cookie / token轮换需补。 |
 | R6 Transformer离线导出 | pending | P2实现前先验证支持；失败再用TS+Muxer，不预承诺能无重编码导出。 |
 | R7 GL SurfaceView同步 / HDR | implemented | E5实际同帧比较、暂停重绘/旋转/故障回退；HDR策略存在，真实HDR/驱动矩阵仍待补。 |
-| R8 ABI体积 | verified（仅0.5.18打包） | E33/PERF08：108,152,186字节<110,000,000，仅17个ARM64 ELF库；相同DEX的x86两项运行另记，不代替ARM64物理机/全R8/正式签名。 |
+| R8 ABI体积 | verified（仅0.5.21打包） | E40/PERF08：108,468,497字节<110,000,000，仅17个ARM64 ELF库；不代替ARM64物理机/完整R8/正式签名。 |
 | R9 uBO / Gecko分发许可 | pending | 全部第三方 / 列表 / 嵌套库实际产物审查与人工确认；旧M0开源检查不能覆盖含uBO发行。 |
 | R10 Google Play视频下载政策 | pending（条件项） | 仅在决定上架Play时需当时政策与站点限制核对；当前本地构建没有商店发布证据。保留此门，不主动上架。 |
 
 ## 下一阶段顺序与外部条件
 
-1. 在已实现并有E4/E6受控证据的P12 / D6基础上，补下载进行中杀进程续传、真机飞行模式 / 网络切换 / 长时后台 / 手机重启、真实网站重签名及统一列表按钮的完整操作证据；保留普通MP4引擎与私密显式下载警告。不能把完成项重启播放当作进行中任务恢复通过。
-2. 在0.5.11常规135/135基础上继续闭合B13剩余权限 / 提示 / 文件上传矩阵；保留旧失败和独立前置类。按M3推进磁盘缓存区段、缩略图其他provider/公网/codec兼容和超分物理GPU / 热保护矩阵，同时补A1/A6首装多轮 / 更新 / 真机与B10/B11/B20等P0剩余验收，不把已有受控实现重新记为未实现，也不以局部通过提升整个阶段。
-3. 对齐完整设置范围、P1手势 / 后台 / 跳片头尾 / 文件夹 / PWA等，保留P2实现清单；完成所有动效、无障碍 / 真机 / 公网矩阵、性能 / 大小 / 许可 / 正式签名门与各阶段录屏。
+以下服从AGENTS.md维护者2026-11-03的当前阶段方向。P11与P2冻结，待验收清单不代表现在允许扩展。
+
+1. 完成第一组日常功能检查点：固定包163项常规回归、无痕通知权限专项及当前ARM64打包证据；随后收尾B13网页权限/提示的功能闭环，并查清uBO首次安装超时根因。
+2. 按维护者第三组顺序补后台播放、双指缩放、长按滑动换倍速、片头片尾、安全设置、书签文件夹、下载存储条；再做动效/设置/无障碍。
+3. 继续保留真机/公网/网络切换/手机重启、性能、隐私取证、正式签名/分发许可与阶段录屏门；它们不因第一组功能实现而通过，也不以局部证据提升整个阶段。
 4. Android M4有逐门证据后再进入M5。iOS不是当前Windows能完成编译验收的平台，但仍在本规范范围中；可在可用Mac工具链到位前准备可共享JS、token、纯逻辑和原生源码，不能把未编译 / 未运行写成验收通过。
 
 本次环境只确认Windows、Android SDK / JDK与可启动的API35模拟器能力；审计时ADB没有已连接物理手机，未发现`xcodebuild` / `swift`命令，没有iOS工程和正式签名配置。真实Android设备、90/120Hz / 指定SoC超分性能、登录验证所需账户、macOS / Apple SDK / iOS设备、维护者签名与分发许可人工确认是外部验收条件。它们不妨碍继续实现和验证其他可执行工作，也不能凭缺少外部条件就将完整目标标记完成。
