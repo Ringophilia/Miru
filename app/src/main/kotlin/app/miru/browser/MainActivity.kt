@@ -95,6 +95,9 @@ import app.miru.offline.OfflineSource
 import app.miru.common.AddressResolver
 import app.miru.common.AddressTarget
 import app.miru.common.SearchEngine
+import app.miru.common.InlineDomainCompletion
+import app.miru.common.SearchSuggestionPolicy
+import app.miru.browser.engine.SearchSuggestionClient
 import app.miru.data.Bookmark
 import app.miru.data.BrowserSettings
 import app.miru.data.BrowsingLibrary
@@ -242,6 +245,12 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     var finding by remember { mutableStateOf(false) }
     var findQuery by remember { mutableStateOf("") }
     var input by remember { mutableStateOf("") }
+    var inputComposing by remember { mutableStateOf(false) }
+    val addressHistory by produceState(HistoryMatches("",emptyList()),input,editing,tab?.id) {
+        value=HistoryMatches(input,if(editing && input.isNotBlank())library.history.suggest(input,limit=12) else emptyList())
+    }
+    val currentAddressHistory=addressHistory.takeIf { it.query==input && editing }?.items.orEmpty()
+    val inlineAddress=remember(input,currentAddressHistory) { InlineDomainCompletion.find(input,currentAddressHistory.map { it.url }) }
     var siteInfo by remember { mutableStateOf(false) }
     LaunchedEffect(siteInfo, tab?.id) {
         if(siteInfo) controller.permissions.refreshSite()
@@ -392,7 +401,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
         controller.newTab(url, private)
         route = Route.BROWSER; tabsVisible = false
     }
-    fun editAddress() { input = if(tab?.url == NEW_TAB_URL) "" else tab?.url.orEmpty(); editing = true }
+    fun editAddress() { inputComposing=false;input = if(tab?.url == NEW_TAB_URL) "" else tab?.url.orEmpty(); editing = true }
     fun closeTab(id: String) {
         val title = snapshot.tabs.firstOrNull { it.id == id }?.title.orEmpty().trim()
         controller.closeTab(id)
@@ -546,11 +555,12 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         Box {
                             if(finding) FindBar(findQuery, tab?.findCurrent ?: 0, tab?.findTotal ?: 0, { findQuery = it }, { controller.findNext(false) }, { controller.findNext(true) }, { finding = false })
                             else MiruToolbar(
-                                state = ToolbarState(url = tab?.url.orEmpty(), title = tab?.title.orEmpty(), editing = editing, input = input, tabCount = snapshot.tabs.count { it.isPrivate == (tab?.isPrivate == true) }, loading = tab?.loading == true, progress = tab?.progress ?: 0, incognito = tab?.isPrivate == true, adblockAvailable = adblock.installed, blockedCount = adblock.blockedCount, secure = tab?.secure == true, downloading = activeDownloads > 0, adblockNeedsReload = adblock.pageNeedsReload, mediaCount = if(webPage) pageMedia.size else 0),
+                                state = ToolbarState(url = tab?.url.orEmpty(), title = tab?.title.orEmpty(), editing = editing, input = input, inlineAddress = inlineAddress?.text, inlineDestination = inlineAddress?.url, tabCount = snapshot.tabs.count { it.isPrivate == (tab?.isPrivate == true) }, loading = tab?.loading == true, progress = tab?.progress ?: 0, incognito = tab?.isPrivate == true, adblockAvailable = adblock.installed, blockedCount = adblock.blockedCount, secure = tab?.secure == true, downloading = activeDownloads > 0, adblockNeedsReload = adblock.pageNeedsReload, mediaCount = if(webPage) pageMedia.size else 0),
                                 onEdit = ::editAddress,
                                 onTextChanged = { input = it },
-                                onSubmit = { navigate(input) },
-                                onCancelEdit = { editing = false },
+                                onSubmit = { navigate(it) },
+                                onCancelEdit = { editing = false;inputComposing=false },
+                                onCompositionChanged = { inputComposing=it },
                                 onTabs = { controller.captureThumbnail(); privateGroup = tab?.isPrivate == true; tabsVisible = true },
                                 onMenu = { menuVisible = true },
                                 onSiteInfo = { siteInfo = true },
@@ -601,11 +611,15 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                             Suggestions(
                                 input = input,
                                 engine = settings.searchEngine,
+                                onlineEnabled = settings.searchSuggestions && !inputComposing,
+                                isPrivate = tab?.isPrivate == true,
+                                client = container.searchSuggestions,
+                                history = currentAddressHistory,
                                 library = library,
                                 tabs = snapshot.tabs.filter { it.url != NEW_TAB_URL && it.id != tab?.id && it.isPrivate == (tab?.isPrivate == true) },
                                 onNavigate = { navigate(it) },
                                 onSwitchTab = { controller.selectTab(it); editing = false },
-                                onFill = { input = it },
+                                onFill = { inputComposing=false;input = it },
                             )
                         }
                         if(mediaHint && pageMedia.any { it.playable } && !editing && route == Route.BROWSER) FilledTonalButton(
@@ -622,7 +636,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                             offline = container.offline, onOpenOffline = ::openOffline)
                         Route.DOWNLOAD_SETTINGS -> DownloadSettingsScreen(downloads, onBack = { route = Route.SETTINGS })
                         Route.ADBLOCK -> AdblockScreen(adblockUi, { route = Route.SETTINGS }, controller::setAdblockEnabled, controller::retryAdblock, { openAdblockDashboard(true) }, { openAdblockDashboard() })
-                        Route.SETTINGS -> SettingsScreen(settings, { route = Route.BROWSER }, { scope.launch { container.settings.setTheme(it) } }, { scope.launch { container.settings.setDynamicColor(it) } }, { scope.launch { container.settings.setToolbarPosition(it) } }, { scope.launch { container.settings.setSearchEngine(it) } }, onDefaultBrowser, { route = Route.ABOUT }, { route = Route.ADBLOCK }, { route = Route.DOWNLOAD_SETTINGS }, onPlayer = { route = Route.PLAYER_SETTINGS }, onClearBrowsingData = { route = Route.CLEAR_DATA })
+                        Route.SETTINGS -> SettingsScreen(settings, { route = Route.BROWSER }, { scope.launch { container.settings.setTheme(it) } }, { scope.launch { container.settings.setDynamicColor(it) } }, { scope.launch { container.settings.setToolbarPosition(it) } }, { scope.launch { container.settings.setSearchEngine(it) } }, onDefaultBrowser, { route = Route.ABOUT }, { route = Route.ADBLOCK }, { route = Route.DOWNLOAD_SETTINGS }, onPlayer = { route = Route.PLAYER_SETTINGS }, onClearBrowsingData = { route = Route.CLEAR_DATA }, onSearchSuggestions = { enabled -> scope.launch { container.settings.setSearchSuggestions(enabled) } })
                         Route.CLEAR_DATA -> ClearBrowsingDataScreen(container.browsingDataClearer, onBack = { route = Route.SETTINGS })
                         Route.PLAYER_SETTINGS -> PlayerSettingsScreen(container.playerPreferences, snackbars, onBack = { route = Route.SETTINGS })
                         Route.ABOUT -> AboutScreen(BuildConfig.VERSION_NAME, { route = Route.SETTINGS }, { navigate(it, newTab = true) }, adblockVersion = adblock.version.takeIf { adblock.installed })
@@ -773,9 +787,16 @@ private fun routeTransition(from: Route, to: Route, reduced: Boolean): ContentTr
     AndroidView(factory = { view.asView() }, modifier = Modifier.fillMaxSize())
 }
 
+private data class HistoryMatches(val query: String,val items: List<HistoryEntry>)
+private data class OnlineMatches(val query: String,val engine: SearchEngine,val items: List<String>)
+
 @Composable private fun Suggestions(
     input: String,
     engine: SearchEngine,
+    onlineEnabled: Boolean,
+    isPrivate: Boolean,
+    client: SearchSuggestionClient,
+    history: List<HistoryEntry>,
     library: BrowsingLibrary,
     tabs: List<BrowserTab>,
     onNavigate: (String) -> Unit,
@@ -784,7 +805,15 @@ private fun routeTransition(from: Route, to: Route, reduced: Boolean): ContentTr
 ) {
     if (input.isBlank()) return
     val bookmarks by produceState(emptyList<Bookmark>(), input) { value = library.bookmarks.search(input, limit = 3) }
-    val history by produceState(emptyList<HistoryEntry>(), input) { value = library.history.suggest(input, limit = 4) }
+    val query=input.trim()
+    val remote by produceState<OnlineMatches?>(null,query,engine,onlineEnabled,isPrivate,client) {
+        value=null
+        if(SearchSuggestionPolicy.mayRequest(query,engine,onlineEnabled,isPrivate)) {
+            kotlinx.coroutines.delay(250)
+            value=OnlineMatches(query,engine,client.fetch(query,engine,onlineEnabled,isPrivate))
+        }
+    }
+    val online=remote?.takeIf { onlineEnabled && !isPrivate && it.query==query && it.engine==engine }?.items.orEmpty()
     val target = remember(input, engine) { AddressResolver.resolve(input, engine) }
     val isSearch = target is AddressTarget.Web && target.url == engine.search(input.trim())
     val fillLabel = stringResource(R.string.fill_address)
@@ -795,6 +824,15 @@ private fun routeTransition(from: Route, to: Route, reduced: Boolean): ContentTr
             leadingContent = { Icon(if (isSearch) Icons.Rounded.Search else Icons.Outlined.Public, null) },
             modifier = Modifier.clickable { onNavigate(input) },
         )
+        online.forEach { suggestion ->
+            ListItem(
+                headlineContent = { Text(suggestion,maxLines=1,overflow=TextOverflow.Ellipsis) },
+                supportingContent = { Text(stringResource(R.string.suggest_online)) },
+                leadingContent = { Icon(Icons.Rounded.Search,null) },
+                trailingContent = { IconButton(onClick={ onFill(suggestion) }) { Icon(Icons.Rounded.NorthWest,fillLabel) } },
+                modifier = Modifier.clickable { onNavigate(engine.search(suggestion)) },
+            )
+        }
         // Spec 5.3 order: history, bookmarks, then open tabs. A bookmarked page is listed once, as a bookmark.
         val bookmarkUrls = bookmarks.map { it.url }.toSet()
         history.filter { it.url !in bookmarkUrls }.take(3).forEach { entry ->

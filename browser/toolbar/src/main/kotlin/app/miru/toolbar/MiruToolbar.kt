@@ -52,6 +52,8 @@ data class ToolbarState(
     val title: String = "",
     val editing: Boolean = false,
     val input: String = "",
+    val inlineAddress: String? = null,
+    val inlineDestination: String? = null,
     val tabCount: Int = 1,
     val loading: Boolean = false,
     val progress: Int = 0,
@@ -69,7 +71,7 @@ fun MiruToolbar(
     state: ToolbarState,
     onEdit: () -> Unit,
     onTextChanged: (String) -> Unit,
-    onSubmit: () -> Unit,
+    onSubmit: (String) -> Unit,
     onCancelEdit: () -> Unit,
     onTabs: () -> Unit,
     onMenu: () -> Unit,
@@ -78,6 +80,7 @@ fun MiruToolbar(
     modifier: Modifier = Modifier,
     progressAtTop: Boolean = false,
     onMedia: () -> Unit = {},
+    onCompositionChanged: (Boolean) -> Unit = {},
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val searchDescription = stringResource(R.string.toolbar_search_hint)
@@ -85,8 +88,27 @@ fun MiruToolbar(
     var field by remember(state.editing) {
         mutableStateOf(TextFieldValue(state.input, TextRange(0, state.input.length)))
     }
+    var completedFrom by remember(state.editing) { mutableStateOf<String?>(null) }
+    var resolvedText by remember(state.editing) { mutableStateOf<String?>(null) }
+    var resolvedUrl by remember(state.editing) { mutableStateOf<String?>(null) }
+    var mayComplete by remember(state.editing) { mutableStateOf(false) }
+    var suppressed by remember(state.editing) { mutableStateOf<String?>(null) }
+    fun complete(prefix: String) {
+        val candidate=state.inlineAddress ?: return
+        if(prefix.isEmpty() || candidate.length<=prefix.length || !candidate.startsWith(prefix,true))return
+        val text=prefix+candidate.substring(prefix.length)
+        field=TextFieldValue(text,TextRange(prefix.length,text.length))
+        completedFrom=prefix;resolvedText=text;resolvedUrl=state.inlineDestination
+    }
     LaunchedEffect(state.input) {
-        if (field.text != state.input) field = TextFieldValue(state.input, TextRange(state.input.length))
+        if(field.text!=state.input && completedFrom!=state.input) {
+            field=TextFieldValue(state.input,TextRange(state.input.length))
+            completedFrom=null;resolvedText=null;resolvedUrl=null;mayComplete=false;suppressed=null
+            onCompositionChanged(false)
+        }
+    }
+    LaunchedEffect(state.inlineAddress,state.input) {
+        if(mayComplete && suppressed!=state.input && field.composition==null && field.text==state.input && field.selection.collapsed && field.selection.end==field.text.length)complete(state.input)
     }
     LaunchedEffect(state.editing) {
         if (state.editing) focusRequester.requestFocus()
@@ -110,20 +132,32 @@ fun MiruToolbar(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             BasicTextField(
                                 value = field,
-                                onValueChange = { field = it; onTextChanged(it.text) },
+                                onValueChange = { next ->
+                                    val previous=completedFrom ?: field.text
+                                    val replacedAll=field.selection.min==0 && field.selection.max==field.text.length
+                                    val committed=field.composition!=null && next.composition==null
+                                    val atEnd=next.selection.collapsed && next.selection.end==next.text.length
+                                    mayComplete=next.composition==null && atEnd && (committed || replacedAll || next.text.length>previous.length && next.text.startsWith(previous))
+                                    suppressed=if(mayComplete)null else next.text
+                                    if(next.text!=resolvedText) { resolvedText=null;resolvedUrl=null }
+                                    field=next;completedFrom=null
+                                    onCompositionChanged(next.composition!=null)
+                                    onTextChanged(next.text)
+                                    if(mayComplete)complete(next.text)
+                                },
                                 modifier = Modifier.weight(1f).padding(start = 16.dp).focusRequester(focusRequester)
                                     .semantics { contentDescription = searchDescription },
                                 singleLine = true,
                                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
-                                keyboardActions = KeyboardActions(onGo = { keyboard?.hide(); onSubmit() }),
+                                keyboardActions = KeyboardActions(onGo = { keyboard?.hide(); onSubmit(if(field.text==resolvedText) resolvedUrl ?: field.text else field.text) }),
                                 decorationBox = { inner ->
                                     if (field.text.isEmpty()) Text(stringResource(R.string.toolbar_search_hint), color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     inner()
                                 },
                             )
-                            IconButton(onClick = { field = TextFieldValue(""); onTextChanged("") }) {
+                            IconButton(onClick = { field = TextFieldValue("");completedFrom=null;resolvedText=null;resolvedUrl=null;mayComplete=false;suppressed="";onCompositionChanged(false);onTextChanged("") }) {
                                 Icon(Icons.Outlined.Close, stringResource(R.string.toolbar_clear_input))
                             }
                         }

@@ -34,4 +34,5 @@
     <string name="suggest_search">Search</string>
     <string name="suggest_open">Open address</string>
     <string name="fill_address">Fill in address bar</string>
+    <string name="suggest_online">Search suggestion</string>
 </resources>

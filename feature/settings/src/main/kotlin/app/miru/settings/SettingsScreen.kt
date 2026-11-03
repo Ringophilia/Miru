@@ -14,6 +14,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.miru.common.SearchEngine
 import app.miru.data.BrowserSettings
@@ -35,8 +37,10 @@ fun SettingsScreen(
     onDownloads: () -> Unit = {},
     onPlayer: () -> Unit = {},
     onClearBrowsingData: () -> Unit = {},
+    onSearchSuggestions: (Boolean) -> Unit = {},
 ) {
     var dialog by remember { mutableStateOf<String?>(null) }
+    val suggestionsLabel=stringResource(R.string.search_suggestions)
     Scaffold(topBar = {
         TopAppBar(title = { Text(stringResource(R.string.settings_title)) }, navigationIcon = {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
@@ -45,6 +49,9 @@ fun SettingsScreen(
         Column(Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             GroupLabel(R.string.basic)
             SettingRow(stringResource(R.string.search_engine), engineName(settings.searchEngine)) { dialog = "search" }
+            ListItem(headlineContent = { Text(suggestionsLabel) }, supportingContent = { Text(stringResource(R.string.search_suggestions_detail)) }, trailingContent = {
+                Switch(checked = settings.searchSuggestions, onCheckedChange = onSearchSuggestions, modifier=Modifier.semantics { contentDescription=suggestionsLabel })
+            })
             SettingRow(stringResource(R.string.default_browser), stringResource(R.string.set_default), onDefaultBrowser)
             GroupLabel(R.string.appearance)
             SettingRow(stringResource(R.string.theme), themeName(settings.theme)) { dialog = "theme" }

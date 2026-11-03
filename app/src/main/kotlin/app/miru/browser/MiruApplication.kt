@@ -40,6 +40,7 @@ class AppContainer(application: Application) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val settings = SettingsRepository(application)
     val library = BrowsingLibrary(application)
+    internal var searchSuggestions = app.miru.browser.engine.SearchSuggestionClient()
     val downloads = DownloadCoordinator.get(application)
     val browser = BrowserController(application, scope, LibraryHistoryDelegate(library))
     val playerPreferences = PlayerPreferencesRepository(application)

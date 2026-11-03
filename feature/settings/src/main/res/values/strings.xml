@@ -43,4 +43,6 @@
     <string name="mozilla_license">Mozilla GeckoView / Android Components · MPL-2.0</string>
     <string name="mpl">查看 Mozilla 公共许可证</string>
     <string name="android_license">AndroidX / Kotlin · Apache-2.0</string>
+    <string name="search_suggestions">在线搜索建议</string>
+    <string name="search_suggestions_detail">将搜索词发送给默认搜索引擎；无痕中不发送</string>
 </resources>

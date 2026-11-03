@@ -23,6 +23,9 @@ foreach($number in 1..4) {
     $dir = "m3-cached-ranges/build-$number"
     foreach($name in @('main.apk','player-test.apk','app-test.apk')) { $null=New-MiruFile "$dir/$name" }
     $manifest = New-MiruFile "$dir/result.json" ([ordered]@{success=($number -ne 4);playerJvm=@{tests=1};apks=@(@{name='main.apk'},@{name='player-test.apk'},@{name='app-test.apk'})} | ConvertTo-Json -Depth 5)
+    if($number -eq 2) {
+        [ordered]@{success=$true;jvm=@{tests=1;module='core:common'};apks=@(@{name='main.apk'},@{name='player-test.apk'},@{name='app-test.apk'})} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest
+    }
     (Get-Item -LiteralPath $manifest).LastWriteTimeUtc = [datetime]::UtcNow.AddHours(-10+$number)
 }
 $live = New-MiruFile 'm3-cached-ranges/live/main.apk'

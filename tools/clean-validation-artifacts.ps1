@@ -43,7 +43,7 @@ if(Test-Path -LiteralPath $miruRuns) {
         if(-not (Test-Path -LiteralPath $result)) { continue }
         try {
             $data = Get-Content -LiteralPath $result -Raw | ConvertFrom-Json
-            if($data.success -and $data.playerJvm -and $data.apks -and (Test-Path -LiteralPath (Join-Path $directory.FullName 'main.apk'))) {
+            if($data.success -and ($data.playerJvm -or $data.jvm) -and $data.apks -and (Test-Path -LiteralPath (Join-Path $directory.FullName 'main.apk'))) {
                 $miruSnapshots += [pscustomobject]@{directory=$directory.FullName;time=(Get-Item -LiteralPath $result).LastWriteTimeUtc;apks=$data.apks}
             }
         } catch { Write-Warning "Ignoring unreadable build manifest: $result" }

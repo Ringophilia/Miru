@@ -31,5 +31,6 @@ dependencies {
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.2.0")
     implementation(libs.mozilla.feature.tabs)
     implementation(libs.kotlinx.coroutines.android)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation(libs.junit)
 }

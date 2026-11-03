@@ -34,4 +34,5 @@
     <string name="suggest_search">搜索</string>
     <string name="suggest_open">打开网址</string>
     <string name="fill_address">填入地址栏</string>
+    <string name="suggest_online">搜索建议</string>
 </resources>

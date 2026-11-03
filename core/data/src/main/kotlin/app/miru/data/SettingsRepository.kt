@@ -24,6 +24,7 @@ data class BrowserSettings(
     val dynamicColor: Boolean = false,
     val toolbarPosition: ToolbarPosition = ToolbarPosition.TOP,
     val searchEngine: SearchEngine = SearchEngine.GOOGLE,
+    val searchSuggestions: Boolean = true,
 )
 
 class SettingsRepository(context: Context) {
@@ -32,6 +33,7 @@ class SettingsRepository(context: Context) {
     private val dynamicKey = booleanPreferencesKey("appearance.dynamicColor")
     private val positionKey = stringPreferencesKey("appearance.toolbarPosition")
     private val searchKey = stringPreferencesKey("search.engine")
+    private val suggestionsKey = booleanPreferencesKey("search.suggestions")
     val settings: Flow<BrowserSettings> = store.data.catch { error ->
         if (error is IOException) emit(emptyPreferences()) else throw error
     }.map { values ->
@@ -40,12 +42,14 @@ class SettingsRepository(context: Context) {
             dynamicColor = values[dynamicKey] ?: false,
             toolbarPosition = enumValue<ToolbarPosition>(values[positionKey]) ?: ToolbarPosition.TOP,
             searchEngine = enumValue<SearchEngine>(values[searchKey]) ?: SearchEngine.GOOGLE,
+            searchSuggestions = values[suggestionsKey] ?: true,
         )
     }
     suspend fun setTheme(value: ThemeMode) { store.edit { it[themeKey] = value.name } }
     suspend fun setDynamicColor(value: Boolean) { store.edit { it[dynamicKey] = value } }
     suspend fun setToolbarPosition(value: ToolbarPosition) { store.edit { it[positionKey] = value.name } }
     suspend fun setSearchEngine(value: SearchEngine) { store.edit { it[searchKey] = value.name } }
+    suspend fun setSearchSuggestions(value: Boolean) { store.edit { it[suggestionsKey] = value } }
 
     private inline fun <reified T : Enum<T>> enumValue(value: String?): T? = enumValues<T>().firstOrNull { it.name == value }
 }

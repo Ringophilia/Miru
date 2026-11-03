@@ -43,4 +43,6 @@
     <string name="mozilla_license">Mozilla GeckoView / Android Components · MPL-2.0</string>
     <string name="mpl">Mozilla Public License</string>
     <string name="android_license">AndroidX / Kotlin · Apache-2.0</string>
+    <string name="search_suggestions">Online search suggestions</string>
+    <string name="search_suggestions_detail">Send search terms to your search engine; disabled in private tabs</string>
 </resources>
