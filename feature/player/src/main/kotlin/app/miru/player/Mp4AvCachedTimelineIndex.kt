@@ -12,7 +12,7 @@ import androidx.media3.extractor.mp4.TrackSampleTable
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.ensureActive
 
-/** Native AVC/AAC sample and read closure. Other codec/edit profiles still require adapters. */
+/** Native ordered AVC and AVC/AAC read closure. Other profiles still require adapters. */
 internal object Mp4AvCachedTimelineIndex {
     fun tracks(selected: Mp4CachedSelection.Selected, session: PlaybackSourceSession, cache: Cache,
         metadata: CachedMp4Metadata, positionInWindowUs: Long, durationUs: Long,
@@ -20,8 +20,10 @@ internal object Mp4AvCachedTimelineIndex {
         if(durationUs<=0)return emptyList()
         val tables=metadata.tables.filter { it.sampleCount>0 && it.track.shouldBeExposed }
         val outputs=selected.entry.tracks
-        if(tables.size<2 || outputs.size!=tables.size || selected.outputs.size!=2 ||
-            selected.outputs.map { it.type }.toSet()!=setOf(C.TRACK_TYPE_VIDEO,C.TRACK_TYPE_AUDIO))return emptyList()
+        val videoOnly=tables.size==1 && selected.outputs.map { it.type }==listOf(C.TRACK_TYPE_VIDEO)
+        val av=tables.size>=2 && selected.outputs.size==2 &&
+            selected.outputs.map { it.type }.toSet()==setOf(C.TRACK_TYPE_VIDEO,C.TRACK_TYPE_AUDIO)
+        if(outputs.size!=tables.size || !videoOnly && !av)return emptyList()
         val ends=ArrayList<LongArray>()
         for((ordinal,table)in tables.withIndex()) {
             context.ensureActive()
@@ -153,7 +155,7 @@ internal object Mp4AvCachedTimelineIndex {
             }
             if(valid)intervals+=CachedMediaInterval(CachedTimeRange(Math.addExact(from,positionInWindowUs),Math.addExact(to,positionInWindowUs)),required)
         }
-        return listOf(CachedTrackCoverage("mp4-selected-av",intervals))
+        return listOf(CachedTrackCoverage(if(videoOnly) "mp4-selected-video" else "mp4-selected-av",intervals))
     }
 
     private fun sync(table: TrackSampleTable,time: Long): Int = table.getIndexOfEarlierOrEqualSynchronizationSample(time).let {

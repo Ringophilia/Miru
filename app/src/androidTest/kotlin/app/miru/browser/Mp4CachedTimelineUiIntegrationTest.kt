@@ -218,8 +218,8 @@ class Mp4CachedTimelineUiIntegrationTest {
                             (0..8).map { CachedTimeRange((9+it*12)*1_000_000L,(16+it*12)*1_000_000L-99_999) } +
                             CachedTimeRange(117_000_000,120_000_000)
                             else if(av) listOf(CachedTimeRange(0, 3_900_001), CachedTimeRange(9_000_000, 12_000_000))
-                            else if(!longMovie) listOf(CachedTimeRange(0, 4_000_000), CachedTimeRange(8_000_000, 12_000_000)) else
-                            listOf(CachedTimeRange(0, 4_000_000)) + (0..8).map { CachedTimeRange((8 + it * 12) * 1_000_000L, (16 + it * 12) * 1_000_000L) } + CachedTimeRange(116_000_000, 120_000_000)
+                            else if(!longMovie) listOf(CachedTimeRange(0, 3_900_001), CachedTimeRange(8_000_000, 12_000_000)) else
+                            listOf(CachedTimeRange(0, 3_900_001)) + (0..8).map { CachedTimeRange((8 + it * 12) * 1_000_000L, (16 + it * 12) * 1_000_000L-99_999) } + CachedTimeRange(116_000_000, 120_000_000)
                         compose.waitUntil(10_000) { var actual = emptyList<CachedTimeRange>(); launched.onActivity { actual = it.playback.diskRanges.value }; actual == holes }
                         report.put("diskRanges", holes.toString())
                         if(waitForPrefetchFailure && compose.onAllNodesWithTag("player_seek_track", useUnmergedTree = true).fetchSemanticsNodes().isEmpty()) {

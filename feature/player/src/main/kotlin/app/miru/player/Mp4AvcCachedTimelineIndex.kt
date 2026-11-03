@@ -24,9 +24,20 @@ internal object Mp4AvcCachedTimelineIndex {
         // Multi-track scheduling and audio codec preroll require their own native
         // I/O closure, not a union or a fabricated AV intersection.
         val exposed = metadata.tables.filter { it.sampleCount > 0 && it.track.shouldBeExposed }
-        if(exposed.size != 1 || entry.tracks.size != 1 || selected.outputs.size != 1) {
+        var orderedSingle = exposed.size == 1
+        if(orderedSingle) {
+            val times=exposed.single().timestampsUs
+            for(i in 1 until times.size) {
+                context.ensureActive()
+                if(times[i]<times[i-1]) { orderedSingle=false;break }
+            }
+        }
+        if(exposed.size != 1 || entry.tracks.size != 1 || selected.outputs.size != 1 || orderedSingle) {
             return Mp4AvCachedTimelineIndex.tracks(selected,session,cache,metadata,positionInWindowUs,durationUs,lengths,context)
         }
+        // Keep the pre-existing reordered-video path until its decoder-output
+        // closure is validated; that separate unfinished profile is not replaced
+        // by this ordered-video fix or claimed as accepted.
         val output = selected.outputs.single()
         val table = exposed.single()
         val format = output.format ?: return emptyList()

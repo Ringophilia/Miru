@@ -30,7 +30,7 @@ class Mp4AvcCachedTimelineTest {
         val sample = f.samples.getJSONObject(92)
         val missing = sample.getLong("offset") + sample.getInt("size") / 2
         f.reseed(listOf(0L to missing, missing + 1 to f.body.size.toLong()))
-        assertEquals(listOf(CachedTimeRange(0, 9_200_000), CachedTimeRange(10_000_000, 12_000_000)), f.ranges())
+        assertEquals(listOf(CachedTimeRange(0, 9_100_001), CachedTimeRange(10_000_000, 12_000_000)), f.ranges())
         f.put(missing, byteArrayOf(f.body[missing.toInt()]))
         assertEquals(listOf(CachedTimeRange(0, 12_000_000)), f.ranges())
     }

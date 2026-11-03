@@ -22,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,6 +62,7 @@ fun DownloadsScreen(
     val rows = (downloads.map { UnifiedDownload(it) } + offlineItems).sortedByDescending { it.item.createdAt }
         .filter { row -> row.item.id !in if(row.offline) offlineHidden else hidden }
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
     val localSnackbar = remember { SnackbarHostState() }
     val snackbar = snackbarHostState ?: localSnackbar
@@ -81,6 +83,7 @@ fun DownloadsScreen(
     }
     LaunchedEffect(rows.map { it.key }) { selected = selected.intersect(rows.map { it.key }.toSet()) }
     fun delete(target: List<UnifiedDownload>, files: Boolean) {
+        focusManager.clearFocus()
         val startedAt = SystemClock.elapsedRealtime()
         selected -= target.map { it.key }.toSet()
         val ordinary = target.filterNot { it.offline }.map { it.item }
@@ -117,6 +120,9 @@ fun DownloadsScreen(
         }
     }
     fun requestDelete(target: List<UnifiedDownload>) {
+        // A confirmation dialog must not restore search editing on dismissal:
+        // reopening IME moves the global Snackbar during an Undo touch gesture.
+        focusManager.clearFocus()
         if(target.any { it.offline } || (preferences.deleteFileWithRecord && target.any { it.item.destUri != null })) confirmDelete = target
         else delete(target, false)
     }
@@ -180,7 +186,7 @@ fun DownloadsScreen(
                             ListItem(
                                 modifier = Modifier.testTag(if(row.offline) "offline_download_${item.id}" else "file_download_${item.id}").combinedClickable(
                                     onClick = { if(selected.isNotEmpty()) selected = if(row.key in selected) selected - row.key else selected + row.key else if(item.status == "completed") open(row) else menu = true },
-                                    onLongClick = { selected = selected + row.key },
+                                    onLongClick = { focusManager.clearFocus(); selected = selected + row.key },
                                 ),
                                 headlineContent = { Text(item.fileName, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                                 supportingContent = {

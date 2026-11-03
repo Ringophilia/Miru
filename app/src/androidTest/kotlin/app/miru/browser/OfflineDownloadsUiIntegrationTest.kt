@@ -93,6 +93,10 @@ class OfflineDownloadsUiIntegrationTest {
                 compose.onNode(hasSetTextAction()).performTextClearance()
 
                 compose.onNodeWithText(renamed).performTouchInput { longClick() }
+                // Selection replaces text editing. Retaining the search focus
+                // reopens IME when the confirmation dialog closes and moves
+                // the Snackbar while its Undo action is being touched.
+                compose.onNode(hasSetTextAction()).assertIsNotFocused()
                 compose.onNodeWithText(ordinaryName).performClick()
                 compose.onNodeWithText(context.getString(app.miru.downloads.R.string.download_selected, 2)).assertIsDisplayed()
                 compose.onNode(hasContentDescription(label(app.miru.downloads.R.string.download_delete)) and hasClickAction()).performClick()
