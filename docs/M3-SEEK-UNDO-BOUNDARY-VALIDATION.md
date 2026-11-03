@@ -49,3 +49,5 @@ Focused=true。下载页现在在多选、请求删除和实际删除时clearFoc
 本版`seek-undo-fix-routine-01`完整常规 **151/151，JUnit1262.152秒，0失败/跳过**，runner1268.598秒，ADB0及终态OK。固定四个独立前置类与capability包仍排除，不算通过。整组中的混合撤销通过；旧151失败及新专项保留独立输入。新R8/ARM64运行、正式签名、
 精确AAC preroll/EOS、重排/复杂edit/其他容器、长片内存/取消、完整权限/资源/鉴权矩阵、
 物理机与M0–M5其他条目继续保留，不以本批范围替代全规范。
+
+对应的新ARM64打包与相同DEX的x86受控3/3见[Release记录](M3-SEEK-UNDO-RELEASE-VALIDATION.md)；其边界不替代完整R8/ARM64物理机及其他待验要求。

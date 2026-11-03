@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -97,6 +98,8 @@ public final class ReleaseRuntimeProbe extends Instrumentation {
             check(avHash.equals("d7b52d4d692af18d1b7264d991a7affcc1b2de599d4acdb19f979222ef1ce9fa"),"Owned AVC/AAC digest differs");
             try(Origin origin=new Origin(av)) {
                 launchPlayer(origin.url);
+                try { completeWarmPlaybackThroughPublicControls(); }
+                catch(Throwable failure) { report.put("avRequests",origin.requestSnapshot());throw failure; }
                 seekThroughPublicControls(9000,12000);
                 JSONArray first=awaitFrame(new int[]{0,0,255},"av-first-blue.png");
                 check(origin.success.get()>0,"AV playback did not consume its real source");
@@ -104,6 +107,8 @@ public final class ReleaseRuntimeProbe extends Instrumentation {
                 launchPlayer(origin.url);
                 seekThroughPublicControls(9000,12000);
                 JSONArray cached=awaitFrame(new int[]{0,0,255},"av-cached-blue.png");
+                report.put("avRequestsBeforeCold",before).put("avRequestsAfterCold",origin.total.get())
+                        .put("avRequests",origin.requestSnapshot());
                 check(origin.total.get()==before,"AV cold re-open fetched the stopped source");
                 report.put("avMovieSha256",avHash).put("avFirstRgb",first).put("avCachedRgb",cached)
                         .put("avRequestedSeekMs",9000).put("avUpstreamRequests",before);
@@ -166,6 +171,82 @@ public final class ReleaseRuntimeProbe extends Instrumentation {
     private void seekOwnedRedThroughPublicControls() throws Exception {
         seekThroughPublicControls(1000,12000);
     }
+    private void completeWarmPlaybackThroughPublicControls() throws Exception {
+        seekThroughPublicControls(0,12000);
+        long started=SystemClock.elapsedRealtime(),deadline=started+30000,lastTap=0,lastPlay=0,lastProgress=started;
+        boolean began=false;float maximum=0;int playAttempts=0;
+        while(SystemClock.elapsedRealtime()<deadline) {
+            AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();
+            AccessibilityNodeInfo slider=seekControl(root,0,12000);
+            if(slider!=null) {
+                slider.refresh();
+                float current=slider.getRangeInfo().getCurrent();
+                if(current<=1000)began=true;
+                if(current>maximum)lastProgress=SystemClock.elapsedRealtime();
+                maximum=Math.max(maximum,current);
+                if(began && current>=11999) {
+                    report.put("avWarmCompletedPositionMs",current).put("avWarmElapsedMs",SystemClock.elapsedRealtime()-started)
+                            .put("avWarmPlayAttempts",playAttempts);
+                    return;
+                }
+            }
+            AccessibilityNodeInfo play=control(root,"Play","播放",0);
+            if(play!=null && play.isEnabled() && SystemClock.elapsedRealtime()-lastPlay>=1000 && SystemClock.elapsedRealtime()-lastProgress>=750) {
+                playAttempts++;
+                if(!play.performAction(AccessibilityNodeInfo.ACTION_CLICK))tapControl(play);
+                lastPlay=SystemClock.elapsedRealtime();
+            }
+            if(slider==null && SystemClock.elapsedRealtime()-lastTap>=1000 && tapVideoCenter())lastTap=SystemClock.elapsedRealtime();
+            SystemClock.sleep(50);
+        }
+        report.put("avWarmMaximumProgressMs",maximum).put("avWarmPlayAttempts",playAttempts);
+        diagnoseWarmWindow();
+        throw new AssertionError("AV warm playback did not traverse the actual stream to its end; maximum="+maximum);
+    }
+    private void diagnoseWarmWindow() {
+        try {
+            JSONArray nodes=new JSONArray();describeNode(getUiAutomation().getRootInActiveWindow(),nodes,0);
+            report.put("avWarmWindowNodes",nodes);
+            Bitmap bitmap=getUiAutomation().takeScreenshot();
+            if(bitmap!=null)try {
+                ByteArrayOutputStream png=new ByteArrayOutputStream();bitmap.compress(Bitmap.CompressFormat.PNG,100,png);
+                report.put("avWarmWindowPngBase64",android.util.Base64.encodeToString(png.toByteArray(),android.util.Base64.NO_WRAP));
+            }finally{bitmap.recycle();}
+        }catch(Throwable failure){try{report.put("avWarmDiagnosticFailure",failure.toString());}catch(Exception ignored){}}
+    }
+    private static void describeNode(AccessibilityNodeInfo node,JSONArray out,int depth) throws Exception {
+        if(node==null||depth>40||out.length()>300)return;
+        node.refresh();Rect bounds=new Rect();node.getBoundsInScreen(bounds);
+        JSONObject data=new JSONObject().put("depth",depth).put("text",String.valueOf(node.getText()))
+                .put("description",String.valueOf(node.getContentDescription())).put("class",String.valueOf(node.getClassName()))
+                .put("enabled",node.isEnabled()).put("clickable",node.isClickable()).put("bounds",bounds.toShortString())
+                .put("actions",node.getActionList().toString());
+        AccessibilityNodeInfo.RangeInfo range=node.getRangeInfo();
+        if(range!=null)data.put("range",new JSONArray().put(range.getCurrent()).put(range.getMin()).put(range.getMax()));
+        out.put(data);
+        for(int i=0;i<node.getChildCount();i++)describeNode(node.getChild(i),out,depth+1);
+    }
+    private boolean tapControl(AccessibilityNodeInfo node) {
+        Rect bounds=new Rect();node.getBoundsInScreen(bounds);
+        if(bounds.isEmpty())return false;
+        long time=SystemClock.uptimeMillis();
+        for(int action:new int[]{MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP}) {
+            MotionEvent event=MotionEvent.obtain(time,SystemClock.uptimeMillis(),action,bounds.exactCenterX(),bounds.exactCenterY(),0);event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+            try { check(getUiAutomation().injectInputEvent(event,true),"Public playback control touch was rejected"); } finally { event.recycle(); }
+        }
+        return true;
+    }
+    private boolean tapVideoCenter() {
+        AtomicReference<float[]> point=new AtomicReference<>();
+        runOnMainSync(() -> { SurfaceView view=surface(activity.get().getWindow().getDecorView());if(view!=null){int[] location=new int[2];view.getLocationOnScreen(location);point.set(new float[]{location[0]+view.getWidth()/2f,location[1]+view.getHeight()/2f});} });
+        if(point.get()==null)return false;
+        long time=SystemClock.uptimeMillis();
+        for(int action:new int[]{MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP}) {
+            MotionEvent event=MotionEvent.obtain(time,SystemClock.uptimeMillis(),action,point.get()[0],point.get()[1],0);event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+            try { check(getUiAutomation().injectInputEvent(event,true),"Public control tap was rejected"); } finally { event.recycle(); }
+        }
+        return true;
+    }
     private void seekThroughPublicControls(int positionMs,int durationMs) throws Exception {
         long deadline=SystemClock.elapsedRealtime()+15000,lastTap=0;
         while(SystemClock.elapsedRealtime()<deadline) {
@@ -174,8 +255,12 @@ public final class ReleaseRuntimeProbe extends Instrumentation {
             if(pause!=null) { pause.performAction(AccessibilityNodeInfo.ACTION_CLICK);SystemClock.sleep(100);root=getUiAutomation().getRootInActiveWindow(); }
             AccessibilityNodeInfo slider=seekControl(root,0,durationMs);
             if(slider!=null) {
-                Bundle arguments=new Bundle();arguments.putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE,(float)positionMs);
-                check(slider.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.getId(),arguments),"Public progress action was rejected");
+                float current=slider.getRangeInfo().getCurrent();
+                report.put("lastPublicProgressBeforeMs",current);
+                if(current!=(float)positionMs) {
+                    Bundle arguments=new Bundle();arguments.putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE,(float)positionMs);
+                    check(slider.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.getId(),arguments),"Public progress action was rejected");
+                }
                 if(positionMs==1000)report.put("requestedSeekMs",1000);
                 report.put("seekRoute","public accessibility progress action");
                 return;
@@ -205,6 +290,7 @@ public final class ReleaseRuntimeProbe extends Instrumentation {
     }
     private static AccessibilityNodeInfo control(AccessibilityNodeInfo node,String english,String chinese,int depth) {
         if(node==null||depth>50)return null;
+        node.refresh();
         CharSequence description=node.getContentDescription();
         if(node.isVisibleToUser()&&description!=null&&(english.contentEquals(description)||chinese.contentEquals(description)))return node;
         for(int i=0;i<node.getChildCount();i++){AccessibilityNodeInfo found=control(node.getChild(i),english,chinese,depth+1);if(found!=null)return found;}
@@ -240,6 +326,7 @@ public final class ReleaseRuntimeProbe extends Instrumentation {
     private static final class Origin implements AutoCloseable {
         final AtomicBoolean available=new AtomicBoolean(true),running=new AtomicBoolean(true);
         final AtomicInteger total=new AtomicInteger(),success=new AtomicInteger(),pages=new AtomicInteger();
+        final JSONArray requests=new JSONArray();
         final ServerSocket server;final String url;final byte[] body;
         Origin(byte[] body) throws Exception {
             this.body=body;server=new ServerSocket(0,16,InetAddress.getByName("127.0.0.1"));url="http://127.0.0.1:"+server.getLocalPort()+"/probe-"+UUID.randomUUID()+"/owned.mp4";
@@ -257,11 +344,14 @@ public final class ReleaseRuntimeProbe extends Instrumentation {
                 pages.incrementAndGet();out.write(("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: "+html.length+"\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));out.write(html);out.flush();return;
             }
             total.incrementAndGet();
-            if(!available.get()) { out.write("HTTP/1.1 503 Stopped\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".getBytes(StandardCharsets.US_ASCII));out.flush();return; }
+            boolean serveBody=available.get();
+            synchronized(requests) { requests.put(new JSONObject().put("from",start).put("to",end).put("status",serveBody?206:503)); }
+            if(!serveBody) { out.write("HTTP/1.1 503 Stopped\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".getBytes(StandardCharsets.US_ASCII));out.flush();return; }
             check(start>=0&&start<=end&&end<body.length,"Unexpected range");success.incrementAndGet();
             String header="HTTP/1.1 206 Partial Content\r\nContent-Type: video/mp4\r\nAccept-Ranges: bytes\r\nContent-Length: "+(end-start+1)+"\r\nContent-Range: bytes "+start+"-"+end+"/"+body.length+"\r\nConnection: close\r\n\r\n";
             out.write(header.getBytes(StandardCharsets.US_ASCII));if(!first.startsWith("HEAD "))out.write(body,(int)start,(int)(end-start+1));out.flush();
         } catch(Exception ignored) { } }
+        JSONArray requestSnapshot() throws Exception { synchronized(requests) { return new JSONArray(requests.toString()); } }
         @Override public void close() throws Exception { running.set(false);server.close(); }
     }
 }

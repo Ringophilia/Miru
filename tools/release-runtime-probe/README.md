@@ -33,6 +33,11 @@ Activity before each stopped-origin re-open and checks for zero new source reque
 checks cover single-video red frames, a genuinely served Gecko document heading, and muxed
 AVC/dual-AAC input whose 9-second blue frame is decoded again from cache. It rejects debuggable
 targets. The muxed check does not measure PCM identity or prove the separate disk-layer pixels.
+The AV case first observes public playback progress traverse from the beginning to 12 seconds,
+then seeks to 9 seconds. It records the actual Range requests and requires their count to stay
+unchanged after origin shutdown and Activity destruction/re-open. Equal-value progress requests
+are treated as no-ops; changing a value must still succeed. Navigation refreshes accessibility
+nodes and only tries Play while progress is stopped, avoiding repeated toggles from stale labels.
 
 The build freezes both owned media inputs as well as harness source and records `testCount: 3`
 in its manifest. The runner uses that count, validates all four native PNG names/hashes, and
