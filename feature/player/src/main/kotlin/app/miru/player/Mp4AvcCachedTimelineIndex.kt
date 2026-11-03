@@ -24,7 +24,9 @@ internal object Mp4AvcCachedTimelineIndex {
         // Multi-track scheduling and audio codec preroll require their own native
         // I/O closure, not a union or a fabricated AV intersection.
         val exposed = metadata.tables.filter { it.sampleCount > 0 && it.track.shouldBeExposed }
-        if(exposed.size != 1 || entry.tracks.size != 1 || selected.outputs.size != 1) return emptyList()
+        if(exposed.size != 1 || entry.tracks.size != 1 || selected.outputs.size != 1) {
+            return Mp4AvCachedTimelineIndex.tracks(selected,session,cache,metadata,positionInWindowUs,durationUs,lengths,context)
+        }
         val output = selected.outputs.single()
         val table = exposed.single()
         val format = output.format ?: return emptyList()
@@ -92,7 +94,7 @@ internal object Mp4AvcCachedTimelineIndex {
         return listOf(CachedTrackCoverage("mp4-selected-video", intervals))
     }
 
-    private fun idr(cache: Cache, request: Mp4CacheRequest, offset: Long, size: Int, lengthBytes: Int, context: CoroutineContext): Boolean {
+    internal fun idr(cache: Cache, request: Mp4CacheRequest, offset: Long, size: Int, lengthBytes: Int, context: CoroutineContext): Boolean {
         val input = CacheOnlyMp4Bytes(cache, request, context)
         val end = Math.addExact(offset, size.toLong()); var cursor = offset; var found = false; var count = 0
         while(cursor < end) {

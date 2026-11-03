@@ -16,7 +16,8 @@
 package app.miru.player
 
 /** Byte reads after a real seek; codec dependencies and seek indices belong to the caller. */
-internal class Mp4ReadSchedule(tracks: List<Track>, initialSamples: IntArray, initialPosition: Long) {
+internal class Mp4ReadSchedule private constructor(layout: Layout, initialSamples: IntArray, initialPosition: Long) {
+    constructor(tracks: List<Track>, initialSamples: IntArray, initialPosition: Long) : this(Layout(tracks),initialSamples,initialPosition)
     class Track(offsets: LongArray, sizes: IntArray, timestampsUs: LongArray,
         val video: Boolean = false, val itutT35: Boolean = false) {
         internal val offsets = offsets.copyOf()
@@ -32,16 +33,23 @@ internal class Mp4ReadSchedule(tracks: List<Track>, initialSamples: IntArray, in
     data class Read(val track: Int, val sample: Int, val parentPosition: Long,
         val position: Long, val length: Long, val reopened: Boolean)
 
-    private val tracks = tracks.toList()
+    private val tracks = layout.tracks
     private val next = initialSamples.copyOf()
-    private val accumulated: List<LongArray>
+    private val accumulated = layout.accumulated
     private var cursor = initialPosition
     private var parent = initialPosition
 
     init {
-        require(initialPosition >= 0 && tracks.size <= 256 && tracks.size == next.size)
-        require(tracks.sumOf { it.count.toLong() } <= 2_000_000)
+        require(initialPosition >= 0 && tracks.size == next.size)
         tracks.indices.forEach { require(next[it] in 0..tracks[it].count) }
+    }
+
+    /** Immutable metadata is shared by cursors, not rebuilt for every candidate time. */
+    class Layout(tracks: List<Track>) {
+        internal val tracks = tracks.toList()
+        internal val accumulated: List<LongArray>
+        init {
+        require(tracks.size <= 256 && tracks.sumOf { it.count.toLong() } <= 2_000_000)
         val heads = IntArray(tracks.size)
         accumulated = tracks.map { LongArray(it.count) }
         var total = 0L
@@ -57,6 +65,8 @@ internal class Mp4ReadSchedule(tracks: List<Track>, initialSamples: IntArray, in
             accumulated[chosen][sample] = total
             total = Math.addExact(total, tracks[chosen].sizes[sample].toLong())
         }
+        }
+        fun cursor(initialSamples: IntArray, initialPosition: Long) = Mp4ReadSchedule(this,initialSamples,initialPosition)
     }
 
     fun next(): Read? {

@@ -18,8 +18,8 @@ android {
         applicationId = "app.miru.browser"
         minSdk = 26
         targetSdk = 37
-        versionCode = 26
-        versionName = "0.5.18"
+        versionCode = 27
+        versionName = "0.5.19"
         // Miru's application UI supports Chinese and English; web content keeps Gecko's locales.
         resourceConfigurations += listOf("en", "zh")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

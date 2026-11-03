@@ -27,21 +27,27 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
 import kotlin.math.sqrt
+import kotlin.coroutines.EmptyCoroutineContext
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Whole-object cache baseline for codec/selection; not a partial-cache interval proof. */
+/** Actual selected AV cold decoding, committed byte holes and production cache dependencies. */
 @RunWith(AndroidJUnit4::class)
 class Mp4AvNativePlaybackTest {
     @Test fun englishAacAndVideoColdSeekDecodeFromCache() = probe("en",440.0)
     @Test fun japaneseAacAndVideoColdSeekDecodeFromCache() = probe("ja",880.0)
     @Test fun englishAacAndVideoColdSeekWithTheRealMiddleMissing() = probe("en",440.0,true)
     @Test fun japaneseAacAndVideoColdSeekWithTheRealMiddleMissing() = probe("ja",880.0,true)
+    @Test fun unselectedAacHoleRevokesTheSelectedAvTimeAndRefillRestoresIt() = probe("en",440.0,holeTrack = 2)
+    @Test fun selectedAacHoleRevokesTheSelectedAvTimeAndRefillRestoresIt() = probe("en",440.0,holeTrack = 1)
+    @Test fun theNextAacPacketIsRequiredForAColdSeekInsideThePresentationCell() = probe("en",440.0,holeTrack = 1, interiorSeekUs = 9_010_000)
+    @Test fun theNextVideoSampleIsRequiredForAColdSeekInsideThePresentationCell() = probe("en",440.0,holeTrack = 0, interiorSeekUs = 9_010_000)
+    @Test fun everyPublishedCellContainsNativeReadsAtBothEndpoints() = probe("en",440.0,verifyCells = true)
 
-    private fun probe(language: String, expectedFrequency: Double, partial: Boolean = false) {
+    private fun probe(language: String, expectedFrequency: Double, partial: Boolean = false, holeTrack: Int? = null, interiorSeekUs: Long? = null, verifyCells: Boolean = false) {
         val instrumentation=InstrumentationRegistry.getInstrumentation();val context=instrumentation.targetContext
         val body=instrumentation.context.assets.open("mp4-cache/av-colors.mp4").use { it.readBytes() }
         val root=File(context.cacheDir,"mp4-av-native-${UUID.randomUUID()}").apply { mkdirs() }
@@ -132,8 +138,8 @@ class Mp4AvNativePlaybackTest {
         var player: ExoPlayer?=null;var selected: Mp4CachedSelection.Selected?=null
         val report=JSONObject().put("language",language).put("partial",partial)
             .put("missingByteRanges",JSONArray(holes.map { JSONArray(listOf(it.first,it.second)) }))
-            .put("scope","Native AV cold seek and selected tone; not production intervals or exact initial AAC preroll")
-        try {
+            .put("scope","Native AV cold seek, selected tone and production interval candidate; exact initial AAC preroll remains pending")
+        fun start(positionMs: Long = 9000) {
             instrumentation.runOnMainSync {
                 player=ExoPlayer.Builder(context,renderers).build().apply {
                     volume=0f
@@ -141,9 +147,12 @@ class Mp4AvNativePlaybackTest {
                     addListener(object : Player.Listener { override fun onPlayerError(error: PlaybackException) { failure.set(error) } })
                     setVideoSurface(reader.surface)
                     setVideoFrameMetadataListener { pts,_,_,_ -> firstPts.compareAndSet(-1,pts) }
-                    setMediaSource(session.createMediaSource(),9000);prepare();play()
+                    setMediaSource(session.createMediaSource(),positionMs);prepare();play()
                 }
             }
+        }
+        try {
+            start()
             val deadline=SystemClock.elapsedRealtime()+20_000
             while(SystemClock.elapsedRealtime()<deadline) {
                 failure.get()?.let { throw AssertionError("Cached AV decode failed",it) }
@@ -167,6 +176,54 @@ class Mp4AvNativePlaybackTest {
             val frequency=crossings*44100.0/samples.size
             val rms=sqrt(samples.sumOf { it.toDouble()*it }/samples.size)
             assertEquals(expectedFrequency,frequency,5.0);assertTrue(rms>100 && rms<10000)
+            val indexed=Mp4AvcCachedTimelineIndex.tracks(binding,session,cache,0,12_000_000,
+                { ContentMetadata.getContentLength(cache.getContentMetadata(it)) },EmptyCoroutineContext)
+            val spans=cache.keys.associateWith { resource -> cache.getCachedSpans(resource).map { CachedResourceRange(resource,it.position,it.length) } }
+            val ranges=CachedTimelineCoverage.compute(indexed,spans,12_000_000)
+            if(verifyCells)Mp4AvNativeReadOracle.verify(body,session,binding,indexed,report)
+            report.put("diskRanges",ranges.toString())
+            if(!partial)assertEquals(listOf(CachedTimeRange(0,12_000_000)),ranges)
+            else {
+                assertTrue("The real decoded blue AV must have a byte dependency proof",ranges.any { 9_000_000 in it.startUs until it.endUs })
+                assertFalse("The actual missing middle cannot borrow the other audio track",ranges.any { 5_000_000 in it.startUs until it.endUs })
+                assertTrue(ranges.size>=2)
+            }
+            if(holeTrack!=null) {
+                // Retire every old SampleQueue and decoder before mutating the cache.
+                instrumentation.runOnMainSync { player!!.release();player=null }
+                val track=reference.getJSONArray("tracks").getJSONObject(holeTrack)
+                val scale=track.getString("timeBase").substringAfter('/').toLong()
+                val samples=track.getJSONArray("samples")
+                val raw=(0 until samples.length()).map(samples::getJSONObject)
+                val sample=if(interiorSeekUs==null) raw.last { it.getLong("ptsTicks")<=9*scale }
+                    else raw.first { it.getLong("ptsTicks")*1_000_000/scale>=interiorSeekUs }
+                val missingByte=sample.getLong("offset")+sample.getLong("size")/2
+                cache.removeResource(key)
+                put(0,missingByte);put(missingByte+1,body.size.toLong())
+                cache.applyContentMetadataMutations(key,ContentMetadataMutations().also { ContentMetadataMutations.setContentLength(it,body.size.toLong()) })
+                fun coverage(): List<CachedTimeRange> {
+                    val plan=Mp4AvcCachedTimelineIndex.tracks(binding,session,cache,0,12_000_000,
+                        { ContentMetadata.getContentLength(cache.getContentMetadata(it)) },EmptyCoroutineContext)
+                    val committed=cache.keys.associateWith { resource -> cache.getCachedSpans(resource).map { CachedResourceRange(resource,it.position,it.length) } }
+                    return CachedTimelineCoverage.compute(plan,committed,12_000_000)
+                }
+                val revoked=coverage()
+                assertTrue("Only the actual packet byte was removed",!cache.isCached(key,missingByte,1))
+                report.put("missingByte",missingByte).put("afterHoleRanges",revoked.toString())
+                failure.set(null)
+                val seekUs=interiorSeekUs ?: 9_000_000L
+                start(seekUs/1000)
+                val failedDeadline=SystemClock.elapsedRealtime()+20_000
+                while(failure.get()==null && SystemClock.elapsedRealtime()<failedDeadline)SystemClock.sleep(10)
+                val coldFailure=checkNotNull(failure.get()) { "Fresh AV player unexpectedly bypassed the physical one-byte hole" }
+                assertEquals(PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,coldFailure.errorCode)
+                report.put("coldHoleErrorCode",coldFailure.errorCode).put("coldHoleTrack",holeTrack).put("coldHoleSeekUs",seekUs)
+                assertFalse("Every byte needed to start the real seek belongs to I/O closure",revoked.any { seekUs in it.startUs until it.endUs })
+                instrumentation.runOnMainSync { player!!.release();player=null }
+                put(missingByte,missingByte+1)
+                assertEquals(listOf(CachedTimeRange(0,12_000_000)),coverage())
+                report.put("missingByte",missingByte).put("afterHoleRanges",revoked.toString()).put("refillRestoresFullCoverage",true)
+            }
             report.put("status","PASSED").put("firstVideoPtsUs",firstPts.get()).put("rgb",JSONArray(color))
                 .put("audioStreamOffsetUs",streamOffset.get()).put("firstAudioSinkTimeUs",firstAudioTime.get())
                 .put("pcmSampleCount",samples.size).put("toneHz",frequency).put("rms",rms)
@@ -177,7 +234,7 @@ class Mp4AvNativePlaybackTest {
                 .put("rgb",rgb.get()?.let(::JSONArray)).put("pcmCount",synchronized(pcm) { pcm.size })
             throw error
         } finally {
-            File(context.filesDir,"mp4-av-native-$language${if(partial) "-partial" else ""}.json").writeText(report.toString(2))
+            File(context.filesDir,"mp4-av-native-$language${if(partial) "-partial" else if(verifyCells) "-cell-reads" else if(interiorSeekUs!=null) "-interior-$holeTrack-hole" else if(holeTrack==2) "-unselected-hole" else if(holeTrack==1) "-selected-hole" else ""}.json").writeText(report.toString(2))
             instrumentation.runOnMainSync { player?.release() }
             reader.close();frameThread.quitSafely();frameThread.join(5000)
             session.close();cache.release();check(root.deleteRecursively())

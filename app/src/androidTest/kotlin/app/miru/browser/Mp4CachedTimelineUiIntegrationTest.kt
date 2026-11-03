@@ -70,27 +70,37 @@ class Mp4CachedTimelineUiIntegrationTest {
     @Test fun uncachedFiveFailsAtTheByteHoleAndNeverPublishesThatTime() = probe(5_000, false, "green")
     @Test fun longMovieDrawsCachedIntervalsBeyondTheObservedMemoryBuffer() = probe(9_000, true, "long", true)
     @Test fun pausedCachedSeekRecoversAfterFuturePrefetchFailure() = probe(9_000, true, "retry", true, true)
+    @Test fun selectedAvColdSeekPublishesNativeReadClosureAndMetadataRemovalWithdrawsIt() = probe(9_000, true, "av-nine", av = true)
+    @Test fun selectedAvMissingMiddleFailsWithoutPublishingThatTime() = probe(5_000, false, "av-green", av = true)
 
-    private fun probe(positionMs: Long, expectBlue: Boolean, name: String, longMovie: Boolean = false, waitForPrefetchFailure: Boolean = false) {
+    private fun probe(positionMs: Long, expectBlue: Boolean, name: String, longMovie: Boolean = false, waitForPrefetchFailure: Boolean = false, av: Boolean = false) {
         val assets = instrumentation.context.assets
-        val reference = JSONObject(assets.open("media/cached-ranges/${if(longMovie) "long-colors" else "colors"}.samples.json").bufferedReader().use { it.readText() })
+        val reference = JSONObject(assets.open("media/cached-ranges/${if(av) "av-colors.raw" else if(longMovie) "long-colors" else "colors"}.samples.json").bufferedReader().use { it.readText() })
         val bytes = assets.open(reference.getString("asset")).use { it.readBytes() }
         assertEquals(reference.getLong("bytes"), bytes.size.toLong())
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }
         assertEquals(reference.getString("sha256"), digest)
-        val samples = reference.getJSONArray("tracks").getJSONObject(0).getJSONArray("samples")
-        val green = (0 until samples.length()).map(samples::getJSONObject).filter { it.getLong("ptsUs") % 12_000_000 in 4_000_000 until 8_000_000 }
-        assertEquals(if(longMovie) 400 else 40, green.size)
-        val missing = green.map { it.getLong("offset") to it.getLong("offset") + it.getLong("size") }.fold(mutableListOf<Pair<Long, Long>>()) { all, next ->
+        val tracks = reference.getJSONArray("tracks")
+        val green = (0 until if(av) tracks.length() else 1).flatMap { index ->
+            val track = tracks.getJSONObject(index)
+            val samples = track.getJSONArray("samples")
+            val scale = if(av) track.getString("timeBase").substringAfter('/').toLong() else 1_000_000L
+            (0 until samples.length()).map(samples::getJSONObject).filter {
+                val pts = if(av) it.getLong("ptsTicks") else it.getLong("ptsUs")
+                pts % (12 * scale) in 4 * scale until 8 * scale
+            }
+        }
+        if(av) assertEquals(3, tracks.length()) else assertEquals(if(longMovie) 400 else 40, green.size)
+        val missing = green.map { it.getLong("offset") to it.getLong("offset") + it.getLong("size") }.sortedBy { it.first }.fold(mutableListOf<Pair<Long, Long>>()) { all, next ->
             val last = all.lastOrNull()
-            if(last != null && next.first == last.second) all[all.lastIndex] = last.first to next.second else all += next
+            if(last != null && next.first <= last.second) all[all.lastIndex] = last.first to maxOf(last.second, next.second) else all += next
             all
         }
         val holeStart = green.minOf { it.getLong("offset") }
         val holeEnd = green.maxOf { it.getLong("offset") + it.getLong("size") }
         assertTrue(holeStart > 1376 && holeEnd < bytes.size)
         val report = JSONObject().put("sourceSha256", digest).put("sourceBytes", bytes.size)
-            .put("holeStart", holeStart).put("holeEnd", holeEnd).put("targetMs", positionMs).put("scope", "Production AVC cache disk layer vertical test; full P11 remains pending")
+            .put("holeStart", holeStart).put("holeEnd", holeEnd).put("targetMs", positionMs).put("av", av).put("scope", "Production MP4 cache disk layer vertical test; full P11 remains pending")
         val settings = PlayerPreferencesRepository(context)
         val original = runBlocking { settings.settings.first() }
         runBlocking { settings.update { it.copy(bufferSeconds = 15, autoPip = false, superResMode = SuperResMode.OFF) } }
@@ -137,9 +147,15 @@ class Mp4CachedTimelineUiIntegrationTest {
                     val launched = ActivityScenario.launch<PlayerActivity>(PlaybackRequests.intent(context, request).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     scene = launched
                     var snapshot = PlayerSnapshot()
+                    var avConfigured = false
                     compose.waitUntil(30_000) {
                         var done = false
                         launched.onActivity {
+                            if(av && !avConfigured) it.playback.player?.let { native ->
+                                native.volume = 0f
+                                native.trackSelectionParameters = native.trackSelectionParameters.buildUpon().setPreferredAudioLanguage("en").build()
+                                avConfigured = true
+                            }
                             it.playback.player?.setVideoFrameMetadataListener { value, _, _, _ -> pts.set(value) }
                             snapshot = it.playback.state.value
                             if(expectBlue && (snapshot.timedOut || snapshot.error && !waitForPrefetchFailure)) throw AssertionError("Cold cached-blue MP4 failed: $snapshot; requests=${origin.calls.drop(before).map { call -> call.json() }}")
@@ -182,9 +198,21 @@ class Mp4CachedTimelineUiIntegrationTest {
                         compose.waitUntil(10_000) { abs(pts.get() - positionMs * 1000) <= 150_000 }
                         val rgb = blue(requireNotNull(view), name, report)
                         report.put("rgb", JSONArray(rgb))
+                        if(av) launched.onActivity {
+                            val groups = checkNotNull(it.playback.player).currentTracks.groups
+                            val audio = groups.filter { group -> group.type == androidx.media3.common.C.TRACK_TYPE_AUDIO }
+                                .flatMap { group -> (0 until group.length).filter(group::isTrackSelected).map(group::getTrackFormat) }
+                            assertEquals(1, audio.size)
+                            assertEquals("en", audio.single().language)
+                            report.put("selectedAudioLanguage", audio.single().language)
+                        }
                         if(!longMovie) assertEquals("A fresh decoder must not fetch the stopped middle to start at cached nine", before, origin.calls.size)
                         else assertTrue("Only future uncached green may be prefetched", origin.calls.drop(before).all { call -> call.status == 503 && missing.any { call.from in it.first until it.second } })
-                        val holes = if(!longMovie) listOf(CachedTimeRange(0, 4_000_000), CachedTimeRange(8_000_000, 12_000_000)) else
+                        // After the exact 3.9s frame, a cold interior seek needs
+                        // the missing 4s frame; sample duration alone overstates
+                        // availability. Keep the independently observed 9s RAP.
+                        val holes = if(av) listOf(CachedTimeRange(0, 3_900_001), CachedTimeRange(9_000_000, 12_000_000))
+                            else if(!longMovie) listOf(CachedTimeRange(0, 4_000_000), CachedTimeRange(8_000_000, 12_000_000)) else
                             listOf(CachedTimeRange(0, 4_000_000)) + (0..8).map { CachedTimeRange((8 + it * 12) * 1_000_000L, (16 + it * 12) * 1_000_000L) } + CachedTimeRange(116_000_000, 120_000_000)
                         compose.waitUntil(10_000) { var actual = emptyList<CachedTimeRange>(); launched.onActivity { actual = it.playback.diskRanges.value }; actual == holes }
                         report.put("diskRanges", holes.toString())
