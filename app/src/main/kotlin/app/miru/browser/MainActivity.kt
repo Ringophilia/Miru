@@ -547,7 +547,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
         }
     }
 
-    MiruTheme(themeMode = if(webFullScreen) app.miru.design.ThemeMode.DARK else app.miru.design.ThemeMode.valueOf(settings.theme.name), dynamicColor = settings.dynamicColor, incognito = isPrivate) {
+    MiruTheme(themeMode = if(webFullScreen) app.miru.design.ThemeMode.DARK else app.miru.design.ThemeMode.valueOf(settings.theme.name), dynamicColor = settings.dynamicColor, incognito = isPrivate, accent = settings.accent) {
         val bottomToolbar = settings.toolbarPosition == ToolbarPosition.BOTTOM
         // Like Chrome, a bottom toolbar steps aside while the keyboard edits a web form; find-in-page keeps it.
         val imeVisible = WindowInsets.isImeVisible
@@ -642,7 +642,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                             offline = container.offline, onOpenOffline = ::openOffline)
                         Route.DOWNLOAD_SETTINGS -> DownloadSettingsScreen(downloads, onBack = { route = Route.SETTINGS })
                         Route.ADBLOCK -> AdblockScreen(adblockUi, { route = Route.SETTINGS }, controller::setAdblockEnabled, controller::retryAdblock, { openAdblockDashboard(true) }, { openAdblockDashboard() })
-                        Route.SETTINGS -> SettingsScreen(settings, { route = Route.BROWSER }, { scope.launch { container.settings.setTheme(it) } }, { scope.launch { container.settings.setDynamicColor(it) } }, { scope.launch { container.settings.setToolbarPosition(it) } }, { scope.launch { container.settings.setSearchEngine(it) } }, onDefaultBrowser, { route = Route.ABOUT }, { route = Route.ADBLOCK }, { route = Route.DOWNLOAD_SETTINGS }, onPlayer = { route = Route.PLAYER_SETTINGS }, onClearBrowsingData = { route = Route.CLEAR_DATA }, onSearchSuggestions = { enabled -> scope.launch { container.settings.setSearchSuggestions(enabled) } })
+                        Route.SETTINGS -> SettingsScreen(settings, { route = Route.BROWSER }, { scope.launch { container.settings.setTheme(it) } }, { scope.launch { container.settings.setDynamicColor(it) } }, { scope.launch { container.settings.setToolbarPosition(it) } }, { scope.launch { container.settings.setSearchEngine(it) } }, onDefaultBrowser, { route = Route.ABOUT }, { route = Route.ADBLOCK }, { route = Route.DOWNLOAD_SETTINGS }, onPlayer = { route = Route.PLAYER_SETTINGS }, onClearBrowsingData = { route = Route.CLEAR_DATA }, onSearchSuggestions = { enabled -> scope.launch { container.settings.setSearchSuggestions(enabled) } }, onAccent = { accent -> scope.launch { container.settings.setAccent(accent) } })
                         Route.CLEAR_DATA -> ClearBrowsingDataScreen(container.browsingDataClearer, onBack = { route = Route.SETTINGS })
                         Route.PLAYER_SETTINGS -> PlayerSettingsScreen(container.playerPreferences, snackbars, onBack = { route = Route.SETTINGS })
                         Route.ABOUT -> AboutScreen(BuildConfig.VERSION_NAME, { route = Route.SETTINGS }, { navigate(it, newTab = true) }, adblockVersion = adblock.version.takeIf { adblock.installed })

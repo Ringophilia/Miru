@@ -3,7 +3,12 @@
 
 package app.miru.settings
 
+import android.os.Build
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -16,7 +21,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import app.miru.common.AccentColor
+import app.miru.design.accentPreviewColor
 import app.miru.common.SearchEngine
 import app.miru.data.BrowserSettings
 import app.miru.data.ThemeMode
@@ -38,9 +46,13 @@ fun SettingsScreen(
     onPlayer: () -> Unit = {},
     onClearBrowsingData: () -> Unit = {},
     onSearchSuggestions: (Boolean) -> Unit = {},
+    onAccent: (AccentColor) -> Unit = {},
 ) {
     var dialog by remember { mutableStateOf<String?>(null) }
     val suggestionsLabel=stringResource(R.string.search_suggestions)
+    val dynamicLabel = stringResource(R.string.dynamic_color)
+    val dynamicAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val usesDynamicColor = dynamicAvailable && settings.dynamicColor
     Scaffold(topBar = {
         TopAppBar(title = { Text(stringResource(R.string.settings_title)) }, navigationIcon = {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
@@ -55,9 +67,16 @@ fun SettingsScreen(
             SettingRow(stringResource(R.string.default_browser), stringResource(R.string.set_default), onDefaultBrowser)
             GroupLabel(R.string.appearance)
             SettingRow(stringResource(R.string.theme), themeName(settings.theme)) { dialog = "theme" }
-            ListItem(headlineContent = { Text(stringResource(R.string.dynamic_color)) }, supportingContent = { Text(stringResource(R.string.dynamic_color_detail)) }, trailingContent = {
-                Switch(checked = settings.dynamicColor, onCheckedChange = onDynamicColor)
+            ListItem(headlineContent = { Text(dynamicLabel) }, supportingContent = { Text(stringResource(R.string.dynamic_color_detail)) }, trailingContent = {
+                Switch(checked = usesDynamicColor, onCheckedChange = onDynamicColor, enabled = dynamicAvailable,
+                    modifier = Modifier.semantics { contentDescription = dynamicLabel })
             })
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.accent_color)) },
+                supportingContent = { Text(if (usesDynamicColor) stringResource(R.string.accent_dynamic_hint, accentName(settings.accent)) else accentName(settings.accent)) },
+                trailingContent = { Box(Modifier.size(24.dp).background(accentPreviewColor(settings.accent), CircleShape)) },
+                modifier = Modifier.clickable(enabled = !usesDynamicColor) { dialog = "accent" },
+            )
             SettingRow(stringResource(R.string.toolbar_position), positionName(settings.toolbarPosition)) { dialog = "position" }
             GroupLabel(R.string.privacy_and_downloads)
             SettingRow(stringResource(R.string.clear_browsing_data), stringResource(R.string.clear_browsing_data_summary), onClearBrowsingData)
@@ -72,8 +91,34 @@ fun SettingsScreen(
         "search" -> ChoiceDialog(stringResource(R.string.search_engine), SearchEngine.entries, settings.searchEngine, { engineName(it) }, { onSearchEngine(it); dialog = null }, { dialog = null })
         "theme" -> ChoiceDialog(stringResource(R.string.theme), ThemeMode.entries, settings.theme, { themeName(it) }, { onTheme(it); dialog = null }, { dialog = null })
         "position" -> ChoiceDialog(stringResource(R.string.toolbar_position), ToolbarPosition.entries, settings.toolbarPosition, { positionName(it) }, { onToolbarPosition(it); dialog = null }, { dialog = null })
+        "accent" -> AccentDialog(settings.accent, { onAccent(it); dialog = null }, { dialog = null })
     }
 }
+
+@Composable private fun AccentDialog(selected: AccentColor, onSelect: (AccentColor) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.accent_color)) }, text = {
+        Column(Modifier.selectableGroup().verticalScroll(rememberScrollState())) {
+            AccentColor.entries.forEach { value ->
+                Row(Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                    .selectable(selected = selected == value, role = Role.RadioButton, onClick = { onSelect(value) }),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Box(Modifier.size(28.dp).background(accentPreviewColor(value), CircleShape))
+                    Text(accentName(value), Modifier.weight(1f).padding(horizontal = 16.dp))
+                    RadioButton(selected == value, onClick = null)
+                }
+            }
+        }
+    }, confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } })
+}
+
+@Composable private fun accentName(value: AccentColor): String = stringResource(when (value) {
+    AccentColor.RINGO_RED -> R.string.accent_ringo_red
+    AccentColor.LEAF_GREEN -> R.string.accent_leaf_green
+    AccentColor.NAVY -> R.string.accent_navy
+    AccentColor.TEAL -> R.string.accent_teal
+    AccentColor.PURPLE -> R.string.accent_purple
+    AccentColor.GRAPHITE -> R.string.accent_graphite
+})
 
 @Composable private fun GroupLabel(id: Int) { Text(stringResource(id), Modifier.padding(start = 16.dp, top = 24.dp, bottom = 8.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge) }
 @Composable private fun SettingRow(title: String, value: String, onClick: () -> Unit) {

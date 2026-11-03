@@ -22,6 +22,14 @@
     <string name="theme_dark">Dark</string>
     <string name="dynamic_color">Dynamic color</string>
     <string name="dynamic_color_detail">Use wallpaper colors (Android 12 and later)</string>
+    <string name="accent_color">Accent color</string>
+    <string name="accent_dynamic_hint">Turn off dynamic color to choose; saved: %1$s</string>
+    <string name="accent_ringo_red">Apple red</string>
+    <string name="accent_leaf_green">Leaf green</string>
+    <string name="accent_navy">Navy</string>
+    <string name="accent_teal">Teal</string>
+    <string name="accent_purple">Purple</string>
+    <string name="accent_graphite">Graphite</string>
     <string name="toolbar_position">Address bar position</string>
     <string name="top">Top</string>
     <string name="bottom">Bottom</string>

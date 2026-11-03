@@ -22,6 +22,14 @@
     <string name="theme_dark">深色</string>
     <string name="dynamic_color">动态取色</string>
     <string name="dynamic_color_detail">使用系统壁纸配色（Android 12 及以上）</string>
+    <string name="accent_color">主题色</string>
+    <string name="accent_dynamic_hint">关闭动态取色后可选；已保存：%1$s</string>
+    <string name="accent_ringo_red">林檎红</string>
+    <string name="accent_leaf_green">叶绿</string>
+    <string name="accent_navy">藏青</string>
+    <string name="accent_teal">青</string>
+    <string name="accent_purple">紫</string>
+    <string name="accent_graphite">石墨</string>
     <string name="toolbar_position">地址栏位置</string>
     <string name="top">顶部</string>
     <string name="bottom">底部</string>

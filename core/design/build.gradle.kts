@@ -16,8 +16,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 }
-kotlin { jvmToolchain(17) }
+kotlin {
+    jvmToolchain(21)
+    compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
+}
 dependencies {
+    api(project(":core:common"))
     implementation(libs.androidx.core.ktx)
     api(platform(libs.androidx.compose.bom))
     api(libs.androidx.compose.material3)
@@ -25,4 +29,5 @@ dependencies {
     api("androidx.compose.ui:ui")
     api("androidx.compose.foundation:foundation")
     api("androidx.compose.animation:animation")
+    testImplementation(libs.junit)
 }

@@ -25,6 +25,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import app.miru.common.AccentColor
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
@@ -106,6 +107,7 @@ fun MiruTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     dynamicColor: Boolean = false,
     incognito: Boolean = false,
+    accent: AccentColor = AccentColor.RINGO_RED,
     content: @Composable () -> Unit,
 ) {
     val dark = incognito || when (themeMode) {
@@ -115,11 +117,11 @@ fun MiruTheme(
     }
     val context = LocalContext.current
     val scheme = when {
-        incognito -> DarkColors.copy(surface = Color(0xFF221D1B), surfaceContainer = Color(0xFF36302C))
+        incognito -> DarkColors.withAccent(accent, true).copy(surface = Color(0xFF221D1B), surfaceContainer = Color(0xFF36302C))
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
             if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        dark -> DarkColors
-        else -> LightColors
+        dark -> DarkColors.withAccent(accent, true)
+        else -> LightColors.withAccent(accent, false)
     }
     val extraColors = MiruColors(
         success = if (dark) Color(0xFFA9CE97) else Color(0xFF47643B),

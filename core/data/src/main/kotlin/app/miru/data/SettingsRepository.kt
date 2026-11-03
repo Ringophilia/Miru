@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.miru.common.SearchEngine
+import app.miru.common.AccentColor
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -22,6 +23,7 @@ data class BrowserSettings(
     val theme: ThemeMode = ThemeMode.SYSTEM,
     // Off by default so the brand palette (matching the launcher icon) is what people see first.
     val dynamicColor: Boolean = false,
+    val accent: AccentColor = AccentColor.RINGO_RED,
     val toolbarPosition: ToolbarPosition = ToolbarPosition.TOP,
     val searchEngine: SearchEngine = SearchEngine.GOOGLE,
     val searchSuggestions: Boolean = true,
@@ -31,6 +33,7 @@ class SettingsRepository(context: Context) {
     private val store = context.applicationContext.miruPreferences
     private val themeKey = stringPreferencesKey("appearance.theme")
     private val dynamicKey = booleanPreferencesKey("appearance.dynamicColor")
+    private val accentKey = stringPreferencesKey("appearance.accent")
     private val positionKey = stringPreferencesKey("appearance.toolbarPosition")
     private val searchKey = stringPreferencesKey("search.engine")
     private val suggestionsKey = booleanPreferencesKey("search.suggestions")
@@ -40,6 +43,7 @@ class SettingsRepository(context: Context) {
         BrowserSettings(
             theme = enumValue<ThemeMode>(values[themeKey]) ?: ThemeMode.SYSTEM,
             dynamicColor = values[dynamicKey] ?: false,
+            accent = AccentColor.fromPreference(values[accentKey]),
             toolbarPosition = enumValue<ToolbarPosition>(values[positionKey]) ?: ToolbarPosition.TOP,
             searchEngine = enumValue<SearchEngine>(values[searchKey]) ?: SearchEngine.GOOGLE,
             searchSuggestions = values[suggestionsKey] ?: true,
@@ -47,6 +51,7 @@ class SettingsRepository(context: Context) {
     }
     suspend fun setTheme(value: ThemeMode) { store.edit { it[themeKey] = value.name } }
     suspend fun setDynamicColor(value: Boolean) { store.edit { it[dynamicKey] = value } }
+    suspend fun setAccent(value: AccentColor) { store.edit { it[accentKey] = value.preferenceValue } }
     suspend fun setToolbarPosition(value: ToolbarPosition) { store.edit { it[positionKey] = value.name } }
     suspend fun setSearchEngine(value: SearchEngine) { store.edit { it[searchKey] = value.name } }
     suspend fun setSearchSuggestions(value: Boolean) { store.edit { it[suggestionsKey] = value } }
