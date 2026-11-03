@@ -13,6 +13,8 @@ The retained set is:
 
 The post-cleanup inventory measured **2.017 GB for the checkout**, including **1.879 GB in artifacts**. This includes a 21 MB host-test placeholder left from an initial failed safety check; direct deletion was rejected by the command approval policy, so it remains at `artifacts/disk-cleanup/test-18c502fc01e84689a5e700020356d05b/case/dependencies/third-party.apk`. Subsequent host checks use `finally` to remove their large placeholder on either outcome.
 
+The 2026-11-03 follow-up measured **5.853 GB for the checkout** and **1.934 GB in artifacts**, with no superseded APKs left for the retention script to remove (`cleanup-20261103-002139-432.json`). The difference from the initial post-cleanup inventory is mostly the current Gradle working outputs: `app/build` contains approximately 3.511 GB, including 2.721 GB of intermediates and 0.730 GB of outputs. Gecko native libraries account for four approximately 575 MB copies across Debug/Release merged/stripped native intermediates. These are regenerable build inputs rather than historical validation snapshots; Gradle normally overwrites them in place. An attempted additional cleanup of the two obsolete Release native intermediate directories and the duplicate x86 Release output was rejected by automatic approval policy before execution, so those files remain. Reports and release mappings were not targeted. Do not claim that this additional 1.266 GB was freed.
+
 ## Running validation
 
 Set the local JDK/SDK environment as usual. Use a fresh name for each build or run; scripts refuse to overwrite existing evidence.
