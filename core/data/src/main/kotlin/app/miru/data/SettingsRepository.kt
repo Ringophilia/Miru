@@ -28,6 +28,7 @@ data class BrowserSettings(
     val searchEngine: SearchEngine = SearchEngine.GOOGLE,
     val searchSuggestions: Boolean = true,
     val privateNotificationPrompted: Boolean = false,
+    val introCompleted: Boolean = false,
 )
 
 class SettingsRepository(context: Context) {
@@ -50,6 +51,7 @@ class SettingsRepository(context: Context) {
             searchEngine = enumValue<SearchEngine>(values[searchKey]) ?: SearchEngine.GOOGLE,
             searchSuggestions = values[suggestionsKey] ?: true,
             privateNotificationPrompted = values[privateNotificationKey] ?: false,
+            introCompleted = values.hasCompletedIntro(),
         )
     }
     suspend fun setTheme(value: ThemeMode) { store.edit { it[themeKey] = value.name } }
@@ -59,6 +61,7 @@ class SettingsRepository(context: Context) {
     suspend fun setSearchEngine(value: SearchEngine) { store.edit { it[searchKey] = value.name } }
     suspend fun setSearchSuggestions(value: Boolean) { store.edit { it[suggestionsKey] = value } }
     suspend fun setPrivateNotificationPrompted(value: Boolean) { store.edit { it[privateNotificationKey] = value } }
+    suspend fun setIntroCompleted(value: Boolean) { store.edit { it[introCompletedKey] = value } }
 
     private inline fun <reified T : Enum<T>> enumValue(value: String?): T? = enumValues<T>().firstOrNull { it.name == value }
 }

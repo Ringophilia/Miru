@@ -130,6 +130,7 @@ class MainActivity : ComponentActivity() {
     private val container get() = (application as MiruApplication).container
     private var incoming by mutableStateOf<Pair<Long, String>?>(null)
     private var incomingOffline by mutableStateOf<String?>(null)
+    private val defaultBrowserLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
     internal var sitePermissionSettingsRequired by mutableStateOf(false)
         private set
     private val sitePermissionsLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
@@ -159,15 +160,15 @@ class MainActivity : ComponentActivity() {
         container.browser.permissions.attachPermissionHost(this)
         container.browser.uploads.attachHost(this, UploadPickerActivity::class.java)
         enableEdgeToEdge()
-        if (savedInstanceState == null) readIntent(intent)
+        if (savedInstanceState == null || savedInstanceState.getBoolean("miru.pendingIncoming")) readIntent(intent)
         incomingOffline = savedInstanceState?.getString("miru.pendingOffline") ?: incomingOffline
         setContent {
             androidx.compose.runtime.CompositionLocalProvider(
                 app.miru.design.LocalSiteIconLoader provides remember(container) { container.browser.websiteIcons::load },
             ) {
-                MiruApp(container, incoming, incomingOffline,
+                FirstRunGate(container, ::requestDefaultBrowser) { MiruApp(container, incoming, incomingOffline,
                     onIncomingOfflineConsumed = { incomingOffline = null; intent.removeExtra("miru.offline.id") },
-                    onIncomingConsumed = { incoming = null }, onExit = { moveTaskToBack(true) }, onDefaultBrowser = ::requestDefaultBrowser)
+                    onIncomingConsumed = { incoming = null }, onExit = { moveTaskToBack(true) }, onDefaultBrowser = ::requestDefaultBrowser) }
             }
         }
     }
@@ -187,6 +188,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() { container.browser.saveSession(); super.onStop() }
     override fun onSaveInstanceState(outState: Bundle) {
         incomingOffline?.let { outState.putString("miru.pendingOffline", it) }
+        outState.putBoolean("miru.pendingIncoming", incoming != null)
         super.onSaveInstanceState(outState)
     }
 
@@ -202,13 +204,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestDefaultBrowser() {
+        if (isDefaultBrowser(this)) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val role = getSystemService(RoleManager::class.java)
             if (role.isRoleAvailable(RoleManager.ROLE_BROWSER) && !role.isRoleHeld(RoleManager.ROLE_BROWSER)) {
-                startActivity(role.createRequestRoleIntent(RoleManager.ROLE_BROWSER)); return
+                try { defaultBrowserLauncher.launch(role.createRequestRoleIntent(RoleManager.ROLE_BROWSER)); return }
+                catch (_: android.content.ActivityNotFoundException) { /* Fall back to system settings. */ }
             }
         }
-        startActivity(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
+        try { startActivity(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)) }
+        catch (_: android.content.ActivityNotFoundException) {
+            android.widget.Toast.makeText(this, R.string.intro_default_unavailable, android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 }
 
@@ -519,7 +526,6 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
         onIncomingOfflineConsumed()
     } }
     // Gecko requires the Android main thread. Let the native NTP draw before its setup runs.
-    LaunchedEffect(controller) { withFrameNanos { }; withFrameNanos { }; controller.initialize() }
     LaunchedEffect(controller) { controller.downloadRequests.collect { request ->
         handleDownload(DownloadRequest(url = request.url, fileName = request.fileName, mimeType = request.mimeType, contentLength = request.contentLength ?: -1, headers = request.headers, sourcePage = request.sourcePage, isPrivate = request.isPrivate, bodyStream = request.bodyStream))
     } }

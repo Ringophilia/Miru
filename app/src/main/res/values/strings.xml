@@ -39,4 +39,16 @@
     <string name="private_close_all">关闭所有无痕标签</string>
     <string name="private_notification_detail">无痕浏览正在进行，点按即可全部关闭</string>
     <string name="private_notifications_denied">通知未开启；仍可在标签页列表关闭所有无痕标签</string>
+    <string name="intro_title">欢迎使用 Miru</string>
+    <string name="intro_adblock_ready">Miru 已为你开启广告拦截</string>
+    <string name="intro_adblock_loading">正在启用内置广告拦截</string>
+    <string name="intro_adblock_failed">广告拦截暂未就绪，可稍后在设置中查看</string>
+    <string name="intro_adblock_disabled">广告拦截已关闭，可稍后在设置中开启</string>
+    <string name="intro_default_description">设为默认浏览器，让其他 App 的网页链接交给 Miru 打开。也可以稍后在设置中更改。</string>
+    <string name="intro_already_default">Miru 已是你的默认浏览器。</string>
+    <string name="intro_set_default">设为默认浏览器</string>
+    <string name="intro_skip">暂时跳过</string>
+    <string name="intro_start">开始浏览</string>
+    <string name="intro_save_failed">暂时无法保存，请重试。</string>
+    <string name="intro_default_unavailable">系统默认应用入口不可用，可稍后在系统设置中更改。</string>
 </resources>
