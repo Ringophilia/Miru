@@ -72,10 +72,12 @@ class Mp4CachedTimelineUiIntegrationTest {
     @Test fun pausedCachedSeekRecoversAfterFuturePrefetchFailure() = probe(9_000, true, "retry", true, true)
     @Test fun selectedAvColdSeekPublishesNativeReadClosureAndMetadataRemovalWithdrawsIt() = probe(9_000, true, "av-nine", av = true)
     @Test fun selectedAvMissingMiddleFailsWithoutPublishingThatTime() = probe(5_000, false, "av-green", av = true)
+    @Test fun longSelectedAvDrawsDiskIntervalsBeyondTheActualMemoryBuffer() = probe(9_000, true, "av-long", longMovie = true, av = true)
+    @Test fun longSelectedAvPausedSeekRecoversAfterTheRealFutureHoleFailure() = probe(9_000, true, "av-retry", longMovie = true, waitForPrefetchFailure = true, av = true)
 
     private fun probe(positionMs: Long, expectBlue: Boolean, name: String, longMovie: Boolean = false, waitForPrefetchFailure: Boolean = false, av: Boolean = false) {
         val assets = instrumentation.context.assets
-        val reference = JSONObject(assets.open("media/cached-ranges/${if(av) "av-colors.raw" else if(longMovie) "long-colors" else "colors"}.samples.json").bufferedReader().use { it.readText() })
+        val reference = JSONObject(assets.open("media/cached-ranges/${if(av && longMovie) "long-av-colors.raw" else if(av) "av-colors.raw" else if(longMovie) "long-colors" else "colors"}.samples.json").bufferedReader().use { it.readText() })
         val bytes = assets.open(reference.getString("asset")).use { it.readBytes() }
         assertEquals(reference.getLong("bytes"), bytes.size.toLong())
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }
@@ -193,6 +195,7 @@ class Mp4CachedTimelineUiIntegrationTest {
                             view = findVideo(it.window.decorView)
                             report.put("beforeSeekNativeState", it.playback.player?.playbackState)
                                 .put("beforeSeekErrorCode", it.playback.player?.playerError?.errorCode)
+                            if(av && longMovie)pts.set(-1)
                             it.playback.seek(positionMs)
                         }
                         compose.waitUntil(10_000) { abs(pts.get() - positionMs * 1000) <= 150_000 }
@@ -211,7 +214,10 @@ class Mp4CachedTimelineUiIntegrationTest {
                         // After the exact 3.9s frame, a cold interior seek needs
                         // the missing 4s frame; sample duration alone overstates
                         // availability. Keep the independently observed 9s RAP.
-                        val holes = if(av) listOf(CachedTimeRange(0, 3_900_001), CachedTimeRange(9_000_000, 12_000_000))
+                        val holes = if(av && longMovie) listOf(CachedTimeRange(0, 3_900_001)) +
+                            (0..8).map { CachedTimeRange((9+it*12)*1_000_000L,(16+it*12)*1_000_000L-99_999) } +
+                            CachedTimeRange(117_000_000,120_000_000)
+                            else if(av) listOf(CachedTimeRange(0, 3_900_001), CachedTimeRange(9_000_000, 12_000_000))
                             else if(!longMovie) listOf(CachedTimeRange(0, 4_000_000), CachedTimeRange(8_000_000, 12_000_000)) else
                             listOf(CachedTimeRange(0, 4_000_000)) + (0..8).map { CachedTimeRange((8 + it * 12) * 1_000_000L, (16 + it * 12) * 1_000_000L) } + CachedTimeRange(116_000_000, 120_000_000)
                         compose.waitUntil(10_000) { var actual = emptyList<CachedTimeRange>(); launched.onActivity { actual = it.playback.diskRanges.value }; actual == holes }

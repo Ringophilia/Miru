@@ -14,12 +14,14 @@ import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.cache.*
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
+import java.security.MessageDigest
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.UUID
@@ -46,16 +48,22 @@ class Mp4AvNativePlaybackTest {
     @Test fun theNextAacPacketIsRequiredForAColdSeekInsideThePresentationCell() = probe("en",440.0,holeTrack = 1, interiorSeekUs = 9_010_000)
     @Test fun theNextVideoSampleIsRequiredForAColdSeekInsideThePresentationCell() = probe("en",440.0,holeTrack = 0, interiorSeekUs = 9_010_000)
     @Test fun everyPublishedCellContainsNativeReadsAtBothEndpoints() = probe("en",440.0,verifyCells = true)
+    @Test fun longAvFullCacheKeepsNativeAudioVideoAndReportsIndexCost() = probe("en",440.0,longMovie = true)
+    @Test fun longAvWithRepeatedPhysicalHolesKeepsNativeAudioVideoAndReportsIndexCost() = probe("en",440.0,partial = true,longMovie = true)
 
-    private fun probe(language: String, expectedFrequency: Double, partial: Boolean = false, holeTrack: Int? = null, interiorSeekUs: Long? = null, verifyCells: Boolean = false) {
+    private fun probe(language: String, expectedFrequency: Double, partial: Boolean = false, holeTrack: Int? = null, interiorSeekUs: Long? = null, verifyCells: Boolean = false, longMovie: Boolean = false) {
         val instrumentation=InstrumentationRegistry.getInstrumentation();val context=instrumentation.targetContext
-        val body=instrumentation.context.assets.open("mp4-cache/av-colors.mp4").use { it.readBytes() }
+        val movie=if(longMovie) "long-av-colors" else "av-colors"
+        val durationUs=if(longMovie)120_000_000L else 12_000_000L
+        val body=instrumentation.context.assets.open("mp4-cache/$movie.mp4").use { it.readBytes() }
         val root=File(context.cacheDir,"mp4-av-native-${UUID.randomUUID()}").apply { mkdirs() }
         val origin=File(root,"owned.mp4").apply { writeBytes(body) }
         @Suppress("DEPRECATION") val cache=SimpleCache(File(root,"cache"),NoOpCacheEvictor())
         val item=MediaItem.fromUri(origin.toURI().toString());val session=PlaybackSourceSession(context,1,item,emptyMap(),cache)
         val key=session.cacheKey(DataSpec.Builder().setUri(item.localConfiguration!!.uri).build())
-        val reference=JSONObject(instrumentation.context.assets.open("mp4-cache/av-colors.raw.samples.json").bufferedReader().use { it.readText() })
+        val reference=JSONObject(instrumentation.context.assets.open("mp4-cache/$movie.raw.samples.json").bufferedReader().use { it.readText() })
+        assertEquals(reference.getLong("bytes"),body.size.toLong())
+        assertEquals(reference.getString("sha256"),MessageDigest.getInstance("SHA-256").digest(body).joinToString("") { "%02x".format(it.toInt() and 255) })
         val missing=ArrayList<Pair<Long,Long>>()
         if(partial) for(track in 0 until reference.getJSONArray("tracks").length()) {
             val info=reference.getJSONArray("tracks").getJSONObject(track)
@@ -63,7 +71,7 @@ class Mp4AvNativePlaybackTest {
             val samples=info.getJSONArray("samples")
             for(i in 0 until samples.length()) {
                 val sample=samples.getJSONObject(i)
-                if(sample.getLong("ptsTicks") in 4*scale until 8*scale) {
+                if(sample.getLong("ptsTicks") % (12*scale) in 4*scale until 8*scale) {
                     val at=sample.getLong("offset");missing+=at to at+sample.getLong("size")
                 }
             }
@@ -136,12 +144,17 @@ class Mp4AvNativePlaybackTest {
             }
         }
         var player: ExoPlayer?=null;var selected: Mp4CachedSelection.Selected?=null
-        val report=JSONObject().put("language",language).put("partial",partial)
+        val report=JSONObject().put("language",language).put("partial",partial).put("longMovie",longMovie)
             .put("missingByteRanges",JSONArray(holes.map { JSONArray(listOf(it.first,it.second)) }))
             .put("scope","Native AV cold seek, selected tone and production interval candidate; exact initial AAC preroll remains pending")
         fun start(positionMs: Long = 9000) {
             instrumentation.runOnMainSync {
-                player=ExoPlayer.Builder(context,renderers).build().apply {
+                player=ExoPlayer.Builder(context,renderers).apply {
+                    // Long index probes need only the decoded tone window. The
+                    // app UI probes separately exercise the real 15s preference
+                    // and its future-prefetch failure/recovery behavior.
+                    if(longMovie)setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(500,1000,250,500).build())
+                }.build().apply {
                     volume=0f
                     trackSelectionParameters=trackSelectionParameters.buildUpon().setPreferredAudioLanguage(language).build()
                     addListener(object : Player.Listener { override fun onPlayerError(error: PlaybackException) { failure.set(error) } })
@@ -165,6 +178,7 @@ class Mp4AvNativePlaybackTest {
                 SystemClock.sleep(10)
             }
             val binding=checkNotNull(selected) { "Actual selected AV outputs could not bind to their native owner" }
+            instrumentation.runOnMainSync { assertEquals(durationUs/1000,player!!.duration) }
             assertEquals(setOf(C.TRACK_TYPE_VIDEO,C.TRACK_TYPE_AUDIO),binding.outputs.map { it.type }.toSet())
             assertEquals(2,binding.outputs.size)
             assertEquals(language,Util.normalizeLanguageCode(requireNotNull(binding.outputs.single { it.type==C.TRACK_TYPE_AUDIO }.format!!.language)))
@@ -176,13 +190,17 @@ class Mp4AvNativePlaybackTest {
             val frequency=crossings*44100.0/samples.size
             val rms=sqrt(samples.sumOf { it.toDouble()*it }/samples.size)
             assertEquals(expectedFrequency,frequency,5.0);assertTrue(rms>100 && rms<10000)
-            val indexed=Mp4AvcCachedTimelineIndex.tracks(binding,session,cache,0,12_000_000,
+            if(longMovie)instrumentation.runOnMainSync { player!!.pause() }
+            val indexStarted=SystemClock.elapsedRealtimeNanos()
+            val indexed=Mp4AvcCachedTimelineIndex.tracks(binding,session,cache,0,durationUs,
                 { ContentMetadata.getContentLength(cache.getContentMetadata(it)) },EmptyCoroutineContext)
+            report.put("indexElapsedMs",(SystemClock.elapsedRealtimeNanos()-indexStarted)/1_000_000.0)
+                .put("indexedCells",indexed.sumOf { it.intervals.size })
             val spans=cache.keys.associateWith { resource -> cache.getCachedSpans(resource).map { CachedResourceRange(resource,it.position,it.length) } }
-            val ranges=CachedTimelineCoverage.compute(indexed,spans,12_000_000)
+            val ranges=CachedTimelineCoverage.compute(indexed,spans,durationUs)
             if(verifyCells)Mp4AvNativeReadOracle.verify(body,session,binding,indexed,report)
             report.put("diskRanges",ranges.toString())
-            if(!partial)assertEquals(listOf(CachedTimeRange(0,12_000_000)),ranges)
+            if(!partial)assertEquals(listOf(CachedTimeRange(0,durationUs)),ranges)
             else {
                 assertTrue("The real decoded blue AV must have a byte dependency proof",ranges.any { 9_000_000 in it.startUs until it.endUs })
                 assertFalse("The actual missing middle cannot borrow the other audio track",ranges.any { 5_000_000 in it.startUs until it.endUs })
@@ -234,7 +252,7 @@ class Mp4AvNativePlaybackTest {
                 .put("rgb",rgb.get()?.let(::JSONArray)).put("pcmCount",synchronized(pcm) { pcm.size })
             throw error
         } finally {
-            File(context.filesDir,"mp4-av-native-$language${if(partial) "-partial" else if(verifyCells) "-cell-reads" else if(interiorSeekUs!=null) "-interior-$holeTrack-hole" else if(holeTrack==2) "-unselected-hole" else if(holeTrack==1) "-selected-hole" else ""}.json").writeText(report.toString(2))
+            File(context.filesDir,"mp4-av-native-$language${if(longMovie) "-long" else ""}${if(partial) "-partial" else if(verifyCells) "-cell-reads" else if(interiorSeekUs!=null) "-interior-$holeTrack-hole" else if(holeTrack==2) "-unselected-hole" else if(holeTrack==1) "-selected-hole" else ""}.json").writeText(report.toString(2))
             instrumentation.runOnMainSync { player?.release() }
             reader.close();frameThread.quitSafely();frameThread.join(5000)
             session.close();cache.release();check(root.deleteRecursively())

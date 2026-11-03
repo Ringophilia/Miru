@@ -141,3 +141,21 @@ must identify each invocation's class/method selectors, both opt-in arguments,
 APK/source hashes, counts and terminal result. These selectors describe repeatable
 commands; the actual separate results are recorded above. Adding this document
 does not execute adb.
+
+## Owned AVC and dual AAC fixtures
+
+`tools/generate-mp4-av-cache-fixture.py` creates `av-colors.mp4` (12 seconds);
+`--long` creates `long-av-colors.mp4` (120 seconds). Both copy the already owned
+color-video packets without encoding them again and generate 440 Hz English /
+880 Hz Japanese AAC-LC tones. The script pins FFmpeg/FFprobe executables and
+checks every copied video packet against the committed source reference.
+It refuses to overwrite either output or raw reference.
+
+The 120-second fixture is 1,749,029 bytes, SHA-256
+`6e35f50ff508785fc92583edf117f63aee4f754ad0fe4eaefe41c29b1f27b463`:
+1,200 video packets and 5,169 packets per AAC track. Its independent raw FFprobe
+reference is `long-av-colors.raw.samples.json`, SHA-256
+`0feea6c3df5726d6bdd29a22ec5c132f612524373cbda7e5dfd36f809ea00e74`.
+The references retain original integer PTS/DTS/duration, physical byte coordinates
+and per-packet SHA-256 with edit-list application disabled. These are test assets,
+not production APK media or proof that a device test has passed.

@@ -85,6 +85,7 @@ callback、parent取消、计算期间淘汰/取消、cache异常重试、touch�
    停供9秒PTS/RGB和5秒503缺口，独立2/2；生产索引、B帧/AV/复杂edit及其他容器仍待。
    [主源观察/只读结构](M3-MP4-CACHE-METADATA-VALIDATION.md)已有实际native身份和结构解析，
    最终模块84/84；[读取签名/raw时序](M3-MP4-PROVENANCE-TIMING-VALIDATION.md)后单视频AVC已接入生产区段，其他配置的duration/DTS、native来源与完整decode/IO闭包仍继续完成。
+   [AV闭包](M3-MP4-AV-CACHED-TIMELINE-VALIDATION.md)及[120秒AV画布/查询优化](M3-MP4-AV-LONG-VALIDATION.md)已补无重排AVC/AAC-LC、1908次native端点读核对、选中/未选中字节洞、真实PCM和晚于内存的画布。原单视频内部seek、精确preroll/EOS、重排/复杂编辑、音轨切换和更长片长内存/取消仍须完成，不能用此普通配置替代全部。
    head/tail、co64/extended size、多mdat、edit gap、fragmented MP4与其他VBR封装须逐格式
    证明；未知/估计索引不画，但仍保留对应实现/验收工作。
 6. **真实磁盘和界面。** 0–4/8–12秒已缓存而4–8秒缺失的几何、实际请求、解码PTS/RGB和停源

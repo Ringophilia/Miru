@@ -90,7 +90,12 @@ internal object Mp4AvCachedTimelineIndex {
                 if(ends[ordinal][order[i]]>tables[ordinal].timestampsUs[order[i+1]])return emptyList()
             }
         }
-        val rap=HashMap<Pair<Int,String>,Boolean>();val intervals=ArrayList<CachedMediaInterval>()
+        val rap=HashMap<Triple<Int,Int,String>,Boolean>();val intervals=ArrayList<CachedMediaInterval>()
+        // URI and main-session headers are immutable during this mapping. Keep
+        // the exact parent position in the key cache; different Range parents
+        // must remain distinct even if today's key factory normalizes them alike.
+        val parentKeys=HashMap<Long,String>()
+        val queriedKeys=HashSet<String>()
         for(cell in 0 until sorted.lastIndex) {
             context.ensureActive()
             val from=sorted[cell];val to=sorted[cell+1]
@@ -124,11 +129,18 @@ internal object Mp4AvCachedTimelineIndex {
             while(reached.any { !it }) {
                 context.ensureActive()
                 val read=schedule.next() ?: run { valid=false;break }
-                val key=session.cacheKey(DataSpec.Builder().setUri(uri).setPosition(read.parentPosition).build())
-                lengths(key)
+                val key=parentKeys.getOrPut(read.parentPosition) {
+                    // Memoization must not grow with every fragment of a long
+                    // or physically reordered file. Eviction only recomputes a key.
+                    if(parentKeys.size>=256)parentKeys.clear()
+                    session.cacheKey(DataSpec.Builder().setUri(uri).setPosition(read.parentPosition).build())
+                }
+                // This callback registers metadata dependencies in the coherent
+                // snapshot. Each unique key needs registration once per build.
+                if(queriedKeys.add(key))lengths(key)
                 if(tables[read.track].track.type==C.TRACK_TYPE_VIDEO && read.sample==initial[read.track]) {
                     val table=tables[read.track]
-                    val isIdr=rap.getOrPut(read.track to key+":"+read.sample) {
+                    val isIdr=rap.getOrPut(Triple(read.track,read.sample,key)) {
                         Mp4AvcCachedTimelineIndex.idr(cache,Mp4CacheRequest(uri,read.parentPosition,-1,key),table.offsets[read.sample],table.sizes[read.sample],table.track.nalUnitLengthFieldLength,context)
                     }
                     if(!isIdr) { valid=false;break }
