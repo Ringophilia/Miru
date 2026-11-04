@@ -66,4 +66,21 @@
     <string name="external_link_failed">Could not open this link.</string>
     <string name="page_prompt_choice_title">Choose options</string>
     <string name="page_prompt_unnamed_option">Unnamed option</string>
+    <string name="page_prompt_date">Date</string>
+    <string name="page_prompt_month">Month</string>
+    <string name="page_prompt_week">Week</string>
+    <string name="page_prompt_time">Time</string>
+    <string name="page_prompt_datetime">Date and time</string>
+    <string name="page_prompt_color">Choose color</string>
+    <string name="page_prompt_color_hex">Hex color</string>
+    <string name="page_prompt_red">Red</string>
+    <string name="page_prompt_green">Green</string>
+    <string name="page_prompt_blue">Blue</string>
+    <string name="page_prompt_pick_date">Choose date</string>
+    <string name="page_prompt_pick_time">Choose time</string>
+    <string name="page_prompt_clear">Clear</string>
+    <string name="page_prompt_minimum">Earliest: %1$s</string>
+    <string name="page_prompt_maximum">Latest: %1$s</string>
+    <string name="page_prompt_step">Step: %1$s</string>
+    <string name="page_prompt_invalid_date">Enter a valid value within the allowed range and step.</string>
 </resources>

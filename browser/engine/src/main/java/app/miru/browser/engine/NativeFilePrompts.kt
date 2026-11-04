@@ -216,6 +216,12 @@ object NativeFilePrompts {
         private var pendingFolderConfirmation: FileRecord? = null
 
         val promptDelegate: GeckoSession.PromptDelegate = object : ForwardingGeckoPromptDelegate(original) {
+            override fun onDateTimePrompt(session: GeckoSession, prompt: GeckoSession.PromptDelegate.DateTimePrompt): GeckoResult<GeckoSession.PromptDelegate.PromptResponse>? {
+                val owner = engine.get()
+                if(session !== native.get() || owner == null || !isInstalled()) return super.onDateTimePrompt(session, prompt)
+                return NativeDatePrompts.request(owner, prompt)
+            }
+
             override fun onFilePrompt(
                 session: GeckoSession,
                 prompt: GeckoSession.PromptDelegate.FilePrompt,

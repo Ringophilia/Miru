@@ -66,4 +66,21 @@
     <string name="external_link_failed">暂时无法打开此链接。</string>
     <string name="page_prompt_choice_title">选择选项</string>
     <string name="page_prompt_unnamed_option">未命名选项</string>
+    <string name="page_prompt_date">日期</string>
+    <string name="page_prompt_month">月份</string>
+    <string name="page_prompt_week">周</string>
+    <string name="page_prompt_time">时间</string>
+    <string name="page_prompt_datetime">日期和时间</string>
+    <string name="page_prompt_color">选择颜色</string>
+    <string name="page_prompt_color_hex">颜色值</string>
+    <string name="page_prompt_red">红色</string>
+    <string name="page_prompt_green">绿色</string>
+    <string name="page_prompt_blue">蓝色</string>
+    <string name="page_prompt_pick_date">选择日期</string>
+    <string name="page_prompt_pick_time">选择时间</string>
+    <string name="page_prompt_clear">清空</string>
+    <string name="page_prompt_minimum">最早：%1$s</string>
+    <string name="page_prompt_maximum">最晚：%1$s</string>
+    <string name="page_prompt_step">间隔：%1$s</string>
+    <string name="page_prompt_invalid_date">请输入格式正确、符合范围和间隔的值。</string>
 </resources>

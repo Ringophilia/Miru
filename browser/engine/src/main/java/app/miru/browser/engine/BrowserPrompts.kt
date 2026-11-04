@@ -436,6 +436,25 @@ class BrowserPrompts internal constructor(private val context: Context, private 
         }
     }
 
+    fun answerDate(token: Long, value: String) {
+        val pending = current(token, BrowserPromptKind.DATE_TIME) ?: return
+        val request = pending.request as PromptRequest.TimeSelection
+        val input = NativeDatePrompts.input(request) ?: return
+        if(!input.spec.isValid(value)) return
+        finish(pending) { input.confirm(input.spec.normalized(value)!!) }
+    }
+
+    fun clearDate(token: Long) {
+        val pending = current(token, BrowserPromptKind.DATE_TIME) ?: return
+        finish(pending) { (pending.request as PromptRequest.TimeSelection).onClear() }
+    }
+
+    fun answerColor(token: Long, value: String) {
+        val pending = current(token, BrowserPromptKind.COLOR) ?: return
+        val color = normalizedFormColor(value) ?: return
+        finish(pending) { (pending.request as PromptRequest.Color).onConfirm(color) }
+    }
+
     fun answerFolderUpload(token: Long, allow: Boolean) {
         val pending = current(token, BrowserPromptKind.FOLDER_CONFIRM) ?: return
         val request = pending.request as PromptRequest.FolderUploadPrompt
@@ -549,7 +568,10 @@ class BrowserPrompts internal constructor(private val context: Context, private 
         requests.remove(pending.nativeKey)
         pending.popupExpiry?.cancel()
         pending.aliases.forEach { retired += WeakReference(it) }
-        if(completeNative) rememberCompleted(pending.nativeKey)
+        if(completeNative) {
+            rememberCompleted(pending.nativeKey)
+            (pending.request as? PromptRequest.TimeSelection)?.let(NativeDatePrompts::forget)
+        }
         return true
     }
 
@@ -605,6 +627,8 @@ class BrowserPrompts internal constructor(private val context: Context, private 
         is PromptRequest.SingleChoice -> request.onConfirm
         is PromptRequest.MultipleChoice -> request.onConfirm
         is PromptRequest.MenuChoice -> request.onConfirm
+        is PromptRequest.TimeSelection -> request.onConfirm
+        is PromptRequest.Color -> request.onConfirm
         is PromptRequest.BeforeUnload -> request.onLeave
         is PromptRequest.Repost -> request.onConfirm
         is PromptRequest.Authentication -> request.onConfirm
@@ -621,7 +645,8 @@ class BrowserPrompts internal constructor(private val context: Context, private 
     private fun supported(request: PromptRequest) = request is PromptRequest.Alert || request is PromptRequest.Confirm ||
         request is PromptRequest.TextPrompt || request is PromptRequest.BeforeUnload || request is PromptRequest.Repost ||
         request is PromptRequest.Authentication || request is PromptRequest.Popup || request is PromptRequest.SingleChoice ||
-        request is PromptRequest.MultipleChoice || request is PromptRequest.MenuChoice || (uploadRequest(request) && NativeFilePrompts.isManaged(request))
+        request is PromptRequest.MultipleChoice || request is PromptRequest.MenuChoice || request is PromptRequest.Color ||
+        (request is PromptRequest.TimeSelection && NativeDatePrompts.input(request) != null) || (uploadRequest(request) && NativeFilePrompts.isManaged(request))
 
     private fun uploadRequest(request: PromptRequest) = request is PromptRequest.File || request is PromptRequest.Folder ||
         request is PromptRequest.FolderUploadPrompt
@@ -654,6 +679,8 @@ class BrowserPrompts internal constructor(private val context: Context, private 
             is PromptRequest.SingleChoice -> base.copy(choices = projectChoices(request.choices))
             is PromptRequest.MultipleChoice -> base.copy(choices = projectChoices(request.choices))
             is PromptRequest.MenuChoice -> base.copy(choices = projectChoices(request.choices))
+            is PromptRequest.TimeSelection -> base.copy(title = request.title, dateInput = NativeDatePrompts.input(request)?.spec)
+            is PromptRequest.Color -> base.copy(inputValue = normalizedFormColor(request.defaultColor) ?: "#000000")
             is PromptRequest.BeforeUnload -> base.copy(title = request.title)
             is PromptRequest.Repost -> base
             is PromptRequest.Authentication -> base.copy(origin = request.uri?.let(::siteOrigin), title = request.title, message = request.message,
@@ -675,6 +702,8 @@ class BrowserPrompts internal constructor(private val context: Context, private 
         is PromptRequest.SingleChoice -> BrowserPromptKind.SINGLE_CHOICE
         is PromptRequest.MultipleChoice -> BrowserPromptKind.MULTIPLE_CHOICE
         is PromptRequest.MenuChoice -> BrowserPromptKind.MENU_CHOICE
+        is PromptRequest.TimeSelection -> BrowserPromptKind.DATE_TIME
+        is PromptRequest.Color -> BrowserPromptKind.COLOR
         is PromptRequest.BeforeUnload -> BrowserPromptKind.BEFORE_UNLOAD
         is PromptRequest.Repost -> BrowserPromptKind.REPOST
         is PromptRequest.Authentication -> BrowserPromptKind.AUTHENTICATION

@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.LocalSaveableStateRegistry
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -25,6 +26,7 @@ import app.miru.browser.engine.BrowserFileUploads
 import app.miru.browser.engine.BrowserUploadPhase
 import app.miru.browser.engine.BrowserUploadSource
 import app.miru.browser.engine.validChoiceSelection
+import app.miru.browser.engine.normalizedFormColor
 
 /** All drafts remain in this composition; private/form/password state is never saved. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -37,6 +39,8 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
     var password by remember(state.token) { mutableStateOf("") }
     var stopDialogs by remember(state.token) { mutableStateOf(false) }
     var selectedChoices by remember(state.token) { mutableStateOf(state.choices.filter { it.selected && !it.group && !it.separator }.map { it.id }.toSet()) }
+    var dateValue by remember(state.token) { mutableStateOf(state.dateInput?.suggested().orEmpty()) }
+    var colorValue by remember(state.token) { mutableStateOf(state.inputValue) }
     val choicePrompt = state.kind in setOf(BrowserPromptKind.SINGLE_CHOICE, BrowserPromptKind.MULTIPLE_CHOICE, BrowserPromptKind.MENU_CHOICE)
     val allowMore = !stopDialogs
     fun dismiss() {
@@ -56,6 +60,8 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
         BrowserPromptKind.AUTHENTICATION -> stringResource(if(state.authMethod == BrowserAuthMethod.PROXY)
             R.string.page_prompt_proxy_title else R.string.page_prompt_auth_title)
         BrowserPromptKind.SINGLE_CHOICE, BrowserPromptKind.MULTIPLE_CHOICE, BrowserPromptKind.MENU_CHOICE -> stringResource(R.string.page_prompt_choice_title)
+        BrowserPromptKind.DATE_TIME -> state.title.ifBlank { stringResource(R.string.page_prompt_datetime) }
+        BrowserPromptKind.COLOR -> stringResource(R.string.page_prompt_color)
         else -> state.title.ifBlank { stringResource(R.string.page_prompt_title) }
     }
     val message = when(state.kind) {
@@ -64,7 +70,10 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
         BrowserPromptKind.FOLDER_CONFIRM -> stringResource(R.string.upload_folder_confirm_detail, state.folderName)
         else -> state.message
     }
+    // Material picker components also use rememberSaveable internally. Form drafts never enter saved state.
+    CompositionLocalProvider(LocalSaveableStateRegistry provides null) {
     ModalBottomSheet(onDismissRequest = ::dismiss) {
+        CompositionLocalProvider(LocalSaveableStateRegistry provides null) {
         Column(Modifier.fillMaxWidth().testTag("browser_prompt_dialog").verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(state.origin ?: stringResource(R.string.page_prompt_unknown_origin), style = MaterialTheme.typography.labelLarge)
@@ -74,6 +83,8 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
             Text(heading, style = MaterialTheme.typography.titleLarge)
             if(message.isNotBlank()) Text(message, style = MaterialTheme.typography.bodyLarge)
             when(state.kind) {
+                BrowserPromptKind.DATE_TIME -> state.dateInput?.let { BrowserDateEditor(it, dateValue) { value -> dateValue = value } }
+                BrowserPromptKind.COLOR -> BrowserColorEditor(colorValue) { colorValue = it }
                 BrowserPromptKind.SINGLE_CHOICE, BrowserPromptKind.MULTIPLE_CHOICE, BrowserPromptKind.MENU_CHOICE ->
                     BrowserChoiceList(state.choices, selectedChoices, state.kind == BrowserPromptKind.MULTIPLE_CHOICE) { selectedChoices = it }
                 BrowserPromptKind.TEXT -> OutlinedTextField(value = text, onValueChange = { text = it },
@@ -122,6 +133,7 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
                 }
             }
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                if(state.kind == BrowserPromptKind.DATE_TIME) TextButton(onClick = { prompts.clearDate(state.token) }, modifier = Modifier.testTag("page_prompt_date_clear")) { Text(stringResource(R.string.page_prompt_clear)) }
                 if(state.kind == BrowserPromptKind.CONFIRM && state.neutralButtonTitle.isNotBlank()) {
                     TextButton(onClick = { prompts.answerConfirm(state.token, BrowserPromptButton.NEUTRAL, allowMore) },
                         modifier = Modifier.testTag("page_prompt_neutral")) { Text(state.neutralButtonTitle) }
@@ -136,7 +148,9 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
                         else -> stringResource(R.string.page_prompt_cancel)
                     })
                 }
-                FilledTonalButton(enabled = if(choicePrompt) validChoiceSelection(state.choices, selectedChoices, state.kind == BrowserPromptKind.MULTIPLE_CHOICE)
+                FilledTonalButton(enabled = if(state.kind == BrowserPromptKind.DATE_TIME) state.dateInput?.isValid(dateValue) == true
+                    else if(state.kind == BrowserPromptKind.COLOR) normalizedFormColor(colorValue) != null
+                    else if(choicePrompt) validChoiceSelection(state.choices, selectedChoices, state.kind == BrowserPromptKind.MULTIPLE_CHOICE)
                     else state.kind !in setOf(BrowserPromptKind.FILE, BrowserPromptKind.FOLDER) || !uploadBusy, onClick = {
                     when(state.kind) {
                         BrowserPromptKind.ALERT -> prompts.acknowledgeAlert(state.token, allowMore)
@@ -149,6 +163,8 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
                         BrowserPromptKind.FOLDER -> uploads.choose(state.token)
                         BrowserPromptKind.FOLDER_CONFIRM -> prompts.answerFolderUpload(state.token, allow = true)
                         BrowserPromptKind.SINGLE_CHOICE, BrowserPromptKind.MULTIPLE_CHOICE, BrowserPromptKind.MENU_CHOICE -> prompts.answerChoice(state.token, selectedChoices)
+                        BrowserPromptKind.DATE_TIME -> prompts.answerDate(state.token, dateValue)
+                        BrowserPromptKind.COLOR -> prompts.answerColor(state.token, colorValue)
                     }
                 }, modifier = Modifier.testTag(when(state.kind) {
                     BrowserPromptKind.FILE -> "page_prompt_file_choose"
@@ -168,5 +184,7 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
                 }
             }
         }
+        }
+    }
     }
 }
