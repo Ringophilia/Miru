@@ -1,4 +1,9 @@
 <resources>
+    <string name="site_autoplay_title">Autoplay</string>
+    <string name="site_autoplay_allow_all">Allow all</string>
+    <string name="site_autoplay_block_audible">Block audio</string>
+    <string name="site_autoplay_block_all">Block all</string>
+    <string name="site_autoplay_detail">Control media started before you tap play. Changes reload this website.</string>
     <string name="site_permission_notifications">Notifications</string>
     <string name="site_notification_remember">Remember this website’s choice. Change it in website permissions. Android must also allow notifications.</string>
     <string name="site_notification_private_notice">Remember only for this private session. System notifications hide the website and message, and are removed when all private tabs close.</string>

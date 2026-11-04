@@ -755,6 +755,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         HorizontalDivider()
                         SitePermissionControls(state,
                             onChange = { kind, choice -> controller.permissions.setForSite(state.token, kind, choice) },
+                            onAutoplayChange = { controller.permissions.setAutoplayForSite(state.token, it) },
                             onReset = {
                                 popupSite?.takeIf { it.tabId == state.tabId && it.origin == state.origin }?.let { controller.prompts.setPopupAllowed(it, false) }
                                 controller.permissions.resetSite(state.token)

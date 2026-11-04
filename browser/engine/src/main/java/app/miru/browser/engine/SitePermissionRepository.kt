@@ -19,6 +19,8 @@ import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission.V
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate.PERMISSION_GEOLOCATION
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION
+import org.mozilla.geckoview.GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_AUDIBLE
+import org.mozilla.geckoview.GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE
 import org.mozilla.geckoview.StorageController
 
 /** Calls are serialized by the coordinator's mutex, shared with browsing-data deletion. */
@@ -31,16 +33,16 @@ internal class SitePermissionRepository(
     private var privateGeneration = 0L
 
     /**
-     * Miru owns geolocation decisions. The pinned Gecko module patch prevents new
-     * native grants from being cached; remove legacy native overrides before any
-     * session can restore or load, including records from an earlier app version.
+     * Miru owns geolocation and autoplay decisions. The pinned geolocation patch
+     * prevents new native grants from being cached. Remove legacy overrides and
+     * cached autoplay answers before sessions load, so current policy is consulted.
      */
     suspend fun prepareNativePolicy() {
         withNativeStorage { storage ->
-            val previous = allNativeLocationPermissions(storage)
+            val previous = allNativePolicyPermissions(storage)
             previous.forEach { storage.setPermission(it, VALUE_PROMPT) }
             repeat(VERIFY_ATTEMPTS) { attempt ->
-                if (allNativeLocationPermissions(storage).all { it.value == VALUE_PROMPT }) return@withNativeStorage
+                if (allNativePolicyPermissions(storage).all { it.value == VALUE_PROMPT }) return@withNativeStorage
                 if (attempt < VERIFY_ATTEMPTS - 1) delay(VERIFY_DELAY_MS)
             }
             error("SITE_PERMISSION_NATIVE_MIGRATION_FAILED")
@@ -115,6 +117,7 @@ internal class SitePermissionRepository(
         val generation = privateGeneration
         setNativeLocation(site, SitePermissionChoice.ASK)
         setNativeNotification(site, SitePermissionChoice.ASK)
+        resetNativeAutoplay(site)
         if (site.isPrivate) {
             check(generation == privateGeneration) { "SITE_PERMISSION_PRIVATE_RETIRED" }
             privateChoices.remove(SiteKey(site.origin, site.contextId))
@@ -202,6 +205,25 @@ internal class SitePermissionRepository(
                 it.contextId == site.contextId && siteOrigin(it.uri) == site.origin
         }
 
+    /** A new document must ask the coordinator again after its autoplay choice changes. */
+    suspend fun resetNativeAutoplay(site: PermissionSite) {
+        requireSite(site)
+        withNativeStorage { storage ->
+            suspend fun current() = checkNotNull(storage.getPermissions(site.origin, site.contextId, site.isPrivate).await()) {
+                "SITE_PERMISSION_NATIVE_QUERY_FAILED"
+            }.filter {
+                it.permission in setOf(PERMISSION_AUTOPLAY_AUDIBLE, PERMISSION_AUTOPLAY_INAUDIBLE) &&
+                    it.privateMode == site.isPrivate && it.contextId == site.contextId && siteOrigin(it.uri) == site.origin
+            }
+            current().forEach { storage.setPermission(it, VALUE_PROMPT) }
+            repeat(VERIFY_ATTEMPTS) { attempt ->
+                if (current().all { it.value == VALUE_PROMPT }) return@withNativeStorage
+                if (attempt < VERIFY_ATTEMPTS - 1) delay(VERIFY_DELAY_MS)
+            }
+            error("SITE_PERMISSION_NATIVE_NOT_VERIFIED")
+        }
+    }
+
     private suspend fun locationPermissions(storage: StorageController, site: PermissionSite): List<ContentPermission> =
         checkNotNull(storage.getPermissions(site.origin, site.contextId, site.isPrivate).await()) {
             "SITE_PERMISSION_NATIVE_QUERY_FAILED"
@@ -210,9 +232,9 @@ internal class SitePermissionRepository(
                 it.contextId == site.contextId && siteOrigin(it.uri) == site.origin
         }
 
-    private suspend fun allNativeLocationPermissions(storage: StorageController): List<ContentPermission> =
+    private suspend fun allNativePolicyPermissions(storage: StorageController): List<ContentPermission> =
         checkNotNull(storage.getAllPermissions().await()) { "SITE_PERMISSION_NATIVE_QUERY_FAILED" }
-            .filter { it.permission == PERMISSION_GEOLOCATION }
+            .filter { it.permission in setOf(PERMISSION_GEOLOCATION, PERMISSION_AUTOPLAY_AUDIBLE, PERMISSION_AUTOPLAY_INAUDIBLE) }
 
     private suspend fun <T> withNativeStorage(block: suspend (StorageController) -> T): T = try {
         withContext(Dispatchers.Main.immediate) {

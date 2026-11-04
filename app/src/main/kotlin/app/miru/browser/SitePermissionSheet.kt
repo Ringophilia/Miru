@@ -18,6 +18,7 @@ import app.miru.browser.engine.SitePermissionChoice
 import app.miru.browser.engine.SitePermissionKind
 import app.miru.browser.engine.SitePermissionPrompt
 import app.miru.browser.engine.SitePermissionState
+import app.miru.browser.engine.SiteAutoplayChoice
 
 @Composable
 private fun permissionName(kind: SitePermissionKind): String = stringResource(when(kind) {
@@ -72,6 +73,7 @@ internal fun SitePermissionSheet(
 internal fun SitePermissionControls(
     state: SitePermissionState,
     onChange: (SitePermissionKind, SitePermissionChoice) -> Unit,
+    onAutoplayChange: (SiteAutoplayChoice) -> Unit,
     onReset: () -> Unit,
     onSystemSettings: () -> Unit,
 ) {
@@ -98,6 +100,30 @@ internal fun SitePermissionControls(
                         SitePermissionChoice.entries.forEach { choice ->
                             DropdownMenuItem(text = { Text(choiceName(choice)) }, onClick = { expanded = false; onChange(kind, choice) })
                         }
+                    }
+                }
+            }
+        }
+        var autoplayExpanded by remember(state.token) { mutableStateOf(false) }
+        val autoplayLabel = stringResource(R.string.site_autoplay_title)
+        fun label(choice: SiteAutoplayChoice) = when (choice) {
+            SiteAutoplayChoice.ALLOW_ALL -> R.string.site_autoplay_allow_all
+            SiteAutoplayChoice.BLOCK_AUDIBLE -> R.string.site_autoplay_block_audible
+            SiteAutoplayChoice.BLOCK_ALL -> R.string.site_autoplay_block_all
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(autoplayLabel)
+                Text(stringResource(R.string.site_autoplay_detail), style = MaterialTheme.typography.bodySmall)
+            }
+            Box {
+                TextButton(onClick = { autoplayExpanded = true }, enabled = !state.busy,
+                    modifier = Modifier.semantics { contentDescription = autoplayLabel }) {
+                    Text(stringResource(label(state.autoplay)))
+                }
+                DropdownMenu(expanded = autoplayExpanded, onDismissRequest = { autoplayExpanded = false }) {
+                    SiteAutoplayChoice.entries.forEach { choice ->
+                        DropdownMenuItem(text = { Text(stringResource(label(choice))) }, onClick = { autoplayExpanded = false; onAutoplayChange(choice) })
                     }
                 }
             }

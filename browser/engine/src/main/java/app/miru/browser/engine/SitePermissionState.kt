@@ -30,6 +30,7 @@ data class SitePermissionState(
     val isPrivate: Boolean,
     val choices: Map<SitePermissionKind, SitePermissionChoice>,
     val systemGranted: Map<SitePermissionKind, Boolean>,
+    val autoplay: SiteAutoplayChoice = SiteAutoplayChoice.BLOCK_AUDIBLE,
     val busy: Boolean = false,
     val error: Boolean = false,
 ) {

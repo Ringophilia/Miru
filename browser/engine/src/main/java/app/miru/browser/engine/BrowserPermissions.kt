@@ -53,6 +53,12 @@ class BrowserPermissions internal constructor(
 ) {
     private val context = context.applicationContext
     private val repository = SitePermissionRepository(this.context, runtime)
+    private val autoplayPreferences = this.context.getSharedPreferences("miru_autoplay", Context.MODE_PRIVATE)
+    private val autoplay = AutoplayPermissions(
+        { autoplayPreferences.getString(it, null) },
+        { key, value -> autoplayPreferences.edit().apply { if (value == null) remove(key) else putString(key, value) }.apply() },
+        { autoplayPreferences.edit().clear().apply() },
+    )
     private val decisions = Mutex()
     private var policyGeneration = 0L
     private var clearing = false
@@ -172,8 +178,9 @@ class BrowserPermissions internal constructor(
     internal fun acceptRequest(tabId: String, request: PermissionRequest, app: Boolean): Boolean {
         val owner = captured[request]
         val kinds = kinds(request, app)
-        if(clearing || owner == null || owner.binding.tabId != tabId || !isCurrent(owner) || kinds == null) {
-            android.util.Log.d("MiruPermissions", "request-rejected app=$app ownerKnown=${owner != null} current=${owner?.let(::isCurrent) == true} supported=${kinds != null}")
+        val currentOwner = owner != null && if (kinds?.isEmpty() == true) isDocumentCurrent(owner) else isCurrent(owner)
+        if(clearing || owner == null || owner.binding.tabId != tabId || !currentOwner || kinds == null) {
+            android.util.Log.d("MiruPermissions", "request-rejected app=$app ownerKnown=${owner != null} current=$currentOwner supported=${kinds != null}")
             captured.remove(request)
             request.reject()
             return false
@@ -248,6 +255,15 @@ class BrowserPermissions internal constructor(
             return
         }
         val site = checkNotNull(pending.site)
+        if (pending.kinds.isEmpty()) {
+            // The engine asks these while loading media, often before any gesture.
+            // Apply the chosen policy without interrupting the page with a sheet.
+            val choice = autoplay.choice(site.origin, site.isPrivate, site.contextId)
+            finish(pending, valid(pending) && pending.request.permissions.all {
+                choice.allows(it is Permission.ContentAutoPlayInaudible)
+            })
+            return
+        }
         val choices = decisions.withLock {
             if(!valid(pending)) return@withLock emptyMap()
             repository.read(site)
@@ -394,12 +410,15 @@ class BrowserPermissions internal constructor(
             else ContentAction.ConsumePermissionsRequest(tabId, request))
     }
 
-    private fun valid(pending: Pending) = !pending.complete && !clearing && pending.policy == policyGeneration && isCurrent(pending.owner)
+    private fun valid(pending: Pending) = !pending.complete && !clearing && pending.policy == policyGeneration &&
+        if (pending.kinds.isEmpty()) isDocumentCurrent(pending.owner) else isCurrent(pending.owner)
 
-    private fun isCurrent(owner: Owner): Boolean {
+    private fun isCurrent(owner: Owner) = store.state.selectedTabId == owner.binding.tabId && isDocumentCurrent(owner)
+
+    private fun isDocumentCurrent(owner: Owner): Boolean {
         val binding = owner.binding
         val tab = store.state.tabs.firstOrNull { it.id == binding.tabId } ?: return false
-        return store.state.selectedTabId == binding.tabId && bindings[binding.tabId] === binding &&
+        return bindings[binding.tabId] === binding &&
             tab.engineState.engineSession === binding.session && tab.content.private == binding.isPrivate &&
             binding.generation == owner.generation && tab.content.url == owner.pageUrl
     }
@@ -449,6 +468,7 @@ class BrowserPermissions internal constructor(
         requests.values.toList().filterNot(::valid).forEach { finish(it, false) }
         if(state.tabs.none { it.content.private }) {
             repository.clearPrivate()
+            autoplay.clearPrivate()
             temporary.keys.removeAll { it.site.isPrivate }
         }
         val selected = state.tabs.firstOrNull { it.id == state.selectedTabId }
@@ -473,7 +493,8 @@ class BrowserPermissions internal constructor(
         val token = ++sequence
         siteToken = token
         mutableSite.value = SitePermissionState(token, selected.id, origin, binding.isPrivate,
-            SitePermissionKind.entries.associateWith { SitePermissionChoice.ASK }, systemStates(), busy = true)
+            SitePermissionKind.entries.associateWith { SitePermissionChoice.ASK }, systemStates(),
+            autoplay = autoplay.choice(origin, binding.isPrivate, binding.contextId), busy = true)
         siteJob = scope.launch(Dispatchers.Main.immediate) {
             try {
                 val choices = decisions.withLock {
@@ -501,7 +522,13 @@ class BrowserPermissions internal constructor(
 
     fun resetSite(token: Long) = modifySite(token) { site ->
         repository.reset(site)
+        autoplay.set(site.origin, site.isPrivate, site.contextId, SiteAutoplayChoice.BLOCK_AUDIBLE)
         temporary.keys.removeAll { it.site == site }
+    }
+
+    fun setAutoplayForSite(token: Long, choice: SiteAutoplayChoice) = modifySite(token) { site ->
+        repository.resetNativeAutoplay(site)
+        autoplay.set(site.origin, site.isPrivate, site.contextId, choice)
     }
 
     /** Recheck both policy and Android before posting or dispatching a notification click. */
@@ -557,6 +584,7 @@ class BrowserPermissions internal constructor(
         try {
             decisions.withLock {
                 repository.clearAll()
+                autoplay.clearAll()
                 clearGecko()
                 onAllSiteSettingsCleared()
             }
@@ -583,6 +611,7 @@ class BrowserPermissions internal constructor(
 
     private fun kinds(request: PermissionRequest, app: Boolean): Set<SitePermissionKind>? {
         if(request.permissions.isEmpty()) return null
+        if (!app && request.permissions.all { it is Permission.ContentAutoPlayAudible || it is Permission.ContentAutoPlayInaudible }) return emptySet()
         val mapped = request.permissions.map { permission -> if(app) when(permission) {
             is Permission.AppCamera -> SitePermissionKind.CAMERA
             is Permission.AppAudio -> SitePermissionKind.MICROPHONE

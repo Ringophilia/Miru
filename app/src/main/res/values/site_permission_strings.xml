@@ -1,4 +1,9 @@
 <resources>
+    <string name="site_autoplay_title">自动播放</string>
+    <string name="site_autoplay_allow_all">允许全部</string>
+    <string name="site_autoplay_block_audible">阻止有声</string>
+    <string name="site_autoplay_block_all">阻止全部</string>
+    <string name="site_autoplay_detail">控制网页在未点按播放时启动媒体。修改后重新加载本站。</string>
     <string name="site_permission_title">网站权限</string>
     <string name="site_permission_request">允许此网站使用以下权限？</string>
     <string name="site_permission_camera">摄像头</string>
