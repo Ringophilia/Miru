@@ -1,0 +1,5 @@
+<resources>
+    <string name="web_notification_channel">网站通知</string>
+    <string name="web_notification_private_title">无痕网站发来通知</string>
+    <string name="web_notification_private_text">点按返回无痕浏览</string>
+</resources>

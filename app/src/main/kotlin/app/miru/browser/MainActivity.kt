@@ -175,7 +175,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); readIntent(intent) }
     override fun onStart() { super.onStart(); container.downloads.onAppForeground(); container.offline.onAppForeground() }
-    override fun onResume() { super.onResume(); container.browser.permissions.refreshSite(); container.privateTabsNotifications.refresh() }
+    override fun onResume() { super.onResume(); container.browser.permissions.refreshSite(); container.privateTabsNotifications.refresh(); container.browser.webNotifications.refresh() }
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         container.browser.permissions.onHostWindowFocusChanged(this, hasFocus)
@@ -193,6 +193,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun readIntent(value: Intent?) {
+        if (value != null && container.browser.webNotifications.handleIntent(value)) return
         value?.getStringExtra("miru.offline.id")?.takeIf { it.length == 36 && it.matches(Regex("[0-9a-fA-F-]{36}")) }?.let { incomingOffline = it }
         val input = when(value?.action) {
             Intent.ACTION_VIEW -> value.dataString
@@ -786,6 +787,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                 key(prompt.token) { BrowserPromptDialog(prompt, controller.prompts, controller.uploads) }
             }
             if(sitePermissionPrompt == null && pagePrompt == null) externalLink?.let { link ->
+                val externalLinkFailed = stringResource(R.string.external_link_failed)
                 ModalBottomSheet(onDismissRequest = { controller.externalLinks.dismiss(link.token) }) {
                     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         Text(stringResource(if(link.canOpenApp) R.string.external_link_title else R.string.external_link_unavailable, link.appName ?: stringResource(R.string.external_link_other_app)), style = MaterialTheme.typography.titleLarge)
@@ -799,7 +801,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             TextButton(onClick = { controller.externalLinks.dismiss(link.token) }) { Text(stringResource(android.R.string.cancel)) }
                             if(link.canOpenApp || link.canOpenWeb) FilledTonalButton(onClick = {
-                                if(!controller.externalLinks.open(link.token, activity)) showMessage(context.getString(R.string.external_link_failed))
+                                if(!controller.externalLinks.open(link.token, activity)) showMessage(externalLinkFailed)
                             }) { Text(stringResource(if(link.canOpenApp) R.string.external_link_open else R.string.external_link_open_web)) }
                         }
                     }

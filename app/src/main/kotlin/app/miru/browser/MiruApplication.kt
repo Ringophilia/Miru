@@ -81,6 +81,7 @@ class AppContainer(application: Application) {
         }
     }
     init {
+        browser.webNotifications.configure(MainActivity::class.java, DismissSiteNotificationReceiver::class.java, R.drawable.ic_web_notification)
         scope.launch { downloads.settings.map { it.maxConcurrent }.distinctUntilChanged().collect { DownloadConcurrency.transfers.setLimit(it) } }
         scope.launch { browser.state.map { state -> state.tabs.filter { it.isPrivate }.map { it.id }.toSet() }.distinctUntilChanged().collect {
             mediaProbe.clearPrivate()

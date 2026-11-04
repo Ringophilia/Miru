@@ -18,6 +18,7 @@ import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission.V
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate.PERMISSION_GEOLOCATION
+import org.mozilla.geckoview.GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION
 import org.mozilla.geckoview.StorageController
 
 /** Calls are serialized by the coordinator's mutex, shared with browsing-data deletion. */
@@ -64,7 +65,10 @@ internal class SitePermissionRepository(
                 }
             }
         }
-        return SitePermissionKind.entries.associateWith { saved[it] ?: SitePermissionChoice.ASK }
+        return SitePermissionKind.entries.associateWith { kind ->
+            saved[kind] ?: if (kind == SitePermissionKind.NOTIFICATIONS) nativeNotificationChoice(site)
+                else SitePermissionChoice.ASK
+        }
     }
 
     suspend fun put(site: PermissionSite, kind: SitePermissionKind, choice: SitePermissionChoice) {
@@ -72,6 +76,7 @@ internal class SitePermissionRepository(
         val generation = privateGeneration
         // Do not commit a local choice when an existing engine decision could not be changed.
         if (kind == SitePermissionKind.LOCATION) setNativeLocation(site, SitePermissionChoice.ASK)
+        if (kind == SitePermissionKind.NOTIFICATIONS) setNativeNotification(site, choice)
         if (site.isPrivate) {
             // An IPC await may outlive the last private tab. Never restore a retired
             // private session's decision into a later private browsing session.
@@ -109,6 +114,7 @@ internal class SitePermissionRepository(
         requireSite(site)
         val generation = privateGeneration
         setNativeLocation(site, SitePermissionChoice.ASK)
+        setNativeNotification(site, SitePermissionChoice.ASK)
         if (site.isPrivate) {
             check(generation == privateGeneration) { "SITE_PERMISSION_PRIVATE_RETIRED" }
             privateChoices.remove(SiteKey(site.origin, site.contextId))
@@ -164,6 +170,38 @@ internal class SitePermissionRepository(
         }
     }
 
+    // Unlike geolocation, Gecko must retain notification grants so Notification.permission
+    // and service-worker showNotification can work without a new document prompt.
+    private suspend fun nativeNotificationChoice(site: PermissionSite): SitePermissionChoice =
+        withNativeStorage { storage ->
+            notificationPermissions(storage, site).firstOrNull()?.value?.toChoice() ?: SitePermissionChoice.ASK
+        }
+
+    private suspend fun setNativeNotification(site: PermissionSite, choice: SitePermissionChoice) {
+        withNativeStorage { storage ->
+            val existing = notificationPermissions(storage, site)
+            if (existing.isEmpty()) return@withNativeStorage
+            val value = choice.toNativeValue()
+            existing.forEach { storage.setPermission(it, value) }
+            repeat(VERIFY_ATTEMPTS) { attempt ->
+                val current = notificationPermissions(storage, site)
+                if (current.all { it.value == value } && (current.isNotEmpty() || choice == SitePermissionChoice.ASK)) {
+                    return@withNativeStorage
+                }
+                if (attempt < VERIFY_ATTEMPTS - 1) delay(VERIFY_DELAY_MS)
+            }
+            error("SITE_PERMISSION_NATIVE_NOT_VERIFIED")
+        }
+    }
+
+    private suspend fun notificationPermissions(storage: StorageController, site: PermissionSite): List<ContentPermission> =
+        checkNotNull(storage.getPermissions(site.origin, site.contextId, site.isPrivate).await()) {
+            "SITE_PERMISSION_NATIVE_QUERY_FAILED"
+        }.filter {
+            it.permission == PERMISSION_DESKTOP_NOTIFICATION && it.privateMode == site.isPrivate &&
+                it.contextId == site.contextId && siteOrigin(it.uri) == site.origin
+        }
+
     private suspend fun locationPermissions(storage: StorageController, site: PermissionSite): List<ContentPermission> =
         checkNotNull(storage.getPermissions(site.origin, site.contextId, site.isPrivate).await()) {
             "SITE_PERMISSION_NATIVE_QUERY_FAILED"
@@ -202,17 +240,24 @@ internal class SitePermissionRepository(
 
     private class NativeValue<T>(val value: T)
 
-    private class PermissionDatabase(context: Context) : SQLiteOpenHelper(context, "miru_site_permissions.db", null, 1) {
+    private class PermissionDatabase(context: Context) : SQLiteOpenHelper(context, "miru_site_permissions.db", null, 2) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
                 "CREATE TABLE $TABLE (origin TEXT NOT NULL, context_key TEXT NOT NULL, " +
-                    "kind TEXT NOT NULL CHECK(kind IN ('CAMERA','MICROPHONE','LOCATION')), " +
+                    "kind TEXT NOT NULL CHECK(kind IN ('CAMERA','MICROPHONE','LOCATION','NOTIFICATIONS')), " +
                     "choice TEXT NOT NULL CHECK(choice IN ('ALLOW','BLOCK')), " +
                     "PRIMARY KEY(origin, context_key, kind))",
             )
         }
 
-        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+            if (oldVersion < 2) {
+                db.execSQL("ALTER TABLE $TABLE RENAME TO old_site_permissions")
+                onCreate(db)
+                db.execSQL("INSERT INTO $TABLE SELECT * FROM old_site_permissions")
+                db.execSQL("DROP TABLE old_site_permissions")
+            }
+        }
     }
 
     private companion object {

@@ -84,19 +84,25 @@ class BrowserController(
     val contextMenus = BrowserContextMenus(applicationScope, store)
     val prompts = BrowserPrompts(applicationContext, applicationScope, store)
     val uploads = BrowserFileUploads(applicationContext, applicationScope, prompts)
-    val permissions = BrowserPermissions(applicationContext, applicationScope, store, runtime = { runtime },
+    val permissions: BrowserPermissions = BrowserPermissions(applicationContext, applicationScope, store, runtime = { runtime },
         onSiteChanged = { origin, isPrivate, contextId ->
+            webNotifications.cancelSite(origin, isPrivate)
             store.state.tabs.filter { tab ->
                 tab.content.private == isPrivate && tab.contextId == contextId &&
                     siteOrigin(tab.content.url) == origin && tab.engineState.engineSession != null
             }.map { it.id }.forEach { store.dispatch(EngineAction.ReloadAction(it)) }
         },
         onAllSiteSettingsCleared = {
+            webNotifications.cancelAll()
             store.state.tabs.filter { it.engineState.engineSession != null && siteOrigin(it.content.url) != null }
                 .map { it.id }.forEach { store.dispatch(EngineAction.ReloadAction(it)) }
         },
         inspectGrantFocus = ::inspectPermissionGrantFocus,
     )
+    val webNotifications: BrowserNotifications = BrowserNotifications(applicationContext, applicationScope, store, permissions) { origin, isPrivate ->
+        val existing = store.state.tabs.firstOrNull { it.content.private == isPrivate && siteOrigin(it.content.url) == origin }
+        if (existing != null) selectTab(existing.id) else newTab(origin, isPrivate)
+    }
     private val dataCleaner = BrowserDataCleaner(::requireEngine, ::resetFormData) { clearNative ->
         permissions.clearAllSiteSettings(clearNative)
         prompts.clearPopupPermissions()
@@ -190,6 +196,7 @@ class BrowserController(
                     .crashHandler(null)
                     .build()
                 val existingRuntime = runtime ?: GeckoRuntime.create(applicationContext, runtimeSettings).also { runtime = it }
+                existingRuntime.setWebNotificationDelegate(webNotifications.delegate)
                 val pendingReadiness = earlyAddonReadiness ?: if(engine == null)
                     EarlyAddonReadiness(existingRuntime, UblockController.UBLOCK_ID).also { earlyAddonReadiness = it }
                 else null

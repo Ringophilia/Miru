@@ -1,0 +1,5 @@
+<resources>
+    <string name="web_notification_channel">Website notifications</string>
+    <string name="web_notification_private_title">Notification from a private website</string>
+    <string name="web_notification_private_text">Tap to return to private browsing</string>
+</resources>

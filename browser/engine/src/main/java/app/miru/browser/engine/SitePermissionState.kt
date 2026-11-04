@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package app.miru.browser.engine
 
-enum class SitePermissionKind { CAMERA, MICROPHONE, LOCATION }
+enum class SitePermissionKind { CAMERA, MICROPHONE, LOCATION, NOTIFICATIONS }
 enum class SitePermissionChoice { ALLOW, BLOCK, ASK }
 
 /** These projections live only in memory. Never put them in SavedState, logs, or analytics. */

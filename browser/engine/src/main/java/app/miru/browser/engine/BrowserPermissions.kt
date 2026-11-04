@@ -13,6 +13,7 @@ package app.miru.browser.engine
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import java.util.IdentityHashMap
 import java.lang.ref.WeakReference
 import kotlinx.coroutines.CancellationException
@@ -286,7 +287,7 @@ class BrowserPermissions internal constructor(
             if(!valid(pending)) return@withLock
             val site = checkNotNull(pending.site)
             for(kind in kinds) {
-                if(remember) repository.put(site, kind, choice)
+                if(remember || kind == SitePermissionKind.NOTIFICATIONS) repository.put(site, kind, choice)
                 else temporary[TemporaryKey(pending.owner.binding, pending.owner.generation, site, kind)] = choice
             }
         }
@@ -503,6 +504,16 @@ class BrowserPermissions internal constructor(
         temporary.keys.removeAll { it.site == site }
     }
 
+    /** Recheck both policy and Android before posting or dispatching a notification click. */
+    internal suspend fun notificationAllowed(origin: String, isPrivate: Boolean): Boolean = decisions.withLock {
+        val privateOwners = store.state.tabs.filter { it.content.private }.mapTo(mutableSetOf()) { it.id }
+        if (clearing || (isPrivate && privateOwners.isEmpty())) return@withLock false
+        val allowed = repository.read(PermissionSite(origin, isPrivate, null))[SitePermissionKind.NOTIFICATIONS] == SitePermissionChoice.ALLOW
+        // The IPC read may outlive the last private tab, including a new private session.
+        allowed && !clearing && (!isPrivate || store.state.tabs.any { it.id in privateOwners && it.content.private }) &&
+            nativeSatisfied(setOf(SitePermissionKind.NOTIFICATIONS))
+    }
+
     private fun modifySite(token: Long, update: suspend (PermissionSite) -> Unit) {
         val owner = siteOwner ?: return
         val value = mutableSite.value?.takeIf { it.token == token && !it.busy } ?: return
@@ -560,12 +571,14 @@ class BrowserPermissions internal constructor(
         SitePermissionKind.CAMERA -> systemGranted(Manifest.permission.CAMERA)
         SitePermissionKind.MICROPHONE -> systemGranted(Manifest.permission.RECORD_AUDIO)
         SitePermissionKind.LOCATION -> systemGranted(Manifest.permission.ACCESS_COARSE_LOCATION) || systemGranted(Manifest.permission.ACCESS_FINE_LOCATION)
+        SitePermissionKind.NOTIFICATIONS -> BrowserNotifications.enabled(context)
     } }
     private fun systemStates() = SitePermissionKind.entries.associateWith { nativeSatisfied(setOf(it)) }
     private fun nativePermissions(kinds: Set<SitePermissionKind>) = kinds.flatMap { kind -> when(kind) {
         SitePermissionKind.CAMERA -> listOf(Manifest.permission.CAMERA)
         SitePermissionKind.MICROPHONE -> listOf(Manifest.permission.RECORD_AUDIO)
         SitePermissionKind.LOCATION -> listOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
+        SitePermissionKind.NOTIFICATIONS -> if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()
     } }.distinct()
 
     private fun kinds(request: PermissionRequest, app: Boolean): Set<SitePermissionKind>? {
@@ -579,6 +592,7 @@ class BrowserPermissions internal constructor(
             is Permission.ContentVideoCamera -> SitePermissionKind.CAMERA
             is Permission.ContentAudioMicrophone -> SitePermissionKind.MICROPHONE
             is Permission.ContentGeoLocation -> SitePermissionKind.LOCATION
+            is Permission.ContentNotification -> SitePermissionKind.NOTIFICATIONS
             else -> null
         } }
         return if(mapped.any { it == null }) null else mapped.filterNotNull().toSet()

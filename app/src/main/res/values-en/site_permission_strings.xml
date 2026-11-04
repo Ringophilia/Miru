@@ -1,4 +1,7 @@
 <resources>
+    <string name="site_permission_notifications">Notifications</string>
+    <string name="site_notification_remember">Remember this website’s choice. Change it in website permissions. Android must also allow notifications.</string>
+    <string name="site_notification_private_notice">Remember only for this private session. System notifications hide the website and message, and are removed when all private tabs close.</string>
     <string name="site_permission_title">Site permissions</string>
     <string name="site_permission_request">Allow this site to use these permissions?</string>
     <string name="site_permission_camera">Camera</string>

@@ -24,6 +24,7 @@ private fun permissionName(kind: SitePermissionKind): String = stringResource(wh
     SitePermissionKind.CAMERA -> R.string.site_permission_camera
     SitePermissionKind.MICROPHONE -> R.string.site_permission_microphone
     SitePermissionKind.LOCATION -> R.string.site_permission_location
+    SitePermissionKind.NOTIFICATIONS -> R.string.site_permission_notifications
 })
 
 @Composable
@@ -42,6 +43,7 @@ internal fun SitePermissionSheet(
 ) {
     // Never retain a private origin or permission decision in Android saved state.
     var rememberChoice by remember(prompt.token) { mutableStateOf(false) }
+    val notifications = SitePermissionKind.NOTIFICATIONS in prompt.kinds
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -51,14 +53,15 @@ internal fun SitePermissionSheet(
                 Text(stringResource(R.string.site_permission_embedded, it), style = MaterialTheme.typography.bodySmall)
             }
             prompt.kinds.forEach { Text(permissionName(it), style = MaterialTheme.typography.titleMedium) }
-            Row(Modifier.fillMaxWidth().clickable { rememberChoice = !rememberChoice }, verticalAlignment = Alignment.CenterVertically) {
+            if (notifications) Text(stringResource(if (prompt.isPrivate) R.string.site_notification_private_notice else R.string.site_notification_remember))
+            else Row(Modifier.fillMaxWidth().clickable { rememberChoice = !rememberChoice }, verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = rememberChoice, onCheckedChange = { rememberChoice = it })
                 Text(stringResource(if(prompt.isPrivate) R.string.site_permission_private_remember else R.string.site_permission_remember),
                     Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { onAnswer(false, rememberChoice) }) { Text(stringResource(R.string.site_permission_block)) }
-                FilledTonalButton(onClick = { onAnswer(true, rememberChoice) }) { Text(stringResource(R.string.site_permission_allow)) }
+                TextButton(onClick = { onAnswer(false, rememberChoice || notifications) }) { Text(stringResource(R.string.site_permission_block)) }
+                FilledTonalButton(onClick = { onAnswer(true, rememberChoice || notifications) }) { Text(stringResource(R.string.site_permission_allow)) }
             }
         }
     }
