@@ -9,6 +9,9 @@ import android.util.Log
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.miru.browser.engine.AdblockStatus
@@ -21,8 +24,11 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Rule
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -31,6 +37,17 @@ import org.junit.runner.RunWith
 class AdblockIntegrationTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private val browser get() = (compose.activity.application as MiruApplication).container.browser
+
+    @Before fun dismissFirstRunIntroductionWhenTestingAnActuallyFreshProfile() {
+        // Exercise the production skip action. Do not pre-populate Gecko or add-on readiness.
+        val settings = (compose.activity.application as MiruApplication).container.settings
+        val skip = compose.activity.getString(R.string.intro_skip)
+        compose.waitUntil(10000) {
+            runBlocking { settings.settings.first().introCompleted } ||
+                compose.onAllNodesWithText(skip).fetchSemanticsNodes().isNotEmpty()
+        }
+        if(compose.onAllNodesWithText(skip).fetchSemanticsNodes().isNotEmpty()) compose.onNodeWithText(skip).performClick()
+    }
 
     @Test fun signedBundledExtensionBlocksDefaultRuleAndGlobalToggleIsReal() {
         val testStarted = SystemClock.elapsedRealtime()

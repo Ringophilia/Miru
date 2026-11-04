@@ -27,6 +27,8 @@ Set the local JDK/SDK environment as usual. Use a fresh name for each build or r
 
 Use `-App` for app instrumentation and `-Routine` for the controlled app regression exclusions. Additional capability flags use `-InstrumentationArguments @{miruMp4NativeSeekCapability='true'}`. Pass `-Adb <path>` and `-Device <serial>` when needed.
 
+For an explicitly created isolated Android test user, pass `-UserId $TestUserId`. The runner applies that ID to installation, `pm path` and instrumentation, and records it in `input.json`. Without it, existing default-user behavior is retained. The caller owns creating/switching/removing that user and restoring network settings; the runner does not erase application data. Dotted instrumentation keys such as `-InstrumentationArguments @{'miru.requireNoNetwork'='true'}` are supported. Host checks cover user forwarding, dotted arguments, installed-byte mismatch, result counts and transport loss.
+
 The runner checks each APK against the successful build manifest, installs from that path, and compares the installed bytes and SHA-256 using a temporary pull. It deletes that pull on success and failure. Run directories contain evidence and paths/hashes, without another APK copy. `input.json` records the exact instrumentation command; success requires the expected count, no negative status codes, zero ADB exit status, and terminal JUnit OK.
 
 The build helper freezes source hashes, requires successful Gradle/JVM/lint tasks without source drift, snapshots the three APKs once, and applies retention in `finally`. A failed build never accepts previous APKs or reports as current results. Ordinary Gradle outputs/dependencies remain useful incremental build inputs; the retention script does not remove shared caches.

@@ -15,6 +15,7 @@ $miruHash = (Get-FileHash -LiteralPath $miruApk).Hash.ToLowerInvariant()
 $miruMock = Join-Path $miruBuild 'mock-adb.ps1'
 @'
 $global:LASTEXITCODE = 0
+if($env:MIRU_VALIDATION_MOCK_CALLS) { [IO.File]::AppendAllText($env:MIRU_VALIDATION_MOCK_CALLS, ($args -join ' ') + [Environment]::NewLine) }
 switch($args[2]) {
     'logcat' { if($env:MIRU_VALIDATION_MOCK_MODE -eq 'transport-lost') { throw 'Must not query logcat after transport loss' } }
     'install' { $env:MIRU_VALIDATION_MOCK_APK = $args[-1] }
@@ -38,29 +39,41 @@ switch($args[2]) {
     }
 }
 '@ | Set-Content -LiteralPath $miruMock
-$miruEnvironmentNames = @('MIRU_VALIDATION_MOCK_TRACE','MIRU_VALIDATION_MOCK_MODE','MIRU_VALIDATION_MOCK_APK')
+$miruEnvironmentNames = @('MIRU_VALIDATION_MOCK_TRACE','MIRU_VALIDATION_MOCK_MODE','MIRU_VALIDATION_MOCK_APK','MIRU_VALIDATION_MOCK_CALLS')
 $miruOriginalEnvironment = @{}
 foreach($name in $miruEnvironmentNames) { $miruOriginalEnvironment[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
 $miruChecks = @()
 try {
-    foreach($mode in @('success','bad-pull','bad-count','transport-lost')) {
+    foreach($mode in @('success','success-user','bad-pull','bad-count','transport-lost')) {
+        $succeeds = $mode -like 'success*'
         $runName = "disk-cleanup-mock-$mode-$miruId"
         $run = Join-Path $miruRepository "artifacts/m3-cached-ranges/$runName"
         $env:MIRU_VALIDATION_MOCK_MODE = $mode
         $env:MIRU_VALIDATION_MOCK_TRACE = Join-Path $miruBuild "pull-$mode.txt"
+        $env:MIRU_VALIDATION_MOCK_CALLS = Join-Path $miruBuild "calls-$mode.txt"
+        $userArguments = if($mode -eq 'success-user') { @{UserId=10;InstrumentationArguments=@{'miru.requireNoNetwork'='true'}} } else { @{} }
         $rejected = $false
         try {
-            $null = & (Join-Path $PSScriptRoot 'run-device-validation.ps1') -BuildName $miruBuildName -RunName $runName -Selector 'fixture#oneTest' -Expected 1 -Adb $miruMock
+            $null = & (Join-Path $PSScriptRoot 'run-device-validation.ps1') -BuildName $miruBuildName -RunName $runName -Selector 'fixture#oneTest' -Expected 1 -Adb $miruMock @userArguments
         } catch {
             $rejected = $true
-            if($mode -eq 'success') { throw }
+            if($succeeds) { throw }
             if($mode -eq 'bad-pull' -and $_.Exception.Message -notlike '*hash/size mismatch*') { throw }
             if($mode -eq 'bad-count' -and $_.Exception.Message -notlike '*Device regression failed*') { throw }
             if($mode -eq 'transport-lost' -and $_.Exception.Message -notlike '*Device regression failed*') { throw }
         }
-        if($rejected -ne ($mode -ne 'success')) { throw "Unexpected rejection state for $mode" }
+        if($rejected -ne (-not $succeeds)) { throw "Unexpected rejection state for $mode" }
         $result = Get-Content -LiteralPath (Join-Path $run 'result.json') -Raw | ConvertFrom-Json
-        if($result.success -ne ($mode -eq 'success')) { throw "Incorrect result success for $mode" }
+        if($result.success -ne $succeeds) { throw "Incorrect result success for $mode" }
+        if($mode -eq 'success-user') {
+            $runInput = Get-Content -LiteralPath (Join-Path $run 'input.json') -Raw | ConvertFrom-Json
+            $calls = Get-Content -LiteralPath $env:MIRU_VALIDATION_MOCK_CALLS -Raw
+            if($runInput.userId -ne 10 -or -not $calls.Contains('install -r --user 10') -or
+                -not $calls.Contains('shell pm path --user 10') -or -not $calls.Contains('shell am instrument -w -r --user 10') -or
+                -not $calls.Contains('-e miru.requireNoNetwork true')) {
+                throw 'Explicit user must be forwarded to installation, installed-path verification and instrumentation'
+            }
+        }
         if($mode -eq 'transport-lost' -and ($result.adbExit -ne 255 -or $result.terminalOK -or
             (Get-Content -LiteralPath (Join-Path $run 'logcat.log') -Raw) -notlike 'Skipped post-run logcat*')) { throw 'Transport failure was not preserved without another logcat query' }
         $pull = Get-Content -LiteralPath $env:MIRU_VALIDATION_MOCK_TRACE -Raw

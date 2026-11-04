@@ -11,6 +11,7 @@ param(
     [switch]$Routine,
     [hashtable]$InstrumentationArguments = @{},
     [string]$Device = 'emulator-5554',
+    [ValidateRange(-1,2147483647)][int]$UserId = -1,
     [string]$Adb
 )
 $ErrorActionPreference = 'Stop'
@@ -39,6 +40,7 @@ $miruApks = @()
 $miruStarted = Get-Date
 $miruResult = [ordered]@{success=$false;startedAt=$miruStarted.ToString('o')}
 $miruPullDirectory = $null
+$miruUserArgs = if($UserId -ge 0) { @('--user', [string]$UserId) } else { @() }
 try {
     # Only one temporary pull directory, with a guaranteed finally cleanup. No run-local APK copies.
     $miruPullDirectory = Join-Path ([IO.Path]::GetTempPath()) ('miru-apk-verify-' + [guid]::NewGuid().ToString('N'))
@@ -52,10 +54,10 @@ try {
         if($hash -ine $pin[0].sha256 -or $bytes -ne $pin[0].bytes) { throw "Build APK changed: $name" }
         $record = [ordered]@{name=$name;path=$apk;sha256=$hash;bytes=$bytes;installedVerified=$false}
         $miruApks += $record
-        & $Adb -s $Device install -r $apk *> (Join-Path $miruRun "install-$name.log")
+        & $Adb -s $Device install -r @miruUserArgs $apk *> (Join-Path $miruRun "install-$name.log")
         if($LASTEXITCODE -ne 0) { throw "Installation failed: $name" }
         $package = if($name -eq 'main.apk') { 'app.miru.browser' } else { $miruTestPackage }
-        $paths = @(& $Adb -s $Device shell pm path $package)
+        $paths = @(& $Adb -s $Device shell pm path @miruUserArgs $package)
         if($LASTEXITCODE -ne 0 -or $paths.Count -ne 1 -or $paths[0] -notmatch '^package:/') { throw "Expected one installed base APK: $package" }
         $pulled = Join-Path $miruPullDirectory $name
         try {
@@ -70,17 +72,18 @@ try {
         }
     }
     $instrumentArgs = @('-s',$Device,'shell','am','instrument','-w','-r')
+    $instrumentArgs += $miruUserArgs
     if($Routine) {
         $excluded = 'app.miru.browser.DownloadRestartTest,app.miru.browser.OfflineRestartTest,app.miru.browser.RuntimeSitePermissionIntegrationTest,app.miru.browser.AudioCaptureIntegrationTest'
         $instrumentArgs += @('-e','notClass',$excluded,'-e','notPackage','app.miru.browser.capability')
     } else { $instrumentArgs += @('-e','class',$Selector) }
     foreach($key in $InstrumentationArguments.Keys | Sort-Object) {
-        if($key -notmatch '^[A-Za-z][A-Za-z0-9_]*$' -or $key -in @('class','notClass','notPackage')) { throw "Invalid additional instrumentation key: $key" }
+        if($key -notmatch '^[A-Za-z][A-Za-z0-9_.]*$' -or $key -in @('class','notClass','notPackage')) { throw "Invalid additional instrumentation key: $key" }
         $instrumentArgs += @('-e',[string]$key,[string]$InstrumentationArguments[$key])
     }
     $instrumentArgs += "$miruTestPackage/androidx.test.runner.AndroidJUnitRunner"
     [ordered]@{
-        startedAt=$miruStarted.ToString('o');device=$Device
+        startedAt=$miruStarted.ToString('o');device=$Device;userId=$UserId
         sdk=(& $Adb -s $Device shell getprop ro.build.version.sdk)
         abi=(& $Adb -s $Device shell getprop ro.product.cpu.abi)
         apks=$miruApks;command=@($Adb)+$instrumentArgs;expectedTests=$Expected
