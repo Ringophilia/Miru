@@ -73,12 +73,19 @@ internal class SitePermissionRepository(
         }
     }
 
-    suspend fun put(site: PermissionSite, kind: SitePermissionKind, choice: SitePermissionChoice) {
+    suspend fun put(site: PermissionSite, kind: SitePermissionKind, choice: SitePermissionChoice) =
+        put(site, kind, choice, synchronizeNotification = true)
+
+    /** Site consent is separate from Android authorization. Do not grant Gecko before Android answers. */
+    suspend fun rememberNotificationConsent(site: PermissionSite) =
+        put(site, SitePermissionKind.NOTIFICATIONS, SitePermissionChoice.ALLOW, synchronizeNotification = false)
+
+    private suspend fun put(site: PermissionSite, kind: SitePermissionKind, choice: SitePermissionChoice, synchronizeNotification: Boolean) {
         requireSite(site)
         val generation = privateGeneration
         // Do not commit a local choice when an existing engine decision could not be changed.
         if (kind == SitePermissionKind.LOCATION) setNativeLocation(site, SitePermissionChoice.ASK)
-        if (kind == SitePermissionKind.NOTIFICATIONS) setNativeNotification(site, choice)
+        if (kind == SitePermissionKind.NOTIFICATIONS && synchronizeNotification) setNativeNotification(site, choice)
         if (site.isPrivate) {
             // An IPC await may outlive the last private tab. Never restore a retired
             // private session's decision into a later private browsing session.
@@ -191,6 +198,22 @@ internal class SitePermissionRepository(
                 if (current.all { it.value == value } && (current.isNotEmpty() || choice == SitePermissionChoice.ASK)) {
                     return@withNativeStorage
                 }
+                if (attempt < VERIFY_ATTEMPTS - 1) delay(VERIFY_DELAY_MS)
+            }
+            error("SITE_PERMISSION_NATIVE_NOT_VERIFIED")
+        }
+    }
+
+    /** Restore only an existing native denial after remembered site consent and a real system grant. */
+    suspend fun restoreNotificationAfterSystemGrant(site: PermissionSite, stillCurrent: () -> Boolean) {
+        requireSite(site)
+        withNativeStorage { storage ->
+            val denied = notificationPermissions(storage, site).filter { it.value == VALUE_DENY }
+            if (denied.isEmpty() || !stillCurrent()) return@withNativeStorage
+            denied.forEach { storage.setPermission(it, VALUE_ALLOW) }
+            repeat(VERIFY_ATTEMPTS) { attempt ->
+                val current = notificationPermissions(storage, site)
+                if (current.isNotEmpty() && current.all { it.value == VALUE_ALLOW }) return@withNativeStorage
                 if (attempt < VERIFY_ATTEMPTS - 1) delay(VERIFY_DELAY_MS)
             }
             error("SITE_PERMISSION_NATIVE_NOT_VERIFIED")

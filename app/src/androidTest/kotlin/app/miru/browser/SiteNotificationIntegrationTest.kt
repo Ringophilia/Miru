@@ -179,7 +179,7 @@ class SiteNotificationIntegrationTest {
     }
 }
 
-private class NotificationOrigin : Closeable {
+internal class NotificationOrigin : Closeable {
     private val server = ServerSocket(0, 12, InetAddress.getByName("127.0.0.1"))
     val url get() = "http://127.0.0.1:${server.localPort}"
     val events = CopyOnWriteArrayList<String>()

@@ -55,6 +55,24 @@ try {
 }
 ```
 
+## Website notification permission case
+
+The separate `app.miru.browser.capability.SiteNotificationPermissionIntegrationTest`
+uses the same host preparation above on a controlled API 33+ device. Select that
+class with `-Expected 1` and a fresh run name. It clicks the real Android denial
+button, checks retained website consent, enables the application's main notification
+switch in Android Settings and returns to the original page to post a real notification.
+The grant on this success path comes from the system switch; the test's final grant
+is cleanup. This capability class is also excluded from `-Routine`.
+
+Run each permission capability class separately with a new host preparation;
+the first class restores notification permission, so a combined selector would
+violate the next class's revoked-permission precondition. Record the original
+permission and user-set/user-fixed flags before changing them, and restore and
+compare them afterward. The controlled November 5 run started granted with
+user-set, and its host `finally` restored the same state and flags. Do not use a
+permission revocation during an active instrumentation process.
+
 ## Cleaning
 
 ```powershell

@@ -291,6 +291,11 @@ class BrowserPermissions internal constructor(
                 return
             }
         }
+        if (answer?.allow == true && SitePermissionKind.NOTIFICATIONS in unknown) {
+            decisions.withLock {
+                if (valid(pending)) repository.rememberNotificationConsent(site)
+            }
+        }
         val nativeAllowed = nativeSatisfied(pending.kinds) || awaitNative(pending, nativePermissions(pending.kinds))
         if(!nativeAllowed || !valid(pending) || !nativeSatisfied(pending.kinds) || !awaitHostFocus(pending)) { finish(pending, false); return }
         if(answer != null) saveAnswer(pending, unknown, SitePermissionChoice.ALLOW, answer.remember)
@@ -499,6 +504,12 @@ class BrowserPermissions internal constructor(
             try {
                 val choices = decisions.withLock {
                     val stored = repository.read(site).toMutableMap()
+                    if (stored[SitePermissionKind.NOTIFICATIONS] == SitePermissionChoice.ALLOW &&
+                        nativeSatisfied(setOf(SitePermissionKind.NOTIFICATIONS))) {
+                        repository.restoreNotificationAfterSystemGrant(site) {
+                            !clearing && siteToken == token && isCurrent(owner) && nativeSatisfied(setOf(SitePermissionKind.NOTIFICATIONS))
+                        }
+                    }
                     SitePermissionKind.entries.forEach { kind ->
                         temporary[TemporaryKey(binding, owner.generation, site, kind)]?.let { stored[kind] = it }
                     }
