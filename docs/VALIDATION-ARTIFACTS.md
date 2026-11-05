@@ -73,6 +73,29 @@ compare them afterward. The controlled November 5 run started granted with
 user-set, and its host `finally` restored the same state and flags. Do not use a
 permission revocation during an active instrumentation process.
 
+## Client certificate challenges
+
+`app.miru.browser.capability.ClientCertificateIntegrationTest` uses the public
+`https://client.badssl.com/` TLS client-authentication challenge. Run each method
+in a separate fresh application process with `-Expected 1`; do not select the
+whole class in one process. TLS may remember a previous no-certificate choice
+or reuse the connection and skip a new challenge. The capability package is
+excluded from `-Routine`.
+
+For a retained snapshot that contains these tests, use a separate runner call
+and fresh run name for each selector:
+
+```text
+app.miru.browser.capability.ClientCertificateIntegrationTest#aRealCertificateChallengeCanBeCancelledInTheBrowser
+app.miru.browser.capability.ClientCertificateIntegrationTest#systemPickerCancellationOrNoMatchingCertificateCompletesTheRealRequest
+app.miru.browser.capability.ClientCertificateIntegrationTest#closedPrivateRequestCannotLaunchACertificatePickerForAnotherPage
+```
+
+The runner reinstalls the pinned input and starts a new application process on
+each call. The tests cancel requests and never select an existing user identity;
+they do not install certificates, change trust stores or prove successful mTLS
+authentication. A usable network and an actual fresh server challenge are required.
+
 ## Cleaning
 
 ```powershell

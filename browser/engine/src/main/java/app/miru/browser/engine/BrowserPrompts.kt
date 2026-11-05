@@ -18,6 +18,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import mozilla.components.browser.state.action.ContentAction
@@ -55,6 +57,9 @@ class BrowserPrompts internal constructor(private val context: Context, private 
         val document: NativeUploadDocument, val rootName: String, val onShown: () -> Unit,
         val onResolved: (Boolean) -> Unit) { var confirmationKey: Any? = null }
     private var folderAuthorization: FolderAuthorization? = null
+    private val certificatePicker = ClientCertificatePickerGate()
+    private val mutableCertificateResults = MutableSharedFlow<ClientCertificateResult>(extraBufferCapacity = 1)
+    val clientCertificateResults = mutableCertificateResults.asSharedFlow()
 
     private class Binding(
         val tabId: String,
@@ -378,6 +383,26 @@ class BrowserPrompts internal constructor(private val context: Context, private 
         finish(pending) { request.onConfirm(allowMoreDialogs) }
     }
 
+    fun prepareClientCertificate(token: Long): ClientCertificateSelection? {
+        val pending = current(token, BrowserPromptKind.CERTIFICATE) ?: return null
+        if (!certificatePicker.begin(token)) return null
+        val request = pending.request as PromptRequest.CertificateRequest
+        publish()
+        return ClientCertificateSelection(request.host, request.issuers)
+    }
+
+    /** Android may call this on a Binder thread or after the originating Activity was recreated. */
+    fun completeClientCertificate(token: Long, alias: String?, unavailable: Boolean = false) {
+        scope.launch(Dispatchers.Main.immediate) {
+            if (!certificatePicker.complete(token)) return@launch
+            current(token, BrowserPromptKind.CERTIFICATE)?.let { pending ->
+                finish(pending) { (pending.request as PromptRequest.CertificateRequest).onComplete(alias) }
+                mutableCertificateResults.tryEmit(ClientCertificateResult(token, pending.owner.binding.tabId, alias != null, unavailable))
+            }
+            publish()
+        }
+    }
+
     fun answerConfirm(token: Long, button: BrowserPromptButton, allowMoreDialogs: Boolean = true) {
         val pending = current(token, BrowserPromptKind.CONFIRM) ?: return
         val request = pending.request as PromptRequest.Confirm
@@ -644,7 +669,7 @@ class BrowserPrompts internal constructor(private val context: Context, private 
 
     private fun supported(request: PromptRequest) = request is PromptRequest.Alert || request is PromptRequest.Confirm ||
         request is PromptRequest.TextPrompt || request is PromptRequest.BeforeUnload || request is PromptRequest.Repost ||
-        request is PromptRequest.Authentication || request is PromptRequest.Popup || request is PromptRequest.SingleChoice ||
+        request is PromptRequest.Authentication || request is PromptRequest.CertificateRequest || request is PromptRequest.Popup || request is PromptRequest.SingleChoice ||
         request is PromptRequest.MultipleChoice || request is PromptRequest.MenuChoice || request is PromptRequest.Color ||
         (request is PromptRequest.TimeSelection && NativeDatePrompts.input(request) != null) || (uploadRequest(request) && NativeFilePrompts.isManaged(request))
 
@@ -671,6 +696,7 @@ class BrowserPrompts internal constructor(private val context: Context, private 
         // These AC requests do not expose the initiating frame's origin.
         val base = BrowserPromptState(pending.token, binding.tabId, kind(request), null, topOrigin, binding.isPrivate)
         return when(request) {
+            is PromptRequest.CertificateRequest -> base.copy(origin = request.host, certificateHost = request.host, certificateChoosing = certificatePicker.busy)
             is PromptRequest.Alert -> base.copy(title = request.title, message = request.message, hasShownManyDialogs = request.hasShownManyDialogs)
             is PromptRequest.Confirm -> base.copy(title = request.title, message = request.message, hasShownManyDialogs = request.hasShownManyDialogs,
                 positiveButtonTitle = request.positiveButtonTitle, negativeButtonTitle = request.negativeButtonTitle, neutralButtonTitle = request.neutralButtonTitle)
@@ -707,6 +733,7 @@ class BrowserPrompts internal constructor(private val context: Context, private 
         is PromptRequest.BeforeUnload -> BrowserPromptKind.BEFORE_UNLOAD
         is PromptRequest.Repost -> BrowserPromptKind.REPOST
         is PromptRequest.Authentication -> BrowserPromptKind.AUTHENTICATION
+        is PromptRequest.CertificateRequest -> BrowserPromptKind.CERTIFICATE
         is PromptRequest.File -> BrowserPromptKind.FILE
         is PromptRequest.Folder -> BrowserPromptKind.FOLDER
         is PromptRequest.FolderUploadPrompt -> BrowserPromptKind.FOLDER_CONFIRM

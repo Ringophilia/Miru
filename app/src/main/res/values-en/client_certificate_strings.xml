@@ -1,0 +1,10 @@
+<resources>
+    <string name="client_certificate_none">No certificate was selected or matched. Authentication was cancelled.</string>
+    <string name="client_certificate_unavailable">The system certificate picker is unavailable. Authentication was cancelled.</string>
+    <string name="client_certificate_title">Client certificate requested</string>
+    <string name="client_certificate_detail">This website uses a client certificate to verify your identity. Continue to Android’s certificate picker, or cancel this authentication request.</string>
+    <string name="client_certificate_private">Android manages its certificate picker and authorization. Miru does not remember the selected alias. The website still receives the identity of the certificate you choose.</string>
+    <string name="client_certificate_waiting">Finish the system certificate picker that is already open</string>
+    <string name="client_certificate_choose">Choose system certificate</string>
+    <string name="client_certificate_page">Current page: %1$s</string>
+</resources>

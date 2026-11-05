@@ -149,6 +149,18 @@ class MainActivity : ComponentActivity() {
 
     internal fun dismissSitePermissionSettings() { sitePermissionSettingsRequired = false }
 
+    internal fun requestClientCertificate(token: Long) {
+        val prompts = container.browser.prompts
+        val selection = prompts.prepareClientCertificate(token) ?: return
+        try {
+            // KeyChain uses the Activity only to launch its UI. The callback retains
+            // the application coordinator/token, never this Activity or a chosen alias.
+            android.security.KeyChain.choosePrivateKeyAlias(this,
+                { alias -> prompts.completeClientCertificate(token, alias) }, arrayOf("RSA", "EC"),
+                selection.issuers, selection.host, -1, null)
+        } catch (_: Exception) { prompts.completeClientCertificate(token, null, unavailable = true) }
+    }
+
     internal fun openSitePermissionSettings() {
         sitePermissionSettingsRequired = false
         startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", packageName, null)))
@@ -347,6 +359,15 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
         } else emptySet()
 
     fun showMessage(message: String) { scope.launch { snackbars.showMessage(message) } }
+    val clientCertificateNone = stringResource(R.string.client_certificate_none)
+    val clientCertificateUnavailable = stringResource(R.string.client_certificate_unavailable)
+    LaunchedEffect(controller, clientCertificateNone, clientCertificateUnavailable) {
+        controller.prompts.clientCertificateResults.collect { result ->
+            if (controller.state.value.selectedTabId == result.tabId && !result.selected) {
+                showMessage(if (result.unavailable) clientCertificateUnavailable else clientCertificateNone)
+            }
+        }
+    }
     fun playMedia(item: DetectedMedia) {
         if(mediaBusy) return
         mediaBusy = true
@@ -793,7 +814,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                     })
             }
             if(sitePermissionPrompt == null) pagePrompt?.let { prompt ->
-                key(prompt.token) { BrowserPromptDialog(prompt, controller.prompts, controller.uploads) }
+                key(prompt.token) { BrowserPromptDialog(prompt, controller.prompts, controller.uploads, permissionActivity::requestClientCertificate) }
             }
             tab?.certificate?.takeIf { certificateTarget == (tab.id to it.sha256) }?.let { details ->
                 CertificateDialog(details, secure = tab.secure, onDismiss = { certificateTarget = null })

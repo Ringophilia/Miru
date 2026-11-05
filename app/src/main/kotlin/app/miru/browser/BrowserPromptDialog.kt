@@ -31,7 +31,7 @@ import app.miru.browser.engine.normalizedFormColor
 /** All drafts remain in this composition; private/form/password state is never saved. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserPrompts, uploads: BrowserFileUploads) {
+internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserPrompts, uploads: BrowserFileUploads, onChooseClientCertificate: (Long) -> Unit) {
     val upload by uploads.state.collectAsState()
     val uploadBusy = upload.phase != BrowserUploadPhase.IDLE
     var text by remember(state.token) { mutableStateOf(state.inputValue) }
@@ -59,6 +59,7 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
         BrowserPromptKind.FOLDER_CONFIRM -> stringResource(R.string.upload_folder_confirm_title)
         BrowserPromptKind.AUTHENTICATION -> stringResource(if(state.authMethod == BrowserAuthMethod.PROXY)
             R.string.page_prompt_proxy_title else R.string.page_prompt_auth_title)
+        BrowserPromptKind.CERTIFICATE -> stringResource(R.string.client_certificate_title)
         BrowserPromptKind.SINGLE_CHOICE, BrowserPromptKind.MULTIPLE_CHOICE, BrowserPromptKind.MENU_CHOICE -> stringResource(R.string.page_prompt_choice_title)
         BrowserPromptKind.DATE_TIME -> state.title.ifBlank { stringResource(R.string.page_prompt_datetime) }
         BrowserPromptKind.COLOR -> stringResource(R.string.page_prompt_color)
@@ -78,11 +79,16 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(state.origin ?: stringResource(R.string.page_prompt_unknown_origin), style = MaterialTheme.typography.labelLarge)
             state.topOrigin?.takeIf { it != state.origin }?.let {
-                Text(stringResource(R.string.page_prompt_embedded, it), style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(if (state.kind == BrowserPromptKind.CERTIFICATE) R.string.client_certificate_page else R.string.page_prompt_embedded, it), style = MaterialTheme.typography.bodySmall)
             }
             Text(heading, style = MaterialTheme.typography.titleLarge)
             if(message.isNotBlank()) Text(message, style = MaterialTheme.typography.bodyLarge)
             when(state.kind) {
+                BrowserPromptKind.CERTIFICATE -> {
+                    Text(stringResource(R.string.client_certificate_detail))
+                    if (state.isPrivate) Text(stringResource(R.string.client_certificate_private), style = MaterialTheme.typography.bodySmall)
+                    if (state.certificateChoosing) Text(stringResource(R.string.client_certificate_waiting), style = MaterialTheme.typography.bodySmall)
+                }
                 BrowserPromptKind.DATE_TIME -> state.dateInput?.let { BrowserDateEditor(it, dateValue) { value -> dateValue = value } }
                 BrowserPromptKind.COLOR -> BrowserColorEditor(colorValue) { colorValue = it }
                 BrowserPromptKind.SINGLE_CHOICE, BrowserPromptKind.MULTIPLE_CHOICE, BrowserPromptKind.MENU_CHOICE ->
@@ -149,6 +155,7 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
                     })
                 }
                 FilledTonalButton(enabled = if(state.kind == BrowserPromptKind.DATE_TIME) state.dateInput?.isValid(dateValue) == true
+                    else if(state.kind == BrowserPromptKind.CERTIFICATE) !state.certificateChoosing
                     else if(state.kind == BrowserPromptKind.COLOR) normalizedFormColor(colorValue) != null
                     else if(choicePrompt) validChoiceSelection(state.choices, selectedChoices, state.kind == BrowserPromptKind.MULTIPLE_CHOICE)
                     else state.kind !in setOf(BrowserPromptKind.FILE, BrowserPromptKind.FOLDER) || !uploadBusy, onClick = {
@@ -165,6 +172,7 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
                         BrowserPromptKind.SINGLE_CHOICE, BrowserPromptKind.MULTIPLE_CHOICE, BrowserPromptKind.MENU_CHOICE -> prompts.answerChoice(state.token, selectedChoices)
                         BrowserPromptKind.DATE_TIME -> prompts.answerDate(state.token, dateValue)
                         BrowserPromptKind.COLOR -> prompts.answerColor(state.token, colorValue)
+                        BrowserPromptKind.CERTIFICATE -> onChooseClientCertificate(state.token)
                     }
                 }, modifier = Modifier.testTag(when(state.kind) {
                     BrowserPromptKind.FILE -> "page_prompt_file_choose"
@@ -179,6 +187,7 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
                         BrowserPromptKind.FILE -> stringResource(R.string.upload_choose)
                         BrowserPromptKind.FOLDER -> stringResource(R.string.upload_folder_choose)
                         BrowserPromptKind.FOLDER_CONFIRM -> stringResource(R.string.upload_folder_allow)
+                        BrowserPromptKind.CERTIFICATE -> stringResource(R.string.client_certificate_choose)
                         else -> stringResource(R.string.page_prompt_confirm)
                     })
                 }

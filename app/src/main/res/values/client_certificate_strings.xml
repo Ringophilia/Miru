@@ -1,0 +1,10 @@
+<resources>
+    <string name="client_certificate_none">未选择证书或没有匹配证书，本次验证已取消</string>
+    <string name="client_certificate_unavailable">系统证书选择器暂不可用，本次验证已取消</string>
+    <string name="client_certificate_title">网站请求客户端证书</string>
+    <string name="client_certificate_detail">网站使用客户端证书验证身份。选择后由 Android 打开系统证书选择器，也可以取消本次验证。</string>
+    <string name="client_certificate_private">系统证书选择器及其授权由 Android 管理。Miru 不记住所选别名，网站仍会获知你选择的证书身份。</string>
+    <string name="client_certificate_waiting">请先完成已打开的系统证书选择器</string>
+    <string name="client_certificate_choose">选择系统证书</string>
+    <string name="client_certificate_page">当前页面：%1$s</string>
+</resources>
