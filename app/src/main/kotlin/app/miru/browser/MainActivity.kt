@@ -270,6 +270,10 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     val currentAddressHistory=addressHistory.takeIf { it.query==input && editing }?.items.orEmpty()
     val inlineAddress=remember(input,currentAddressHistory) { InlineDomainCompletion.find(input,currentAddressHistory.map { it.url }) }
     var siteInfo by remember { mutableStateOf(false) }
+    var certificateTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
+    LaunchedEffect(tab?.id, tab?.certificate?.sha256) {
+        if (certificateTarget?.first != tab?.id || certificateTarget?.second != tab?.certificate?.sha256) certificateTarget = null
+    }
     LaunchedEffect(siteInfo, tab?.id) {
         if(siteInfo) controller.permissions.refreshSite()
     }
@@ -751,6 +755,10 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                     Text(AddressResolver.display(tab?.url.orEmpty()).ifBlank { stringResource(R.string.app_name) }, style = MaterialTheme.typography.titleLarge)
                     Text(stringResource(if(tab?.secure == true) R.string.connection_secure else R.string.connection_info), style = MaterialTheme.typography.bodyLarge)
                     Text(tab?.url.orEmpty(), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { tab?.certificate?.let { certificateTarget = tab.id to it.sha256 } }, enabled = tab?.certificate != null) {
+                        Text(stringResource(R.string.certificate_view))
+                    }
+                    if (tab?.certificate == null) Text(stringResource(R.string.certificate_unavailable), style = MaterialTheme.typography.bodySmall)
                     sitePermissions?.takeIf { it.tabId == tab?.id }?.let { state ->
                         HorizontalDivider()
                         SitePermissionControls(state,
@@ -786,6 +794,9 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
             }
             if(sitePermissionPrompt == null) pagePrompt?.let { prompt ->
                 key(prompt.token) { BrowserPromptDialog(prompt, controller.prompts, controller.uploads) }
+            }
+            tab?.certificate?.takeIf { certificateTarget == (tab.id to it.sha256) }?.let { details ->
+                CertificateDialog(details, secure = tab.secure, onDismiss = { certificateTarget = null })
             }
             if(sitePermissionPrompt == null && pagePrompt == null) externalLink?.let { link ->
                 val externalLinkFailed = stringResource(R.string.external_link_failed)

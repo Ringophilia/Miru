@@ -263,7 +263,7 @@ class BrowserController(
                     ublock.awaitStartup()
                 }
                 deferredEngine.connect(
-                    listOf(PermissionOwnerMiddleware(permissions), PromptOwnerMiddleware(prompts),
+                    listOf(SecurityInfoResetMiddleware(), PermissionOwnerMiddleware(permissions), PromptOwnerMiddleware(prompts),
                         UblockNavigationMiddleware(ublock::onLoadRequested, ublock::onSessionLinked)) +
                         EngineMiddleware.create(createdEngine, applicationScope),
                     store,
@@ -642,6 +642,8 @@ class BrowserController(
                 canGoForward = tab.content.canGoForward,
                 desktopMode = tab.content.desktopMode,
                 secure = tab.content.securityInfo.isSecure,
+                certificate = if (tab.engineState.engineSession == null) null else CertificateDetails.from(
+                    tab.content.url, tab.content.securityInfo.host, tab.content.securityInfo.certificate, tab.content.loading),
                 crashed = tab.engineState.crashed,
                 thumbnail = if (tab.content.private) null else thumbnails[tab.id],
                 icon = tab.content.icon,

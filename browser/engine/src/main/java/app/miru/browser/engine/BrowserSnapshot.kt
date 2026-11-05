@@ -28,6 +28,7 @@ data class BrowserTab(
     val canGoForward: Boolean = false,
     val desktopMode: Boolean = false,
     val secure: Boolean = false,
+    val certificate: CertificateDetails? = null,
     val crashed: Boolean = false,
     val thumbnail: Bitmap? = null,
     val icon: Bitmap? = null,

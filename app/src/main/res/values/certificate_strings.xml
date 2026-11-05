@@ -1,0 +1,13 @@
+<resources>
+    <string name="certificate_view">查看证书</string>
+    <string name="certificate_title">网站证书</string>
+    <string name="certificate_unavailable">当前页面没有可查看的证书</string>
+    <string name="certificate_unverified">该连接未通过验证</string>
+    <string name="certificate_domain">网站</string>
+    <string name="certificate_subject">签发给</string>
+    <string name="certificate_issuer">签发机构</string>
+    <string name="certificate_from">生效时间</string>
+    <string name="certificate_until">到期时间</string>
+    <string name="certificate_serial">序列号</string>
+    <string name="certificate_sha256">SHA-256 指纹</string>
+</resources>

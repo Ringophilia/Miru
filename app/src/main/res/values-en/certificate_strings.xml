@@ -1,0 +1,13 @@
+<resources>
+    <string name="certificate_view">View certificate</string>
+    <string name="certificate_title">Website certificate</string>
+    <string name="certificate_unavailable">No certificate is available for this page</string>
+    <string name="certificate_unverified">This connection has not been verified</string>
+    <string name="certificate_domain">Website</string>
+    <string name="certificate_subject">Issued to</string>
+    <string name="certificate_issuer">Issued by</string>
+    <string name="certificate_from">Valid from</string>
+    <string name="certificate_until">Valid until</string>
+    <string name="certificate_serial">Serial number</string>
+    <string name="certificate_sha256">SHA-256 fingerprint</string>
+</resources>
