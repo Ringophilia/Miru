@@ -17,11 +17,14 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import app.miru.browser.BrowserTabFixture
 import app.miru.browser.MainActivity
 import app.miru.browser.MiruApplication
 import app.miru.browser.R
 import app.miru.browser.RuntimePermissionOrigin
+import app.miru.browser.engine.RuntimePermissionRequest
 import app.miru.browser.engine.SitePermissionChoice
 import app.miru.browser.engine.SitePermissionKind
 import kotlinx.coroutines.flow.first
@@ -31,7 +34,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Run on a fresh English API 35 Android user. All permission changes use Android UI. */
+/** Run each method in a fresh English API 35 Android user. Permission changes use Android UI. */
 @RunWith(AndroidJUnit4::class)
 class CameraPermissionRecoveryIntegrationTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
@@ -42,7 +45,114 @@ class CameraPermissionRecoveryIntegrationTest {
     private val controllers = setOf("com.android.permissioncontroller", "com.google.android.permissioncontroller")
     private val settingsWindows = controllers + "com.android.settings"
 
-    @Test fun permanentAndroidDenialCanBeRecoveredThroughSettingsWithoutGrantingTheWebsite() {
+    @Test fun permanentAndroidDenialCanBeRecoveredThroughSettingsWithoutGrantingTheWebsite() = withCameraPage { id, _ ->
+        denyCamera()
+        title(id, "Runtime denied")
+        compose.onNodeWithText(activity.getString(R.string.site_permission_settings_title)).assertDoesNotExist()
+
+        denyCamera()
+        title(id, "Runtime denied")
+        compose.waitUntil(8000) { activity.sitePermissionSettingsRequired }
+        assertFalse(cameraGranted())
+        assertFalse(activity.shouldShowRequestPermissionRationale(Manifest.permission.CAMERA))
+        assertNull(browser.permissions.prompt.value)
+        assertCameraChoice(id, SitePermissionChoice.ASK, false)
+        compose.onNodeWithText(activity.getString(R.string.site_permission_settings)).performClick()
+
+        clickSettingsText(setOf("Permissions", "App permissions"))
+        clickSettingsText(setOf("Camera"))
+        clickSettingsText(setOf("Allow only while using the app"))
+        compose.waitUntil(8000) { cameraGranted() }
+        repeat(3) {
+            if (automation.rootInActiveWindow?.packageName?.toString() in settingsWindows) {
+                pressBack()
+                SystemClock.sleep(350)
+            }
+        }
+        compose.waitUntil(10000) { automation.rootInActiveWindow?.packageName?.toString() == activity.packageName }
+        assertCameraChoice(id, SitePermissionChoice.ASK, true)
+        tapWebRequest()
+        allowWebsiteCamera(id)
+    }
+
+    @Test fun pendingAndroidCameraResultReturnsToItsOwnerAfterActivityRecreation() = withCameraPage { id, origin ->
+        val pending = requestRuntimePermission(Manifest.permission.CAMERA)
+        compose.waitUntil(10000) { permissionControls().any { it.viewIdResourceName?.endsWith("/permission_allow_foreground_only_button") == true } }
+        val old = activity
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync { old.recreate() }
+        compose.waitUntil(15000) {
+            var recreated = false
+            instrumentation.runOnMainSync {
+                val monitor = ActivityLifecycleMonitorRegistry.getInstance()
+                recreated = old.isDestroyed && listOf(Stage.CREATED, Stage.STARTED, Stage.RESUMED, Stage.PAUSED, Stage.STOPPED).any { stage ->
+                    monitor.getActivitiesInStage(stage).any { it is MainActivity && it !== old && !it.isDestroyed && !it.isFinishing }
+                }
+            }
+            recreated
+        }
+        assertEquals(pending, browser.permissions.runtimeRequest.value)
+        assertEquals(id, browser.state.value.selectedTabId)
+        clickPermissionControl(setOf("permission_allow_foreground_only_button"))
+        compose.waitUntil(10000) { browser.permissions.runtimeRequest.value == null && cameraGranted() }
+        compose.waitUntil(10000) { browser.permissions.prompt.value?.origin == origin.url }
+        allowWebsiteCamera(id)
+    }
+
+    @Test fun cancellingAndroidDialogLeavesWebsiteChoiceAskAndAllowsAnotherRequest() = withCameraPage { id, _ ->
+        val cancelled = requestRuntimePermission(Manifest.permission.CAMERA)
+        compose.waitUntil(10000) { permissionControls().any { it.viewIdResourceName?.endsWith("/permission_allow_foreground_only_button") == true } }
+        pressBack()
+        compose.waitUntil(10000) { browser.permissions.runtimeRequest.value == null }
+        title(id, "Runtime denied")
+        assertFalse(cameraGranted())
+        assertNull(browser.permissions.prompt.value)
+        assertCameraChoice(id, SitePermissionChoice.ASK, false)
+        compose.onNodeWithText(activity.getString(R.string.site_permission_settings_title)).assertDoesNotExist()
+
+        val next = requestRuntimePermission(Manifest.permission.CAMERA)
+        assertNotEquals(cancelled.token, next.token)
+        clickPermissionControl(setOf("permission_deny_button"))
+        title(id, "Runtime denied")
+        assertCameraChoice(id, SitePermissionChoice.ASK, false)
+        compose.onNodeWithText(activity.getString(R.string.site_permission_settings_title)).assertDoesNotExist()
+    }
+
+    @Test fun closingOriginalPageDiscardsLateAndroidGrantAndReleasesThePermissionSlot() = withCameraPage { id, origin ->
+        val pending = requestRuntimePermission(Manifest.permission.CAMERA)
+        compose.waitUntil(10000) { permissionControls().any { it.viewIdResourceName?.endsWith("/permission_allow_foreground_only_button") == true } }
+        var replacement = ""
+        compose.runOnIdle {
+            browser.closeTab(id)
+            replacement = browser.newTab("${origin.url}/media")
+        }
+        compose.waitUntil(10000) {
+            browser.state.value.selectedTabId == replacement && browser.state.value.tabs.none { it.id == id } &&
+                browser.permissions.runtimeRequest.value == null
+        }
+        clickPermissionControl(setOf("permission_allow_foreground_only_button"))
+        compose.waitUntil(10000) { cameraGranted() }
+        title(replacement, "Runtime ready")
+        assertNull(browser.permissions.prompt.value)
+        assertCameraChoice(replacement, SitePermissionChoice.ASK, true)
+
+        val next = requestRuntimePermission(Manifest.permission.RECORD_AUDIO)
+        assertNotEquals(pending.token, next.token)
+        clickPermissionControl(setOf("permission_allow_foreground_only_button"))
+        compose.waitUntil(10000) { browser.permissions.prompt.value?.kinds == setOf(SitePermissionKind.CAMERA, SitePermissionKind.MICROPHONE) }
+        assertEquals(replacement, browser.state.value.selectedTabId)
+        compose.onNodeWithText(activity.getString(R.string.site_permission_block)).performClick()
+        title(replacement, "Runtime denied")
+    }
+
+    private fun allowWebsiteCamera(id: String) {
+        compose.waitUntil(10000) { browser.permissions.prompt.value?.kinds == setOf(SitePermissionKind.CAMERA) }
+        assertEquals(id, browser.state.value.selectedTabId)
+        compose.onNodeWithText(activity.getString(R.string.site_permission_allow)).performClick()
+        title(id, "Runtime live video")
+    }
+
+    private fun withCameraPage(test: (String, RuntimePermissionOrigin) -> Unit) {
         assertEquals(35, Build.VERSION.SDK_INT)
         assertFalse("Camera permission must start ungranted", cameraGranted())
         val skip = activity.getString(R.string.intro_skip)
@@ -61,35 +171,7 @@ class CameraPermissionRecoveryIntegrationTest {
                 var id = ""
                 compose.runOnIdle { id = browser.newTab("${origin.url}/camera") }
                 title(id, "Runtime ready")
-                denyCamera()
-                title(id, "Runtime denied")
-                compose.onNodeWithText(activity.getString(R.string.site_permission_settings_title)).assertDoesNotExist()
-
-                denyCamera()
-                title(id, "Runtime denied")
-                compose.waitUntil(8000) { activity.sitePermissionSettingsRequired }
-                assertFalse(cameraGranted())
-                assertFalse(activity.shouldShowRequestPermissionRationale(Manifest.permission.CAMERA))
-                assertNull(browser.permissions.prompt.value)
-                assertCameraChoice(id, SitePermissionChoice.ASK, false)
-                compose.onNodeWithText(activity.getString(R.string.site_permission_settings)).performClick()
-
-                clickSettingsText(setOf("Permissions", "App permissions"))
-                clickSettingsText(setOf("Camera"))
-                clickSettingsText(setOf("Allow only while using the app"))
-                compose.waitUntil(8000) { cameraGranted() }
-                repeat(3) {
-                    if (automation.rootInActiveWindow?.packageName?.toString() in settingsWindows) {
-                        pressBack()
-                        SystemClock.sleep(350)
-                    }
-                }
-                compose.waitUntil(10000) { automation.rootInActiveWindow?.packageName?.toString() == activity.packageName }
-                assertCameraChoice(id, SitePermissionChoice.ASK, true)
-                tapWebRequest()
-                compose.waitUntil(10000) { browser.permissions.prompt.value?.kinds == setOf(SitePermissionKind.CAMERA) }
-                compose.onNodeWithText(activity.getString(R.string.site_permission_allow)).performClick()
-                title(id, "Runtime live video")
+                test(id, origin)
             }
         } finally {
             automation.serviceInfo = automation.serviceInfo.apply { flags = oldFlags }
@@ -99,31 +181,42 @@ class CameraPermissionRecoveryIntegrationTest {
 
     private fun cameraGranted() = activity.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
-    private fun denyCamera() {
+    private fun requestRuntimePermission(permission: String): RuntimePermissionRequest {
         tapWebRequest()
         compose.waitUntil(10000) { browser.permissions.runtimeRequest.value?.launched == true }
-        assertEquals(listOf(Manifest.permission.CAMERA), browser.permissions.runtimeRequest.value!!.permissions)
-        val denialIds = setOf(
+        return checkNotNull(browser.permissions.runtimeRequest.value).also { assertEquals(listOf(permission), it.permissions) }
+    }
+
+    private fun denyCamera() {
+        requestRuntimePermission(Manifest.permission.CAMERA)
+        clickPermissionControl(setOf(
             "permission_deny_button",
             "permission_deny_dont_ask_again_button",
             "permission_deny_and_dont_ask_again_button",
-        )
+        ))
+        compose.waitUntil(10000) { browser.permissions.runtimeRequest.value == null }
+    }
+
+    private fun permissionControls(): List<AccessibilityNodeInfo> {
+        val root = automation.rootInActiveWindow ?: return emptyList()
+        if (root.packageName?.toString() !in controllers) return emptyList()
+        return descendants(root).filter { it.isVisibleToUser && it.isEnabled }.toList()
+    }
+
+    private fun clickPermissionControl(ids: Set<String>) {
         var controls = emptyList<String>()
         try {
             compose.waitUntil(10000) {
-                val root = automation.rootInActiveWindow ?: return@waitUntil false
-                if (root.packageName?.toString() !in controllers) return@waitUntil false
-                val nodes = descendants(root).filter { it.isVisibleToUser && it.isEnabled }.toList()
+                val nodes = permissionControls()
                 controls = nodes.mapNotNull { it.viewIdResourceName }.distinct()
                 nodes.any { node ->
-                    node.viewIdResourceName?.substringAfterLast('/') in denialIds &&
+                    node.viewIdResourceName?.substringAfterLast('/') in ids &&
                         node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                 }
             }
         } catch (failure: ComposeTimeoutException) {
-            throw AssertionError("Android camera denial button unavailable. Controls: $controls", failure)
+            throw AssertionError("Android permission button $ids unavailable. Controls: $controls", failure)
         }
-        compose.waitUntil(10000) { browser.permissions.runtimeRequest.value == null }
     }
 
     private fun assertCameraChoice(id: String, choice: SitePermissionChoice, systemAllowed: Boolean) {

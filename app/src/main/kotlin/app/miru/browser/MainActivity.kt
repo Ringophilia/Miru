@@ -134,17 +134,17 @@ class MainActivity : ComponentActivity() {
     internal var sitePermissionSettingsRequired by mutableStateOf(false)
         private set
     private val sitePermissionsLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
-        val relevant = container.browser.permissions.onRuntimePermissionsResult(results)
-        val locationGranted = checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-            checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        if(relevant) sitePermissionSettingsRequired = results.any { (permission, granted) ->
-            val location = permission == Manifest.permission.ACCESS_COARSE_LOCATION || permission == Manifest.permission.ACCESS_FINE_LOCATION
-            !granted && !(location && locationGranted) && !shouldShowRequestPermissionRationale(permission)
+        val rationaleAfter = results.keys.filterTo(mutableSetOf(), ::shouldShowRequestPermissionRationale)
+        container.browser.permissions.onRuntimePermissionsResult(results, rationaleAfter)?.let {
+            sitePermissionSettingsRequired = it
         }
     }
 
     internal fun requestSiteRuntimePermissions(token: Long, permissions: List<String>) {
-        if(container.browser.permissions.markRuntimeRequestLaunched(token)) sitePermissionsLauncher.launch(permissions.toTypedArray())
+        val rationaleBefore = permissions.filterTo(mutableSetOf(), ::shouldShowRequestPermissionRationale)
+        if (container.browser.permissions.markRuntimeRequestLaunched(token, rationaleBefore)) {
+            sitePermissionsLauncher.launch(permissions.toTypedArray())
+        }
     }
 
     internal fun dismissSitePermissionSettings() { sitePermissionSettingsRequired = false }

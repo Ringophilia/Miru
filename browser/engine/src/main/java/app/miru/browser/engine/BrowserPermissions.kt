@@ -70,6 +70,7 @@ class BrowserPermissions internal constructor(
     private var worker: Job? = null
     private var current: Pending? = null
     private var nativeGate: NativeGate? = null
+    private val runtimeRecovery = RuntimePermissionRecovery()
     private val temporary = mutableMapOf<TemporaryKey, SitePermissionChoice>()
     private var siteOwner: Owner? = null
     private var siteJob: Job? = null
@@ -135,6 +136,7 @@ class BrowserPermissions internal constructor(
     private class NativeGate(val token: Long, val permissions: List<String>, val isPrivate: Boolean, val pending: Pending) {
         var launched = false
         var abandoned = false
+        var rationaleAtLaunch = emptySet<String>()
         val result = CompletableDeferred<Map<String, Boolean>>()
     }
 
@@ -356,7 +358,7 @@ class BrowserPermissions internal constructor(
     }
 
     /** Return true exactly once before calling ActivityResultLauncher.launch. */
-    fun markRuntimeRequestLaunched(token: Long): Boolean {
+    fun markRuntimeRequestLaunched(token: Long, rationaleBefore: Set<String>): Boolean {
         val gate = nativeGate ?: return false
         if(gate.token != token || gate.launched || gate.abandoned) return false
         if(!valid(gate.pending)) {
@@ -366,22 +368,29 @@ class BrowserPermissions internal constructor(
             gate.result.complete(emptyMap())
             return false
         }
+        gate.rationaleAtLaunch = rationaleBefore.intersect(gate.permissions.toSet())
         gate.launched = true
         mutableRuntime.value = mutableRuntime.value?.copy(launched = true)
         return true
     }
 
     /** ActivityResult has no request token; this always addresses the retained, single launched slot. */
-    fun onRuntimePermissionsResult(results: Map<String, Boolean>): Boolean {
-        val gate = nativeGate?.takeIf { it.launched } ?: return false
+    fun onRuntimePermissionsResult(results: Map<String, Boolean>, rationaleAfter: Set<String>): Boolean? {
+        val gate = nativeGate?.takeIf { it.launched } ?: return null
         // Compute before completing: resuming the worker may finish the request.
         // A retired owner's result drains its slot without showing UI on a new page.
         val stillRelevant = !gate.abandoned && valid(gate.pending)
+        val requiresSettings = if (stillRelevant) {
+            val effectiveResults = results.filterKeys { it in gate.permissions }.mapValues { (permission, granted) ->
+                granted || runtimePermissionSatisfied(permission)
+            }
+            runtimeRecovery.requiresSettings(effectiveResults, gate.rationaleAtLaunch, rationaleAfter)
+        } else null
         nativeGate = null
         mutableRuntime.value = null
         gate.result.complete(results)
         refreshSite()
-        return stillRelevant
+        return requiresSettings
     }
 
     private fun finish(pending: Pending, allow: Boolean) {
@@ -487,6 +496,7 @@ class BrowserPermissions internal constructor(
     }
 
     fun refreshSite() {
+        runtimeRecovery.clearGranted(::runtimePermissionSatisfied)
         siteJob?.cancel()
         val selected = store.state.tabs.firstOrNull { it.id == store.state.selectedTabId } ?: return
         val binding = bindings[selected.id]
@@ -606,6 +616,11 @@ class BrowserPermissions internal constructor(
     }
 
     private fun systemGranted(permission: String) = context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+    private fun runtimePermissionSatisfied(permission: String): Boolean = when (permission) {
+        Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION ->
+            nativeSatisfied(setOf(SitePermissionKind.LOCATION))
+        else -> systemGranted(permission)
+    }
     private fun nativeSatisfied(kinds: Set<SitePermissionKind>) = kinds.all { kind -> when(kind) {
         SitePermissionKind.CAMERA -> systemGranted(Manifest.permission.CAMERA)
         SitePermissionKind.MICROPHONE -> systemGranted(Manifest.permission.RECORD_AUDIO)
