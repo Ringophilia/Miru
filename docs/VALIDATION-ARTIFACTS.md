@@ -92,9 +92,13 @@ app.miru.browser.capability.ClientCertificateIntegrationTest#closedPrivateReques
 ```
 
 The runner reinstalls the pinned input and starts a new application process on
-each call. The tests cancel requests and never select an existing user identity;
-they do not install certificates, change trust stores or prove successful mTLS
-authentication. A usable network and an actual fresh server challenge are required.
+each call. The three selectors above cancel their requests. A usable network
+and an actual fresh server challenge are required.
+
+Run the successful authentication case separately in a disposable Android user.
+The case installs and selects the public BadSSL test identity through the
+system UI. See [the client certificate validation record](B13-CLIENT-CERTIFICATES.md)
+for the selector, opt-in instrumentation argument and user cleanup.
 
 ## Cleaning
 
