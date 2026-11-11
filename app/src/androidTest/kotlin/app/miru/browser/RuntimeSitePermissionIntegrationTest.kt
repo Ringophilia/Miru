@@ -383,7 +383,7 @@ class RuntimeSitePermissionIntegrationTest {
 }
 
 /** A dedicated loopback origin; all results come from the real Gecko web APIs. */
-private class RuntimePermissionOrigin : Closeable {
+internal class RuntimePermissionOrigin : Closeable {
     private val server = ServerSocket(0, 12, InetAddress.getByName("127.0.0.1"))
     private val running = AtomicBoolean(true)
     val url = "http://127.0.0.1:${server.localPort}"

@@ -51,6 +51,26 @@ $env:ANDROID_SERIAL = 'emulator-5586'
 保留完整 instrumentation 输出、失败堆栈与 logcat，并记录 AVD / API、构建源码及 APK。
 成功需要三项均通过、零跳过；不把缺少系统对话框、错误权限初态或单独方法运行当作有效结果。
 
+## 摄像头永久拒绝恢复专项
+
+`app.miru.browser.capability.CameraPermissionRecoveryIntegrationTest` 在英语界面的 API 35 模拟器上运行。使用摄像头权限从未请求过的临时 Android 用户，或独立的新模拟器资料。测试在网页上发起真实 `getUserMedia` 请求，点击系统两次拒绝，再通过 Miru 的提示进入 Android 设置，在「权限 → 摄像头」中选择仅在使用应用时允许。返回后验证网站仍处于询问状态，并在网站单独允许后检查视频轨道进入 `live` 状态。Android 对重复拒绝的说明见 [Android 运行时权限文档](https://developer.android.com/training/permissions/requesting)。
+
+使用包含该类的固定 Debug 快照，单独调用设备验证脚本。临时用户须先切到前台，并以 `-UserId` 指定其 ID。该类由 capability 包的规则排除在常规回归外。权限变更全程走实际界面，测试结束后恢复原用户并移除本轮创建的临时用户。
+
+```powershell
+./tools/run-device-validation.ps1 -App -BuildName $FeatureBuildName `
+    -RunName camera-permission-recovery-check -UserId $TestUserId `
+    -Selector app.miru.browser.capability.CameraPermissionRecoveryIntegrationTest -Expected 1
+```
+
+2026-11-11，最终固定快照 `camera-permission-recovery-build-03` 通过编译，709 项输入清单无漂移。Lint 为 0 错误、29 警告。主 APK 的 SHA-256 `231b0830973e2f9cc1c1604dbaf82312fd2f66d5b035ee98ae047fbc6fd562b9` 与受保护内容批次一致。测试 APK 的 SHA-256 为 `478de59ea7c5b894501393efbe53eb92fbcdf69d64eb301991a547bcce2a4a21`。引擎 JVM 任务为 `UP-TO-DATE`，沿用同一输入的 131 项通过和 1 项跳过记录。
+
+`camera-permission-recovery-device-03` 在 API 35 x86_64 模拟器的临时用户 12 上通过 1/1，JUnit 39.755 秒，运行器 56.880 秒。首次拒绝后未显示设置提示。第二次拒绝后，Android 权限仍为拒绝，Miru 显示设置入口，网站选择为「询问」。从 Android 设置授权后返回原网页，网站仍须单独询问，允许后真实 `getUserMedia` 返回 `live` 视频轨道。安装包的哈希与大小核对通过，临时 APK 副本已删除。原用户 0 已恢复，本轮临时用户已移除。
+
+前两轮失败保留在 `camera-permission-recovery-device-01` 和 `camera-permission-recovery-device-02`。两轮均到达第二个系统弹窗，测试未匹配该设备上的 `permission_deny_and_dont_ask_again_button` 控件。首轮清理记录读取早于 Android 完成自动移除，后续查询确认用户 10 已消失。后两轮的用户恢复记录保存在 `artifacts/camera-permission-recovery/`。
+
+本批增加摄像头这一条恢复链路的证据。麦克风、定位、其他 Android 版本、系统弹窗中的界面重建与迟到结果、真机验证仍待核对。常规全量回归与 ARM64 验证留到阶段检查点。
+
 ## 常规全量回归排除
 
 常规套件必须显式排除此类，并保留已有分阶段重启测试的排除项：
