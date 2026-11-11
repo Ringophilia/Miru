@@ -308,7 +308,7 @@ class BrowserPermissions internal constructor(
             if(!valid(pending)) return@withLock
             val site = checkNotNull(pending.site)
             for(kind in kinds) {
-                if(remember || kind == SitePermissionKind.NOTIFICATIONS) repository.put(site, kind, choice)
+                if(remember || kind in setOf(SitePermissionKind.NOTIFICATIONS, SitePermissionKind.PROTECTED_MEDIA)) repository.put(site, kind, choice)
                 else temporary[TemporaryKey(pending.owner.binding, pending.owner.generation, site, kind)] = choice
             }
         }
@@ -611,6 +611,7 @@ class BrowserPermissions internal constructor(
         SitePermissionKind.MICROPHONE -> systemGranted(Manifest.permission.RECORD_AUDIO)
         SitePermissionKind.LOCATION -> systemGranted(Manifest.permission.ACCESS_COARSE_LOCATION) || systemGranted(Manifest.permission.ACCESS_FINE_LOCATION)
         SitePermissionKind.NOTIFICATIONS -> BrowserNotifications.enabled(context)
+        SitePermissionKind.PROTECTED_MEDIA -> true
     } }
     private fun systemStates() = SitePermissionKind.entries.associateWith { nativeSatisfied(setOf(it)) }
     private fun nativePermissions(kinds: Set<SitePermissionKind>) = kinds.flatMap { kind -> when(kind) {
@@ -618,6 +619,7 @@ class BrowserPermissions internal constructor(
         SitePermissionKind.MICROPHONE -> listOf(Manifest.permission.RECORD_AUDIO)
         SitePermissionKind.LOCATION -> listOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
         SitePermissionKind.NOTIFICATIONS -> if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()
+        SitePermissionKind.PROTECTED_MEDIA -> emptyList()
     } }.distinct()
 
     private fun kinds(request: PermissionRequest, app: Boolean): Set<SitePermissionKind>? {
@@ -633,6 +635,7 @@ class BrowserPermissions internal constructor(
             is Permission.ContentAudioMicrophone -> SitePermissionKind.MICROPHONE
             is Permission.ContentGeoLocation -> SitePermissionKind.LOCATION
             is Permission.ContentNotification -> SitePermissionKind.NOTIFICATIONS
+            is Permission.ContentMediaKeySystemAccess -> SitePermissionKind.PROTECTED_MEDIA
             else -> null
         } }
         return if(mapped.any { it == null }) null else mapped.filterNotNull().toSet()

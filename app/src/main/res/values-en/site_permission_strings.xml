@@ -1,4 +1,7 @@
 <resources>
+    <string name="site_permission_protected_media">Play protected content</string>
+    <string name="site_protected_media_detail">Allow this website to use DRM playback and possibly contact a license service. Remember this choice; change it in website permissions. Playback depends on device support and the website’s license.</string>
+    <string name="site_protected_media_private">Remember only for this private session. The website and license service may still identify the playback device. Playback depends on device support and the website’s license.</string>
     <string name="site_autoplay_title">Autoplay</string>
     <string name="site_autoplay_allow_all">Allow all</string>
     <string name="site_autoplay_block_audible">Block audio</string>

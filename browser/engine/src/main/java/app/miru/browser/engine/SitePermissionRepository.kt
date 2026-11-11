@@ -19,6 +19,7 @@ import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission.V
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate.PERMISSION_GEOLOCATION
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION
+import org.mozilla.geckoview.GeckoSession.PermissionDelegate.PERMISSION_MEDIA_KEY_SYSTEM_ACCESS
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_AUDIBLE
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE
 import org.mozilla.geckoview.StorageController
@@ -68,8 +69,11 @@ internal class SitePermissionRepository(
             }
         }
         return SitePermissionKind.entries.associateWith { kind ->
-            saved[kind] ?: if (kind == SitePermissionKind.NOTIFICATIONS) nativeNotificationChoice(site)
-                else SitePermissionChoice.ASK
+            saved[kind] ?: when (kind) {
+                SitePermissionKind.NOTIFICATIONS -> nativeNotificationChoice(site)
+                SitePermissionKind.PROTECTED_MEDIA -> nativeMediaKeyChoice(site)
+                else -> SitePermissionChoice.ASK
+            }
         }
     }
 
@@ -86,6 +90,7 @@ internal class SitePermissionRepository(
         // Do not commit a local choice when an existing engine decision could not be changed.
         if (kind == SitePermissionKind.LOCATION) setNativeLocation(site, SitePermissionChoice.ASK)
         if (kind == SitePermissionKind.NOTIFICATIONS && synchronizeNotification) setNativeNotification(site, choice)
+        if (kind == SitePermissionKind.PROTECTED_MEDIA) setNativeMediaKey(site, choice)
         if (site.isPrivate) {
             // An IPC await may outlive the last private tab. Never restore a retired
             // private session's decision into a later private browsing session.
@@ -124,6 +129,7 @@ internal class SitePermissionRepository(
         val generation = privateGeneration
         setNativeLocation(site, SitePermissionChoice.ASK)
         setNativeNotification(site, SitePermissionChoice.ASK)
+        setNativeMediaKey(site, SitePermissionChoice.ASK)
         resetNativeAutoplay(site)
         if (site.isPrivate) {
             check(generation == privateGeneration) { "SITE_PERMISSION_PRIVATE_RETIRED" }
@@ -228,6 +234,31 @@ internal class SitePermissionRepository(
                 it.contextId == site.contextId && siteOrigin(it.uri) == site.origin
         }
 
+    private suspend fun nativeMediaKeyChoice(site: PermissionSite): SitePermissionChoice = withNativeStorage { storage ->
+        mediaKeyPermissions(storage, site).firstOrNull()?.value?.toChoice() ?: SitePermissionChoice.ASK
+    }
+
+    private suspend fun setNativeMediaKey(site: PermissionSite, choice: SitePermissionChoice) = withNativeStorage { storage ->
+        val existing = mediaKeyPermissions(storage, site)
+        if (existing.isEmpty()) return@withNativeStorage
+        val value = choice.toNativeValue()
+        existing.forEach { storage.setPermission(it, value) }
+        repeat(VERIFY_ATTEMPTS) { attempt ->
+            val current = mediaKeyPermissions(storage, site)
+            if (current.all { it.value == value } && (current.isNotEmpty() || choice == SitePermissionChoice.ASK)) return@withNativeStorage
+            if (attempt < VERIFY_ATTEMPTS - 1) delay(VERIFY_DELAY_MS)
+        }
+        error("SITE_PERMISSION_NATIVE_NOT_VERIFIED")
+    }
+
+    private suspend fun mediaKeyPermissions(storage: StorageController, site: PermissionSite): List<ContentPermission> =
+        checkNotNull(storage.getPermissions(site.origin, site.contextId, site.isPrivate).await()) {
+            "SITE_PERMISSION_NATIVE_QUERY_FAILED"
+        }.filter {
+            it.permission == PERMISSION_MEDIA_KEY_SYSTEM_ACCESS && it.privateMode == site.isPrivate &&
+                it.contextId == site.contextId && siteOrigin(it.uri) == site.origin
+        }
+
     /** A new document must ask the coordinator again after its autoplay choice changes. */
     suspend fun resetNativeAutoplay(site: PermissionSite) {
         requireSite(site)
@@ -285,18 +316,18 @@ internal class SitePermissionRepository(
 
     private class NativeValue<T>(val value: T)
 
-    private class PermissionDatabase(context: Context) : SQLiteOpenHelper(context, "miru_site_permissions.db", null, 2) {
+    private class PermissionDatabase(context: Context) : SQLiteOpenHelper(context, "miru_site_permissions.db", null, 3) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
                 "CREATE TABLE $TABLE (origin TEXT NOT NULL, context_key TEXT NOT NULL, " +
-                    "kind TEXT NOT NULL CHECK(kind IN ('CAMERA','MICROPHONE','LOCATION','NOTIFICATIONS')), " +
+                    "kind TEXT NOT NULL CHECK(kind IN ('CAMERA','MICROPHONE','LOCATION','NOTIFICATIONS','PROTECTED_MEDIA')), " +
                     "choice TEXT NOT NULL CHECK(choice IN ('ALLOW','BLOCK')), " +
                     "PRIMARY KEY(origin, context_key, kind))",
             )
         }
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-            if (oldVersion < 2) {
+            if (oldVersion < 3) {
                 db.execSQL("ALTER TABLE $TABLE RENAME TO old_site_permissions")
                 onCreate(db)
                 db.execSQL("INSERT INTO $TABLE SELECT * FROM old_site_permissions")
