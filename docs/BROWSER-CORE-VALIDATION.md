@@ -378,3 +378,20 @@ SDK仍canUp=true；随后实际下拉使该doc GET及新绘制从1变2，SDK仍�
 
 最终同一主/测试APK的`059-native-prompt-regression-fixed-device.log`重新单次运行上述7类，**49/49通过（602.313秒）**；对应input/result/runtime保留命令、哈希及真实观测。
 这不是隔离结果拼接首轮48/49，也不是0.5.9完整常规回归。该版后续R8构建/ARM64打包见`B13-AUDIO-CAPTURE-VALIDATION.md`，R8/ARM64运行和正式签名仍待；其他网站/嵌套滚动/键盘/固定元素/真机矩阵仍待。
+
+## 0.5.22 内置网页桥接启动修复
+
+第二组检查点的登录态下载、图片复制和网页视频识别曾在同一 APK 的不同进程中成功或失败。单独构建 `bridge-startup-diagnostic-01` 增加诊断日志后，用全新 API 35 x86_64 模拟器用户复现。Gecko 对首次内置扩展请求返回 `No listener for GeckoView:WebExtension:EnsureBuiltIn`，原进程在页面等待期限结束时仍未配置桥接。实际 uBlock 首装与拦截用例通过，Cookie 专项三项失败，合计 1/4，JUnit 99.005 秒。保留 `artifacts/m3-cached-ranges/bridge-startup-diagnostic-device-01/` 和 `artifacts/bridge-startup/diagnostic-native-startup.log`。
+
+修复针对 Gecko 尚未注册监听器的明确错误，以 50、100、200、400、750 毫秒的间隔顺序重试。每次都在前一个请求被拒绝后再发出。回调和重试属于当前启动，过期回调不会接管连接。页面仍使用原来的 1.5 秒等待上限，内置扩展装好后仍按普通和无痕范围处理请求。
+
+固定构建 `bridge-startup-fixed-01` 通过编译，712 项输入无漂移。Lint 0 错误、29 警告，引擎 JVM 133 通过、1 项 Windows 符号链接测试跳过。主 APK SHA-256 为 `44124b85a6768ef4b6e63e0be371d25a1bc1036bb012a42ca06cc93b075b51aa`，测试 APK 为 `3a9abf50d2ca6c439453ad66fe06d5ede5eea5466db893ae3f20ee8efbcc24f7`。使用同一固定包在独立 API 35 x86_64 SwiftShader 临时用户中运行：
+
+- `bridge-startup-fixed-cookie-01` 通过 4/4，JUnit 63.998 秒。实际出现三次监听器未就绪重试，随后桥接报告就绪。uBlock 首装、登录态下载、Cookie 刷新后恢复下载和普通/无痕隔离通过。
+- `bridge-startup-fixed-images-01` 为 14/15。首个无痕图片用例在实际长按前等待窗口焦点超时，当时 Android 打开了首次无痕通知授权弹窗。其他八项图片策略、三项浏览器核心和两项无痕表单清理均通过。保留原失败。
+- `bridge-startup-fixed-images-02` 在另一临时用户中预先允许 Android 通知，沿用同一主包、测试包及选择器，15/15 通过，JUnit 136.886 秒。实际复制和无痕图片的来源策略、Cookie 按时间删除、独立网站存储清理和无痕表单清理均通过。
+- `bridge-startup-fixed-media-01` 为 6/7，JUnit 113.332 秒。原先失败的媒体分类、请求头、网页播放位置交接断言已经通过，原生播放器也已打开，随后等待播放器就绪并播放超时。无痕视频识别、清晰度探测、无痕离线下载入口和两项网页播放交互通过。保留原失败及原生播放器日志。
+- `bridge-startup-fixed-handoff-02` 为 2/2，JUnit 51.933 秒。实际记录一次安装重试后桥接就绪，uBlock 首装与网页到原生播放器的交接均通过，验证了原生播放的请求头、起始位置和画中画。
+- `bridge-startup-fixed-media-02` 为 6/7，JUnit 89.659 秒。预先允许 Android 通知后重跑整组，媒体识别已通过原用例的分类与请求头断言，随后未收到内容端暂停和播放位置确认。两轮整组的交接失败点不同，隔离通过保留为独立结果。
+
+所有复测均核对已安装 APK 的 SHA-256 和大小，删除核对用的临时 APK，并在结束时移除临时用户、恢复原用户。未重跑完整常规回归，未构建新的 ARM64 包。网页到原生播放器的交接稳定性与真机仍待验证。

@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: MPL-2.0
 package app.miru.browser.engine
 
+import android.util.Log
 import java.util.UUID
 import java.net.URI
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -39,12 +41,11 @@ internal class CookieBridge(private val scope: CoroutineScope, private val store
     private var extension: WebExtension? = null
     private var port: Port? = null
     private var connected = CompletableDeferred<Unit>()
-    private var configured = CompletableDeferred<Unit>()
-    private class StartupAttempt(val generation: Long) {
+    private class StartupAttempt {
         val configured = CompletableDeferred<Unit>()
         val ready = CompletableDeferred<Unit>()
     }
-    private var startup = StartupAttempt(0)
+    private var startup = StartupAttempt()
     private val pending = mutableMapOf<String, CompletableDeferred<String?>>()
     private class ImageRelay(val tabId: String, val session: EngineSession, val pageUrl: String,
         val documentUrl: String, val documentNonce: String, val relayNonce: String, val port: Port, val sequence: Long)
@@ -76,8 +77,9 @@ internal class CookieBridge(private val scope: CoroutineScope, private val store
     } } }
 
     fun start(engine: GeckoEngine) {
-        val attempt = StartupAttempt(startup.generation + 1)
+        val attempt = StartupAttempt()
         startup = attempt
+        extension = null
         port = null
         connected = CompletableDeferred()
         pending.values.forEach { it.complete(null) }; pending.clear()
@@ -101,22 +103,45 @@ internal class CookieBridge(private val scope: CoroutineScope, private val store
                 override fun onPortMessage(message: Any, port: Port) {
                     if(!current()) return
                     val data = message as? JSONObject ?: return
-                    if(data.optString("kind") == "bridge-ready") { attempt.ready.complete(Unit); return }
+                    if(data.optString("kind") == "bridge-ready") {
+                        if (attempt.ready.complete(Unit)) Log.d("MiruCookieBridge", "background ready")
+                        return
+                    }
                     if (data.optString("kind") != "cookies") return
                     pending.remove(data.optString("id"))?.complete(if(data.optBoolean("error")) null else data.optString("cookie"))
                 }
             })
             attach()
-            configured.complete(Unit)
             attempt.configured.complete(Unit)
         }
-        engine.installBuiltInWebExtension("bridge@miru.app", "resource://android/assets/extensions/miru-bridge/", onSuccess = { value ->
-            if(startup !== attempt) return@installBuiltInWebExtension
-            // AC returns a replacement WebExtension after private-permission changes.
-            // Both background and content delegates must belong to that final instance.
-            if(value.isAllowedInPrivateBrowsing()) bindConfigured(value)
-            else engine.setAllowedInPrivateBrowsing(value, true, onSuccess = ::bindConfigured, onError = { bindConfigured(value) })
-        })
+        fun install(retryIndex: Int) {
+            engine.installBuiltInWebExtension("bridge@miru.app", "resource://android/assets/extensions/miru-bridge/",
+                onSuccess = { value ->
+                    if(startup !== attempt) return@installBuiltInWebExtension
+                    // AC returns a replacement WebExtension after private-permission changes.
+                    if(value.isAllowedInPrivateBrowsing()) bindConfigured(value)
+                    else engine.setAllowedInPrivateBrowsing(value, true, onSuccess = ::bindConfigured, onError = { bindConfigured(value) })
+                },
+                onError = { failure ->
+                    if (startup !== attempt) return@installBuiltInWebExtension
+                    val retryDelay = INSTALL_RETRY_DELAYS_MS.getOrNull(retryIndex)
+                    val listenerMissing = generateSequence<Throwable>(failure) { it.cause }
+                        .any { it.message == MISSING_INSTALL_LISTENER }
+                    if (retryDelay != null && listenerMissing) {
+                        // Gecko rejected the request before handling it. Retry when
+                        // its extension listener has had time to register.
+                        Log.d("MiruCookieBridge", "extension listener unavailable, retry ${retryIndex + 1}")
+                        scope.launch(Dispatchers.Main.immediate) {
+                            delay(retryDelay)
+                            if (startup === attempt) install(retryIndex + 1)
+                        }
+                    } else {
+                        Log.w("MiruCookieBridge", "built-in install failed", failure)
+                    }
+                },
+            )
+        }
+        install(retryIndex = 0)
     }
 
     /** The current startup keeps running after this bounded page-loading gate opens. */
@@ -312,7 +337,7 @@ internal class CookieBridge(private val scope: CoroutineScope, private val store
 
     suspend fun cookies(url: String, isPrivate: Boolean): String? = withContext(Dispatchers.Main.immediate) {
         withTimeoutOrNull(3_000) {
-            configured.await()
+            startup.configured.await()
             connected.await()
             val id = UUID.randomUUID().toString()
             val response = CompletableDeferred<String?>()
@@ -325,6 +350,8 @@ internal class CookieBridge(private val scope: CoroutineScope, private val store
     }
 
     companion object {
+        private const val MISSING_INSTALL_LISTENER = "No listener for GeckoView:WebExtension:EnsureBuiltIn"
+        private val INSTALL_RETRY_DELAYS_MS = listOf(50L, 100L, 200L, 400L, 750L)
         private val IMAGE_NONCE = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
         private val IMAGE_STAGES = setOf("press-identity", "target-mismatch", "meta-ambiguous", "baseline-unavailable", "target-invalid", "policy-live")
         private fun sameDocumentOrigin(left: String, right: String): Boolean = runCatching {
