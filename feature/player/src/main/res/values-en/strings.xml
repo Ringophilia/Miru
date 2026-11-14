@@ -15,6 +15,7 @@
     <string name="player_crop">Crop</string>
     <string name="player_stretch">Stretch</string>
     <string name="player_pip">Picture in picture</string>
+    <string name="player_background_playback">Background playback</string>
     <string name="player_rotate">Rotate screen</string>
     <string name="player_lock">Lock controls</string>
     <string name="player_unlock">Unlock controls</string>

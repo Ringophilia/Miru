@@ -32,6 +32,7 @@ data class PlayerPreferences(
     val superResMode: SuperResMode = SuperResMode.OFF,
     val superResTier: SuperResTier = SuperResTier.BALANCED,
     val superResDeviceCeiling: SuperResTier? = null,
+    val backgroundPlayback: Boolean = false,
 ) {
     companion object {
         fun dataSaverActive(metered: Boolean, status: Int): Boolean = metered && status in setOf(
@@ -62,6 +63,7 @@ class PlayerPreferencesRepository(context: Context) {
     private val volume = booleanPreferencesKey("gesture.volume")
     private val haptics = booleanPreferencesKey("gesture.haptics")
     private val pip = booleanPreferencesKey("player.autoPip")
+    private val background = booleanPreferencesKey("player.backgroundPlayback")
     private val webHold = booleanPreferencesKey("media.webLongPressSpeed")
     private val takeover = booleanPreferencesKey("media.autoTakeover")
     private val subtitleSize = floatPreferencesKey("subtitle.sizeSp")
@@ -75,7 +77,7 @@ class PlayerPreferencesRepository(context: Context) {
         p[subtitleSize] ?: 20f, p[subtitleMargin] ?: 0.08f, p[subtitleBackground] ?: 0.6f,
         SuperResMode.entries.firstOrNull { it.name == p[superMode] } ?: SuperResMode.OFF,
         SuperResTier.entries.firstOrNull { it.name == p[superTier] } ?: SuperResTier.BALANCED,
-        p[superCeiling]?.let { SuperResTier.entries.getOrNull(it) }).bounded()
+        p[superCeiling]?.let { SuperResTier.entries.getOrNull(it) }, backgroundPlayback = p[background] ?: false).bounded()
     val settings = store.data.catch { if(it is IOException) emit(emptyPreferences()) else throw it }.map(::decode)
     suspend fun update(transform: (PlayerPreferences) -> PlayerPreferences) {
         store.edit { p ->
@@ -83,6 +85,7 @@ class PlayerPreferencesRepository(context: Context) {
             p[cache] = next.cacheMb; p[buffer] = next.bufferSeconds; p[seek] = next.doubleTapSeconds; p[hold] = next.holdSpeed; p[drag] = next.dragRangeSeconds
             p[center] = next.centerDoubleTap; p[brightness] = next.brightnessGesture; p[volume] = next.volumeGesture; p[haptics] = next.haptics; p[pip] = next.autoPip
             p[webHold] = next.webHoldSpeed; p[takeover] = next.autoTakeover
+            p[background] = next.backgroundPlayback
             p[subtitleSize] = next.subtitleSizeSp; p[subtitleMargin] = next.subtitleBottomMargin; p[subtitleBackground] = next.subtitleBackgroundOpacity
             p[superMode] = next.superResMode.name; p[superTier] = next.superResTier.name
             next.superResDeviceCeiling?.let { p[superCeiling] = it.ordinal } ?: p.remove(superCeiling)

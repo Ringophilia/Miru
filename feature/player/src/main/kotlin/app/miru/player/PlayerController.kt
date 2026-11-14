@@ -3,7 +3,9 @@
 @file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 package app.miru.player
 
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.Uri
@@ -58,13 +60,45 @@ class PlayerController(
     private var cachedTimeline: PlayerCachedTimeline? = null
     var player: ExoPlayer? by mutableStateOf(null); private set
     private var videoSurface: Surface? = null
+    private var audioOnly = false
+    private var pausedForStop = false
 
     internal fun setVideoSurface(surface: Surface?) {
         videoSurface = surface?.takeIf { it.isValid && !released }
-        if (!released) player?.setVideoSurface(videoSurface)
+        if (!released && !audioOnly) player?.setVideoSurface(videoSurface)
+    }
+
+    internal fun setAudioOnly(enabled: Boolean) {
+        if (audioOnly == enabled) return
+        audioOnly = enabled
+        player?.let { target ->
+            target.setVideoSurface(videoSurface?.takeIf { !enabled && it.isValid })
+            applyTrackPreferences(target)
+        }
+    }
+
+    internal fun setPausedForStop(paused: Boolean) {
+        pausedForStop = paused
+        if (paused) pause()
     }
 
     private var mediaSession: MediaSession? = null
+    private var sessionService: PlayerService? = null
+
+    internal fun setSessionService(service: PlayerService?) {
+        if (sessionService === service) return
+        mediaSession?.let { sessionService?.removePlaybackSession(it) }
+        sessionService = service
+        mediaSession?.let { service?.addSession(it) }
+    }
+
+    private fun releaseSession() {
+        mediaSession?.let {
+            sessionService?.removePlaybackSession(it)
+            it.release()
+        }
+        mediaSession = null
+    }
     private var ticker: Job? = null
     private var startup: Job? = null
     private var initialization: Job? = null
@@ -125,7 +159,7 @@ class PlayerController(
         authentication?.cancel(); authentication = null
         initialization?.cancel()
         startup?.cancel(); ticker?.cancel()
-        mediaSession?.release(); mediaSession = null
+        releaseSession()
         player?.release(); player = null
         embeddedSubtitleText = ""
         embeddedCues = emptyList(); mutableCues.value = emptyList()
@@ -151,11 +185,20 @@ class PlayerController(
             val created = ExoPlayer.Builder(context, renderers).setLoadControl(load).build()
             // Surface creation can precede the asynchronous preferences/cache reads.
             // Bind the current route before prepare, including after decoder replacement.
-            videoSurface?.takeIf { it.isValid }?.let(created::setVideoSurface)
+            videoSurface?.takeIf { !audioOnly && it.isValid }?.let(created::setVideoSurface)
             player = created
             created.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
             created.setHandleAudioBecomingNoisy(true)
-            mediaSession = MediaSession.Builder(context, created).setId(java.util.UUID.randomUUID().toString()).build()
+            val sessionBuilder = MediaSession.Builder(context, created).setId(java.util.UUID.randomUUID().toString())
+            if (context is PlayerActivity && !request.isPrivate) {
+                val showPlayer = Intent(context, PlayerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                sessionBuilder.setSessionActivity(PendingIntent.getActivity(
+                    context, System.identityHashCode(context), showPlayer, PendingIntent.FLAG_IMMUTABLE,
+                ))
+            }
+            mediaSession = sessionBuilder.build().also {
+                sessionService?.addSession(it)
+            }
             // A completed offline item has an upstream-free factory for both manifests and
             // segments. Missing cache bytes fail locally instead of silently using mobile data.
             val item = (offline?.mediaItem?.buildUpon() ?: MediaItem.Builder().setUri(request.url))
@@ -216,7 +259,7 @@ class PlayerController(
             applyTrackPreferences(created, Tracks.EMPTY)
             created.setMediaSource(source, maxOf(position, saved))
             if(saved > 0) mutable.value = mutable.value.copy(resumed = true)
-            created.prepare(); created.playWhenReady = true
+            created.prepare(); created.playWhenReady = !pausedForStop
             speed(currentSpeed)
             watchStartup(created)
             ticker = scope.launch { while(isActive) { update(); if(System.currentTimeMillis() - lastSave >= 10_000) save(); delay(250) } }
@@ -368,6 +411,7 @@ class PlayerController(
     private fun applyTrackPreferences(target: Player, tracks: Tracks = target.currentTracks) {
         val builder = target.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitleMode in setOf("off", "local"))
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, audioOnly)
         fun apply(type: Int, id: String?) {
             if(id == null) return
             tracks.groups.forEach { group ->
@@ -559,6 +603,6 @@ class PlayerController(
         authentication?.cancel(); authentication = null
         runCatching { connectivity.unregisterNetworkCallback(networkCallback) }
         initialization?.cancel(); startup?.cancel(); ticker?.cancel()
-        mediaSession?.release(); mediaSession = null; player?.release(); player = null
+        releaseSession(); sessionService = null; player?.release(); player = null
     }
 }

@@ -39,6 +39,38 @@ class PlayerActivity : ComponentActivity() {
     private var receiverRegistered = false
     private var subtitlePickerOpen = false
     private var resumeAfterSubtitlePicker = false
+    private var backgroundServiceBound = false
+    private var backgroundService: PlayerService? = null
+    private val backgroundConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName, binder: android.os.IBinder) {
+            if (!backgroundServiceBound || isDestroyed) return
+            backgroundService = (binder as PlayerService.LocalBinder).service
+            playback.setSessionService(backgroundService)
+        }
+
+        override fun onServiceDisconnected(name: ComponentName) {
+            backgroundService = null
+            playback.setSessionService(null)
+            if (audioOnlyInBackground) playback.setPausedForStop(true)
+        }
+    }
+    private var audioOnlyInBackground = false
+
+    private fun syncBackgroundService(enabled: Boolean) {
+        if (enabled == backgroundServiceBound) return
+        if (enabled) {
+            val intent = Intent(this, PlayerService::class.java).setAction(PlayerService.ACTION_LOCAL_BIND)
+            backgroundServiceBound = bindService(intent, backgroundConnection, Context.BIND_AUTO_CREATE)
+        } else {
+            playback.setSessionService(null)
+            backgroundService = null
+            backgroundServiceBound = false
+            unbindService(backgroundConnection)
+        }
+    }
+
+    private fun backgroundEnabled(options: PlayerPreferences = playback.preferences.value): Boolean =
+        options.backgroundPlayback && !request.isPrivate
     private val subtitlePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         subtitlePickerOpen = false
         if(::playback.isInitialized && !isFinishing) {
@@ -80,6 +112,14 @@ class PlayerActivity : ComponentActivity() {
             }
             updatePip()
         } }
+        scope.launch {
+            playback.preferences.collect { options ->
+                val enabled = backgroundEnabled(options)
+                if (!enabled && audioOnlyInBackground) playback.setPausedForStop(true)
+                syncBackgroundService(enabled)
+                updatePip()
+            }
+        }
         setContent {
             PlayerScreen(playback, pip, onBack = ::handleBack, onReturnToWeb = ::returnToWeb, onPip = ::enterPip,
                 onOrientation = ::toggleOrientation,
@@ -145,17 +185,37 @@ class PlayerActivity : ComponentActivity() {
         }
         return PictureInPictureParams.Builder().setAspectRatio(Rational((ratio * 1000).toInt(), 1000)).setActions(actions)
             .setSourceRectHint(videoBounds?.takeIf { it.width() > 0 && it.height() > 0 } ?: Rect().also { window.decorView.getGlobalVisibleRect(it) })
-            .apply { if(Build.VERSION.SDK_INT >= 31) setAutoEnterEnabled(state.playing && playback.preferences.value.autoPip && !failed && !subtitlePickerOpen) }.build()
+            .apply { if(Build.VERSION.SDK_INT >= 31) setAutoEnterEnabled(canAutoEnterPip()) }.build()
     }
     private fun updatePip() { if(::playback.isInitialized && packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) runCatching { setPictureInPictureParams(pipParams()) } }
     fun enterPip() { if(::playback.isInitialized && playback.state.value.ready && packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) runCatching { enterPictureInPictureMode(pipParams()) } }
-    override fun onUserLeaveHint() { super.onUserLeaveHint(); if(::playback.isInitialized && !subtitlePickerOpen && playback.state.value.playing && playback.preferences.value.autoPip) enterPip() }
+    private fun canAutoEnterPip(): Boolean = playback.state.value.playing && playback.preferences.value.autoPip &&
+        !failed && !subtitlePickerOpen && !backgroundEnabled()
+    override fun onUserLeaveHint() { super.onUserLeaveHint(); if(::playback.isInitialized && canAutoEnterPip()) enterPip() }
     override fun onPictureInPictureModeChanged(inPictureInPictureMode: Boolean, newConfig: Configuration) { super.onPictureInPictureModeChanged(inPictureInPictureMode, newConfig); pip = inPictureInPictureMode }
-    override fun onStop() { if(::playback.isInitialized && !isInPictureInPictureMode) playback.pause(); super.onStop() }
+    override fun onStart() {
+        super.onStart()
+        if (!::playback.isInitialized) return
+        audioOnlyInBackground = false
+        playback.setPausedForStop(false)
+        playback.setAudioOnly(false)
+    }
+
+    override fun onStop() {
+        if (::playback.isInitialized && !isInPictureInPictureMode) {
+            audioOnlyInBackground = backgroundEnabled() && backgroundService != null && !isFinishing && !subtitlePickerOpen
+            playback.setPausedForStop(!audioOnlyInBackground)
+            if (audioOnlyInBackground) playback.setAudioOnly(true)
+        }
+        super.onStop()
+    }
     override fun onSaveInstanceState(outState: Bundle) { super.onSaveInstanceState(outState) /* No media URL, title or headers in saved state. */ }
     override fun onDestroy() {
         if(receiverRegistered) unregisterReceiver(receiver)
-        if(::playback.isInitialized) playback.release()
+        if(::playback.isInitialized) {
+            syncBackgroundService(false)
+            playback.release()
+        }
         if(::request.isInitialized && isFinishing) request.onReturn?.invoke(failed)
         // Let the final bounded progress write finish; no player survives this Activity.
         scope.launch { delay(500); scope.cancel() }

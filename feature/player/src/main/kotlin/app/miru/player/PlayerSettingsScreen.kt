@@ -71,6 +71,7 @@ fun PlayerSettingsScreen(repository: PlayerPreferencesRepository, snackbar: Snac
             PlayerGroup(R.string.player_behavior)
             PlayerSwitch(R.string.player_web_hold, options.webHoldSpeed) { value -> change { it.copy(webHoldSpeed = value) } }
             PlayerSwitch(R.string.player_auto_takeover, options.autoTakeover) { value -> change { it.copy(autoTakeover = value) } }
+            PlayerSwitch(R.string.player_background_playback, options.backgroundPlayback) { value -> change { it.copy(backgroundPlayback = value) } }
             PlayerSwitch(R.string.player_auto_pip, options.autoPip) { value -> change { it.copy(autoPip = value) } }
         }
     }
