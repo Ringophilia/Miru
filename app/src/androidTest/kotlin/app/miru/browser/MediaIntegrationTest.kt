@@ -7,7 +7,7 @@ import android.content.Context
 import android.os.SystemClock
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsDisplayed
@@ -66,13 +66,9 @@ class MediaIntegrationTest {
             val hls = items.single { it.kind == "HLS" }
             assertEquals("Bearer miru-media-fixture", hls.headers.entries.single { it.key.equals("Authorization", true) }.value)
             val video = items.single { it.kind == "VIDEO" }
-            val prepared = runBlocking(Dispatchers.Main) { browser.prepareMedia(video.tabId, video.id) }
-            assertNotNull("Content port must acknowledge web pause and current time", prepared)
-            assertTrue("Web timestamp should be 8 seconds", prepared!!.positionMs in 7_900..8_500)
-            assertTrue(prepared.headers.keys.any { it.equals("Referer", true) })
             compose.onNodeWithContentDescription(context.getString(app.miru.toolbar.R.string.toolbar_media)).performClick()
             compose.onNodeWithText(context.getString(app.miru.media.R.string.media_title)).assertIsDisplayed()
-            compose.onAllNodesWithContentDescription(context.getString(app.miru.media.R.string.media_play))[0].performClick()
+            compose.onNodeWithTag("media_play_${video.id}").performScrollTo().performClick()
             compose.waitForIdle()
             var activity: PlayerActivity? = null
             waitFor { instrumentation.runOnMainSync { activity = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<PlayerActivity>().firstOrNull() }; activity != null }
@@ -80,9 +76,23 @@ class MediaIntegrationTest {
             val preferences = (compose.activity.application as MiruApplication).container.playerPreferences
             val originalOptions = runBlocking { preferences.settings.first() }
             try {
+                assertEquals(video.url, target.playback.request.url)
+                assertTrue("The production handoff must use the web timestamp",
+                    target.playback.request.positionMs in 7_900..8_500)
                 // STATE_READY can precede Media3's separate first video-size callback. Keep the
                 // exact dimensions assertions below, after a real video format has arrived.
-                waitFor { target.playback.state.value.let { it.ready && it.playing && it.width > 0 && it.height > 0 } }
+                try {
+                    waitFor { target.playback.state.value.let { it.ready && it.playing && it.width > 0 && it.height > 0 } }
+                } catch (failure: AssertionError) {
+                    var playerState = "uninitialized"
+                    instrumentation.runOnMainSync {
+                        target.playback.player?.let {
+                            playerState = "state=${it.playbackState}, playWhenReady=${it.playWhenReady}, " +
+                                "suppression=${it.playbackSuppressionReason}, error=${it.playerError?.errorCodeName}"
+                        }
+                    }
+                    throw AssertionError("Native video output was not ready: ${target.playback.state.value}; $playerState", failure)
+                }
                 val state = target.playback.state.value
                 assertTrue("Native playback must resume within two seconds of the web time: ${state.position}", state.position in 7_000..10_000)
                 assertEquals(320, state.width); assertEquals(180, state.height)

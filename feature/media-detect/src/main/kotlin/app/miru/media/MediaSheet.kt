@@ -63,7 +63,9 @@ fun MediaSheet(
                                 if(onDownload != null) IconButton(onClick = { onDownload(item) }, enabled = item.playable, modifier = Modifier.testTag("media_download_${item.id}")) {
                                     Icon(Icons.Outlined.Download, stringResource(R.string.media_download))
                                 }
-                                IconButton(onClick = { onPlay(item) }, enabled = item.playable) { Icon(Icons.Outlined.PlayArrow, stringResource(R.string.media_play)) }
+                                IconButton(onClick = { onPlay(item) }, enabled = item.playable, modifier = Modifier.testTag("media_play_${item.id}")) {
+                                    Icon(Icons.Outlined.PlayArrow, stringResource(R.string.media_play))
+                                }
                             }
                         },
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),

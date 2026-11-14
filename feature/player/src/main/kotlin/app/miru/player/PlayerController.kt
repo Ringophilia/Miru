@@ -8,6 +8,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.view.Surface
 import app.miru.offline.OfflineCoordinator
 import androidx.media3.common.*
 import androidx.media3.datasource.*
@@ -56,6 +57,13 @@ class PlayerController(
     val diskRanges = mutableDiskRanges.asStateFlow()
     private var cachedTimeline: PlayerCachedTimeline? = null
     var player: ExoPlayer? by mutableStateOf(null); private set
+    private var videoSurface: Surface? = null
+
+    internal fun setVideoSurface(surface: Surface?) {
+        videoSurface = surface?.takeIf { it.isValid && !released }
+        if (!released) player?.setVideoSurface(videoSurface)
+    }
+
     private var mediaSession: MediaSession? = null
     private var ticker: Job? = null
     private var startup: Job? = null
@@ -141,6 +149,9 @@ class PlayerController(
             val (minimum, maximum) = options.bufferMillis(dataSaver)
             val load = DefaultLoadControl.Builder().setBufferDurationsMs(minimum, maximum, 1_000, 2_500).setBackBuffer(30_000, true).build()
             val created = ExoPlayer.Builder(context, renderers).setLoadControl(load).build()
+            // Surface creation can precede the asynchronous preferences/cache reads.
+            // Bind the current route before prepare, including after decoder replacement.
+            videoSurface?.takeIf { it.isValid }?.let(created::setVideoSurface)
             player = created
             created.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
             created.setHandleAudioBecomingNoisy(true)
@@ -537,6 +548,7 @@ class PlayerController(
         if(released) return
         save()
         released = true; sourceRevision++; previewRevision++; speedRevision++; subtitleImportRevision++
+        videoSurface = null
         cachedTimeline?.close(); cachedTimeline = null; mutableDiskRanges.value = emptyList()
         mainSourceSession?.close(); mainSourceSession = null
         previewSource = null

@@ -8,19 +8,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.Player
 import app.miru.superres.*
 
 @Composable
 internal fun PlayerVideoOutput(controller: PlayerController, state: PlayerSnapshot,
     preferences: PlayerPreferences, pip: Boolean, fit: Int, compareSplit: Float,
     onStatus: (SuperResViewState) -> Unit, modifier: Modifier = Modifier) {
-    val currentPlayer = rememberUpdatedState(controller.player)
     val statusCallback = rememberUpdatedState(onStatus)
-    val binding = remember { arrayOfNulls<Player>(1) }
     AndroidView(factory = { context -> RoutedVideoView(context).apply {
         keepScreenOn = true
-        setDecoderSurfaceListener { surface -> currentPlayer.value?.setVideoSurface(surface) }
+        setDecoderSurfaceListener(controller::setVideoSurface)
         onStatusChanged = { statusCallback.value(it) }
         onError = { message -> Toast.makeText(context, context.getString(R.string.player_superres_failed, message), Toast.LENGTH_LONG).show() }
         onProtection = { action ->
@@ -36,7 +33,6 @@ internal fun PlayerVideoOutput(controller: PlayerController, state: PlayerSnapsh
             if(text != null) Toast.makeText(context, text, Toast.LENGTH_LONG).show()
         }
     } }, modifier = modifier.testTag("player_video_output"), update = { view ->
-        if(binding[0] !== currentPlayer.value) { binding[0] = currentPlayer.value; view.rebindDecoderSurface() }
         view.configure(SuperResViewConfig(mode = preferences.superResMode, tier = preferences.superResTier,
             title = controller.request.title, pageUrl = controller.request.pageUrl,
             sourceWidth = state.width, sourceHeight = state.height, pixelWidthHeightRatio = state.format.pixelWidthHeightRatio,
@@ -45,5 +41,5 @@ internal fun PlayerVideoOutput(controller: PlayerController, state: PlayerSnapsh
             compareSplit = compareSplit, deviceCeiling = preferences.superResDeviceCeiling))
         val layout = controller.videoLayoutSize
         view.setVideoLayoutSize(layout.width, layout.height, layout.pixelWidthHeightRatio)
-    }, onRelease = { it.dispose(); binding[0] = null })
+    }, onRelease = { it.dispose() })
 }
