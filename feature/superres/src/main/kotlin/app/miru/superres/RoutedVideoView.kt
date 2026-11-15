@@ -66,6 +66,7 @@ class RoutedVideoView @JvmOverloads constructor(
     private val main = Handler(Looper.getMainLooper())
     private val power = context.getSystemService(PowerManager::class.java)
     private var config = SuperResViewConfig()
+    private var zoom = VideoZoom()
     // Replacing a decoder temporarily reports an unknown video size. Resizing the
     // direct Surface to the whole viewport during that gap can discard its first
     // paused frame. Retain only layout geometry; routing still uses current input
@@ -174,6 +175,23 @@ class RoutedVideoView @JvmOverloads constructor(
         requestLayout()
     }
 
+    /** Scale the display layer without resizing decoder buffers or rebuilding the shader chain. */
+    fun setVideoZoom(next: VideoZoom) {
+        checkMain()
+        if (disposed || zoom == next) return
+        zoom = next
+        applyVideoZoom()
+        publish()
+    }
+
+    private fun applyVideoZoom() {
+        val bounded = zoom.clamp(baseImageRect(width, height), width, height)
+        surfaceView.scaleX = bounded.scale
+        surfaceView.scaleY = bounded.scale
+        surfaceView.translationX = bounded.panX * width
+        surfaceView.translationY = bounded.panY * height
+    }
+
     fun setCompare(split: Float) {
         checkMain()
         if(disposed) return
@@ -186,11 +204,14 @@ class RoutedVideoView @JvmOverloads constructor(
         inputWidth = config.sourceWidth, inputHeight = config.sourceHeight,
         viewportWidth = width, viewportHeight = height, imageRect = imageRect(), error = failure)
     fun state(): SuperResViewState = published
-    fun imageRect(): SuperResImageRect = SuperResPolicy.imageRect(config.sourceWidth, config.sourceHeight,
-        width, height, config.fit, config.pixelWidthHeightRatio)
+    private fun baseImageRect(w: Int, h: Int): SuperResImageRect =
+        SuperResPolicy.imageRect(layoutSourceWidth, layoutSourceHeight, w, h, config.fit, layoutPixelRatio)
+
+    fun imageRect(): SuperResImageRect = zoom.imageRect(baseImageRect(width, height), width, height)
 
     fun decision(): SuperResDecision {
-        val rect = imageRect()
+        val rect = SuperResPolicy.imageRect(config.sourceWidth, config.sourceHeight,
+            width, height, config.fit, config.pixelWidthHeightRatio)
         return SuperResPolicy.decide(config.mode, config.tier, config.sourceWidth, config.sourceHeight,
             rect.width, rect.height, config.title, config.pageUrl, config.speed, config.hdr,
             config.protectedContent, config.pip, if(thermalDisabled) maxOf(3, thermalStatus) else thermalStatus,
@@ -279,12 +300,13 @@ class RoutedVideoView @JvmOverloads constructor(
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         val rect = childRect(right - left, bottom - top)
         surfaceView.layout(rect.left.roundToInt(), rect.top.roundToInt(), rect.right.roundToInt(), rect.bottom.roundToInt())
+        applyVideoZoom()
+        publish()
     }
 
     private fun childRect(w: Int, h: Int): SuperResImageRect {
         if(glLayout) return SuperResImageRect(0f, 0f, w.toFloat(), h.toFloat())
-        return SuperResPolicy.imageRect(layoutSourceWidth, layoutSourceHeight, w, h,
-            config.fit, layoutPixelRatio).takeIf { it.width > 0 && it.height > 0 }
+        return baseImageRect(w, h).takeIf { it.width > 0 && it.height > 0 }
             ?: SuperResImageRect(0f, 0f, w.toFloat(), h.toFloat())
     }
 

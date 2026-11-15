@@ -62,6 +62,9 @@ import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.common.text.Cue
 import kotlinx.coroutines.delay
 import app.miru.superres.SuperResViewState
+import app.miru.superres.SuperResFit
+import app.miru.superres.SuperResPolicy
+import app.miru.superres.VideoZoom
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -98,7 +101,17 @@ fun PlayerScreen(
     var compare by remember { mutableStateOf(false) }
     var split by remember { mutableFloatStateOf(.5f) }
     var output by remember { mutableStateOf(SuperResViewState()) }
-    var fit by remember { mutableIntStateOf(0) }
+    var fit by remember(controller) { mutableStateOf(SuperResFit.CONTAIN) }
+    var zoom by remember(controller) { mutableStateOf<VideoZoom?>(null) }
+    val fitLabel = when(fit) {
+        SuperResFit.CONTAIN -> R.string.player_fit
+        SuperResFit.COVER -> R.string.player_crop
+        SuperResFit.FILL -> R.string.player_stretch
+    }
+    val cycleFit = {
+        zoom = null
+        fit = SuperResFit.entries[(fit.ordinal + 1) % SuperResFit.entries.size]
+    }
     var drag by remember(controller) { mutableStateOf<Float?>(null) }
     var dragSourceRevision by remember(controller) { mutableStateOf<Long?>(null) }
     var dragOwner by remember(controller) { mutableStateOf<Any?>(null) }
@@ -121,7 +134,33 @@ fun PlayerScreen(
         SeekSliderInteractionSource(onCancel = { if(dragOwner === seekOwner) cancelSeek() })
     }
     var buffering by remember { mutableStateOf(false) }
-    val touch = remember(controller) { PlayerTouch(activity, controller, { visible = !visible }, { overlay = it }) }
+    val touch = remember(controller) {
+        fun zoomFor(width: Int, height: Int): PlayerZoom? {
+            val size = controller.videoLayoutSize
+            if (size.width <= 0 || size.height <= 0) return null
+            val baseFit = if (fit == SuperResFit.FILL) SuperResFit.FILL else SuperResFit.CONTAIN
+            return PlayerZoom(SuperResPolicy.imageRect(
+                size.width, size.height, width, height, baseFit, size.pixelWidthHeightRatio,
+            ), width, height)
+        }
+        PlayerTouch(activity, controller, { visible = !visible }, { overlay = it },
+            transform = { previous, next, width, height ->
+                zoomFor(width, height)?.let { geometry ->
+                    val initialScale = if (fit == SuperResFit.COVER) geometry.coverScale.coerceIn(1f, 3f) else 1f
+                    zoom = geometry.next(zoom ?: VideoZoom(initialScale), next.distance / previous.distance,
+                        previous.x, previous.y, next.x, next.y)
+                }
+            },
+            finishZoom = { width, height ->
+                zoom?.let { current ->
+                    zoomFor(width, height)?.snap(current.scale)?.let { snapped ->
+                        if (fit != SuperResFit.FILL) fit = snapped
+                        zoom = null
+                    }
+                }
+            },
+        )
+    }
     SideEffect { touch.locked = locked }
     SideEffect {
         if((!seekEnabled || dragSourceRevision?.let { it != state.sourceRevision } == true) &&
@@ -157,12 +196,14 @@ fun PlayerScreen(
             val bounds = coordinates.boundsInWindow()
             onVideoBounds(Rect(bounds.left.toInt(), bounds.top.toInt(), bounds.right.toInt(), bounds.bottom.toInt()))
         }) {
-            PlayerVideoOutput(controller, state, preferences, pip, fit, if(compare) split else 0f, { output = it }, Modifier.fillMaxSize())
+            val shownFit = if (!pip && zoom != null && fit != SuperResFit.FILL) SuperResFit.CONTAIN else fit
+            PlayerVideoOutput(controller, state, preferences, pip, shownFit,
+                (if (pip) null else zoom) ?: VideoZoom(), if(compare) split else 0f, { output = it }, Modifier.fillMaxSize())
             if(cues.isNotEmpty()) AndroidView(factory = { SubtitleView(it) }, modifier = Modifier.fillMaxSize().testTag("player_subtitle_text"), update = {
                 applySubtitleStyle(it, preferences)
                 it.setCues(cues)
             })
-            if(!pip) Box(Modifier.fillMaxSize().onSizeChanged { touch.width = it.width.toFloat(); touch.height = it.height.toFloat() }.pointerInteropFilter(onTouchEvent = touch::event))
+            if(!pip) Box(Modifier.fillMaxSize().onSizeChanged { touch.resize(it.width, it.height) }.pointerInteropFilter(onTouchEvent = touch::event))
             if(buffering && !pip && !state.error && !state.timedOut) CircularProgressIndicator(Modifier.align(Alignment.Center).size(40.dp), color = Color.White, strokeWidth = 2.5.dp)
             overlay?.takeIf { !pip }?.let { Text(it, Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = 0.7f)).padding(20.dp), color = Color.White, style = MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = "tnum")) }
             androidx.compose.animation.AnimatedVisibility(visible = visible && !pip, enter = fadeIn(), exit = fadeOut()) {
@@ -245,7 +286,7 @@ fun PlayerScreen(
                                 Text("${playerTime(state.position)} / ${playerTime(state.duration)}", Modifier.weight(1f), color = Color.White, style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"))
                                 if(!embedded) {
                                     TextButton(onClick = { speedPanel = true }) { Text("${state.speed}x") }
-                                    TextButton(onClick = { fit = (fit + 1) % 3 }) { Text(stringResource(when(fit) { 1 -> R.string.player_crop; 2 -> R.string.player_stretch; else -> R.string.player_fit })) }
+                                    TextButton(onClick = cycleFit) { Text(stringResource(fitLabel)) }
                                 }
                                 IconButton(onClick = onPip) { Icon(Icons.Outlined.PictureInPictureAlt, stringResource(R.string.player_pip), tint = Color.White) }
                                 IconButton(onClick = onOrientation) {
@@ -275,7 +316,7 @@ fun PlayerScreen(
             if(state.width > 0 && state.height > 0) Text(stringResource(R.string.player_source_resolution, playerResolutionLabel(state.width, state.height), state.width, state.height), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { speedPanel = true }) { Text(stringResource(R.string.player_speed_value, state.speed.toString())) }
-                OutlinedButton(onClick = { fit = (fit + 1) % 3 }) { Text(stringResource(when(fit) { 1 -> R.string.player_crop; 2 -> R.string.player_stretch; else -> R.string.player_fit })) }
+                OutlinedButton(onClick = cycleFit) { Text(stringResource(fitLabel)) }
             }
             TextButton(onClick = { decoderPanel = true }) { Text(stringResource(R.string.player_playback_options)) }
             TextButton(onClick = { tracksPanel = true }, modifier = Modifier.testTag("player_tracks")) { Text(stringResource(R.string.player_tracks)) }

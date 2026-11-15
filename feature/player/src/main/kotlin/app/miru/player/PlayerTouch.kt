@@ -13,9 +13,20 @@ import kotlin.math.abs
 import kotlin.math.hypot
 
 /** Gesture thresholds mirror Ringo-Cove; all speed mutations are queued on the player dispatcher. */
-internal class PlayerTouch(private val activity: Activity, private val playback: PlayerController, private val controls: () -> Unit, private val feedback: (String?) -> Unit) {
+internal class PlayerTouch(
+    private val activity: Activity,
+    private val playback: PlayerController,
+    private val controls: () -> Unit,
+    private val feedback: (String?) -> Unit,
+    private val transform: (PinchSample, PinchSample, Int, Int) -> Unit,
+    private val finishZoom: (Int, Int) -> Unit,
+) {
     var locked = false
-    var width = 1f; var height = 1f
+    private var width = 1f; private var height = 1f
+    private var pinch: PinchSample? = null
+    private var pinchChangedScale = false
+    private var pinchStartDistance = 0f
+    private var multiTouch = false
     private val handler = Handler(Looper.getMainLooper())
     private val density = activity.resources.displayMetrics.density
     private val audio = activity.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -35,7 +46,67 @@ internal class PlayerTouch(private val activity: Activity, private val playback:
             playback.speed(speed); feedback(activity.getString(R.string.player_hold_feedback, speed)); haptic()
         }
     }
+
+    fun resize(newWidth: Int, newHeight: Int) {
+        width = newWidth.coerceAtLeast(1).toFloat()
+        height = newHeight.coerceAtLeast(1).toFloat()
+        pinch = null
+        pinchChangedScale = false
+    }
+
+    private fun sample(event: MotionEvent): PinchSample {
+        val x = event.getX(0)
+        val y = event.getY(0)
+        val otherX = event.getX(1)
+        val otherY = event.getY(1)
+        return PinchSample((x + otherX) / 2f, (y + otherY) / 2f, hypot(otherX - x, otherY - y))
+    }
+
+    private fun stopSingleTouch() {
+        handler.removeCallbacks(hold)
+        handler.removeCallbacks(single)
+        handler.removeCallbacks(clear)
+        if (mode == 3) playback.speed(originalSpeed)
+        mode = 5
+        lastTap = 0
+        streak = 0
+        feedback(null)
+    }
+
     fun event(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            multiTouch = false
+            pinch = null
+        }
+        if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
+            if (!multiTouch) stopSingleTouch()
+            multiTouch = true
+            pinch = if (!locked && event.pointerCount == 2) sample(event) else null
+            pinchChangedScale = false
+            pinchStartDistance = pinch?.distance ?: 0f
+            return true
+        }
+        if (multiTouch) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> if (!locked && event.pointerCount == 2) {
+                    val next = sample(event)
+                    val previous = pinch
+                    if (previous != null && previous.distance > 0f && next.distance > 0f && next != previous) {
+                        pinchChangedScale = pinchChangedScale || abs(next.distance / pinchStartDistance - 1f) > .015f
+                        transform(previous, next, width.toInt(), height.toInt())
+                    }
+                    if (previous == null || pinchStartDistance <= 0f) pinchStartDistance = next.distance
+                    pinch = next
+                }
+                MotionEvent.ACTION_POINTER_UP -> {
+                    if (!locked && pinchChangedScale && event.pointerCount == 2) finishZoom(width.toInt(), height.toInt())
+                    pinch = null
+                    pinchChangedScale = false
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> pinch = null
+            }
+            return true
+        }
         when(event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 mode = 0; downX = event.x; downY = event.y
@@ -90,13 +161,14 @@ internal class PlayerTouch(private val activity: Activity, private val playback:
                 mode = 0; handler.postDelayed(clear, 750)
             }
             MotionEvent.ACTION_CANCEL -> { handler.removeCallbacks(hold); if(mode == 3) playback.speed(originalSpeed); mode = 0; feedback(null) }
-            MotionEvent.ACTION_POINTER_DOWN -> { handler.removeCallbacks(hold); if(mode == 3) playback.speed(originalSpeed); mode = 5 }
         }
         return true
     }
     fun dispose() { handler.removeCallbacksAndMessages(null); if(mode == 3) playback.speed(originalSpeed) }
     private fun haptic() { if(playback.preferences.value.haptics) activity.window.decorView.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK) }
 }
+
+internal data class PinchSample(val x: Float, val y: Float, val distance: Float)
 
 internal fun playerTime(milliseconds: Long): String {
     val seconds = milliseconds.coerceAtLeast(0) / 1000

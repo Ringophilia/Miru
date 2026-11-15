@@ -12,7 +12,7 @@ import app.miru.superres.*
 
 @Composable
 internal fun PlayerVideoOutput(controller: PlayerController, state: PlayerSnapshot,
-    preferences: PlayerPreferences, pip: Boolean, fit: Int, compareSplit: Float,
+    preferences: PlayerPreferences, pip: Boolean, fit: SuperResFit, zoom: VideoZoom, compareSplit: Float,
     onStatus: (SuperResViewState) -> Unit, modifier: Modifier = Modifier) {
     val statusCallback = rememberUpdatedState(onStatus)
     AndroidView(factory = { context -> RoutedVideoView(context).apply {
@@ -37,9 +37,10 @@ internal fun PlayerVideoOutput(controller: PlayerController, state: PlayerSnapsh
             title = controller.request.title, pageUrl = controller.request.pageUrl,
             sourceWidth = state.width, sourceHeight = state.height, pixelWidthHeightRatio = state.format.pixelWidthHeightRatio,
             frameRate = state.format.frameRate, hdr = state.format.hdr, protectedContent = state.format.protectedContent,
-            speed = state.speed, pip = pip, fit = when(fit) { 1 -> SuperResFit.COVER; 2 -> SuperResFit.FILL; else -> SuperResFit.CONTAIN },
+            speed = state.speed, pip = pip, fit = fit,
             compareSplit = compareSplit, deviceCeiling = preferences.superResDeviceCeiling))
         val layout = controller.videoLayoutSize
         view.setVideoLayoutSize(layout.width, layout.height, layout.pixelWidthHeightRatio)
+        view.setVideoZoom(zoom)
     }, onRelease = { it.dispose() })
 }
