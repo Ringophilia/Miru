@@ -6,6 +6,24 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PlaybackPolicyTest {
+    @Test fun holdSpeedStepsAreSymmetricAndClampAtTheEnds() {
+        assertEquals(2f, PlayerGestures.holdSpeedAt(2f, 39.9f))
+        assertEquals(2f, PlayerGestures.holdSpeedAt(2f, -39.9f))
+        assertEquals(2.5f, PlayerGestures.holdSpeedAt(2f, 40f))
+        assertEquals(3f, PlayerGestures.holdSpeedAt(2f, 80f))
+        assertEquals(3f, PlayerGestures.holdSpeedAt(2f, 600f))
+        assertEquals(1.5f, PlayerGestures.holdSpeedAt(2f, -40f))
+        assertEquals(1.5f, PlayerGestures.holdSpeedAt(2f, -600f))
+    }
+
+    @Test fun holdSpeedKeepsSavedValueUntilTheFirstFullStep() {
+        assertEquals(2.25f, PlayerGestures.holdSpeedAt(2.25f, 0f))
+        assertEquals(2.5f, PlayerGestures.holdSpeedAt(2.25f, 40f))
+        assertEquals(2f, PlayerGestures.holdSpeedAt(2.25f, -40f))
+        assertEquals(1.5f, PlayerGestures.holdSpeedAt(1.25f, 40f))
+        assertEquals(2.5f, PlayerGestures.holdSpeedAt(3f, -40f))
+    }
+
     @Test fun playbackOptionsBoundInvalidValuesAndDataSaverKeepsValidBuffers() {
         val invalid = PlayerPreferences(cacheMb = -1, bufferSeconds = -1, doubleTapSeconds = 999, holdSpeed = Float.NaN, dragRangeSeconds = -1).bounded()
         assertEquals(128, invalid.cacheMb)

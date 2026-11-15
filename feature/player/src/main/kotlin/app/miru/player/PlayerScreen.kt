@@ -94,6 +94,7 @@ fun PlayerScreen(
     var visible by remember { mutableStateOf(true) }
     var locked by remember { mutableStateOf(false) }
     var overlay by remember { mutableStateOf<String?>(null) }
+    var holdSpeed by remember { mutableStateOf<Float?>(null) }
     var speedPanel by remember { mutableStateOf(false) }
     var decoderPanel by remember { mutableStateOf(false) }
     var tracksPanel by remember { mutableStateOf(false) }
@@ -143,7 +144,7 @@ fun PlayerScreen(
                 size.width, size.height, width, height, baseFit, size.pixelWidthHeightRatio,
             ), width, height)
         }
-        PlayerTouch(activity, controller, { visible = !visible }, { overlay = it },
+        PlayerTouch(activity, controller, { visible = !visible }, { overlay = it }, { holdSpeed = it },
             transform = { previous, next, width, height ->
                 zoomFor(width, height)?.let { geometry ->
                     val initialScale = if (fit == SuperResFit.COVER) geometry.coverScale.coerceIn(1f, 3f) else 1f
@@ -173,6 +174,7 @@ fun PlayerScreen(
                 Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_DESTROY -> {
                     lifecycleActive = false
                     cancelSeek()
+                    touch.cancel()
                 }
                 else -> Unit
             }
@@ -185,7 +187,7 @@ fun PlayerScreen(
     }
     LaunchedEffect(embedded) { onEmbeddedModeChanged(embedded) }
     LaunchedEffect(locked) { onLockChanged(locked) }
-    DisposableEffect(touch) { onDispose { touch.dispose() } }
+    DisposableEffect(touch) { onDispose { touch.cancel() } }
     LaunchedEffect(state.buffering) { buffering = false; if(state.buffering) { delay(300); buffering = true } }
     LaunchedEffect(visible, state.playing, locked, speedPanel, decoderPanel, tracksPanel, qualityPanel, drag != null) { if(visible && state.playing && drag == null && !speedPanel && !decoderPanel && !tracksPanel && !qualityPanel) { delay(3_000); if(drag == null) visible = false } }
     BackHandler { if(locked) { locked = false; visible = true } else onBack() }
@@ -217,7 +219,7 @@ fun PlayerScreen(
                             if(!embedded) IconButton(onClick = { tracksPanel = true }, modifier = Modifier.testTag("player_tracks")) { Icon(Icons.Outlined.Subtitles, stringResource(R.string.player_tracks), tint = Color.White) }
                             IconButton(onClick = { decoderPanel = true }) { Icon(Icons.Outlined.Settings, stringResource(R.string.player_playback_options), tint = Color.White) }
                         }
-                        if(overlay == null) Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+                        if(overlay == null && holdSpeed == null) Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(32.dp)) {
                             IconButton(onClick = { controller.seekBy(-10_000) }) { Icon(Icons.Outlined.Replay10, stringResource(R.string.player_rewind), tint = Color.White) }
                             IconButton(onClick = controller::toggle, modifier = Modifier.size(64.dp)) { Icon(if(state.playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, stringResource(if(state.playing) R.string.player_pause else R.string.player_play), Modifier.size(56.dp), tint = Color.White) }
                             IconButton(onClick = { controller.seekBy(10_000) }) { Icon(Icons.Outlined.Forward10, stringResource(R.string.player_forward), tint = Color.White) }
@@ -298,6 +300,12 @@ fun PlayerScreen(
                     }
                     IconButton(onClick = { locked = !locked }, modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp)) { Icon(if(locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen, stringResource(if(locked) R.string.player_unlock else R.string.player_lock), tint = Color.White) }
                 }
+            }
+            holdSpeed?.takeUnless { pip }?.let { speed ->
+                Text(stringResource(R.string.player_hold_feedback, speed),
+                    Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(top = 24.dp)
+                        .background(Color(0xDD202024), CircleShape).padding(horizontal = 16.dp, vertical = 8.dp),
+                    color = Color.White, style = MaterialTheme.typography.titleMedium)
             }
             if((state.error || state.timedOut) && !pip) Surface(Modifier.align(Alignment.Center).padding(24.dp), shape = MaterialTheme.shapes.large) {
                 Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {

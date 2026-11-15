@@ -18,6 +18,7 @@ internal class PlayerTouch(
     private val playback: PlayerController,
     private val controls: () -> Unit,
     private val feedback: (String?) -> Unit,
+    private val holdFeedback: (Float?) -> Unit,
     private val transform: (PinchSample, PinchSample, Int, Int) -> Unit,
     private val finishZoom: (Int, Int) -> Unit,
 ) {
@@ -37,14 +38,26 @@ internal class PlayerTouch(
     private var mode = 0
     private var position = 0L; private var target = 0L
     private var level = 0f; private var originalSpeed = 1f
+    private var holdAnchorScreenX = 0f
+    private var initialHoldSpeed = PlayerGestures.HOLD_SPEED
+    private var appliedHoldSpeed = PlayerGestures.HOLD_SPEED
     private val single = Runnable { controls() }
     private val clear = Runnable { feedback(null) }
     private val hold = Runnable {
         if(mode == 0 && !locked && playback.state.value.playing) {
             mode = 3; originalSpeed = playback.state.value.speed
-            val speed = playback.preferences.value.holdSpeed
-            playback.speed(speed); feedback(activity.getString(R.string.player_hold_feedback, speed)); haptic()
+            handler.removeCallbacks(single)
+            feedback(null)
+            initialHoldSpeed = playback.preferences.value.holdSpeed
+            applyHoldSpeed(initialHoldSpeed)
+            haptic()
         }
+    }
+
+    private fun applyHoldSpeed(speed: Float) {
+        appliedHoldSpeed = speed
+        playback.speed(speed)
+        holdFeedback(speed)
     }
 
     fun resize(newWidth: Int, newHeight: Int) {
@@ -62,14 +75,19 @@ internal class PlayerTouch(
         return PinchSample((x + otherX) / 2f, (y + otherY) / 2f, hypot(otherX - x, otherY - y))
     }
 
-    private fun stopSingleTouch() {
+    fun cancel() {
         handler.removeCallbacks(hold)
         handler.removeCallbacks(single)
         handler.removeCallbacks(clear)
-        if (mode == 3) playback.speed(originalSpeed)
+        if (mode == 3) {
+            playback.speed(originalSpeed)
+            holdFeedback(null)
+        }
         mode = 5
         lastTap = 0
         streak = 0
+        pinch = null
+        pinchChangedScale = false
         feedback(null)
     }
 
@@ -79,7 +97,7 @@ internal class PlayerTouch(
             pinch = null
         }
         if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
-            if (!multiTouch) stopSingleTouch()
+            if (!multiTouch) cancel()
             multiTouch = true
             pinch = if (!locked && event.pointerCount == 2) sample(event) else null
             pinchChangedScale = false
@@ -110,12 +128,20 @@ internal class PlayerTouch(
         when(event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 mode = 0; downX = event.x; downY = event.y
+                holdAnchorScreenX = event.rawX
                 position = playback.state.value.position; target = position
                 handler.removeCallbacks(clear); handler.postDelayed(hold, ViewConfiguration.getLongPressTimeout().toLong())
             }
             MotionEvent.ACTION_MOVE -> {
                 val dx = event.x - downX; val dy = event.y - downY
                 if(locked) return true
+                if (mode == 3) {
+                    // Moving window insets can shift local coordinates during a hold.
+                    val speed = PlayerGestures.holdSpeedAt(initialHoldSpeed, (event.rawX - holdAnchorScreenX) / density)
+                    if (speed != appliedHoldSpeed) applyHoldSpeed(speed)
+                    return true
+                }
+                if (mode == 0) holdAnchorScreenX = event.rawX
                 if(mode == 0 && hypot(dx, dy) > PlayerGestures.DRAG_SLOP_DP * density) {
                     handler.removeCallbacks(hold); handler.removeCallbacks(single)
                     if(abs(dx) > abs(dy)) mode = 1 else {
@@ -139,7 +165,10 @@ internal class PlayerTouch(
                 handler.removeCallbacks(hold)
                 when(mode) {
                     1 -> playback.seek(target)
-                    3 -> playback.speed(originalSpeed)
+                    3 -> {
+                        cancel()
+                        return true
+                    }
                     0 -> {
                         if(locked) controls() else {
                             val now = event.eventTime
@@ -160,11 +189,10 @@ internal class PlayerTouch(
                 }
                 mode = 0; handler.postDelayed(clear, 750)
             }
-            MotionEvent.ACTION_CANCEL -> { handler.removeCallbacks(hold); if(mode == 3) playback.speed(originalSpeed); mode = 0; feedback(null) }
+            MotionEvent.ACTION_CANCEL -> cancel()
         }
         return true
     }
-    fun dispose() { handler.removeCallbacksAndMessages(null); if(mode == 3) playback.speed(originalSpeed) }
     private fun haptic() { if(playback.preferences.value.haptics) activity.window.decorView.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK) }
 }
 

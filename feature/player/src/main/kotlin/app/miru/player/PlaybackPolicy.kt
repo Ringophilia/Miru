@@ -31,4 +31,15 @@ object PlayerGestures {
     const val DRAG_RANGE_MS = 120_000L
     const val HOLD_SPEED = 2f
     const val VERTICAL_HEIGHT_FRACTION = 0.75f
+    private const val HOLD_STEP_DP = 40f
+    private val holdSpeedSteps = listOf(1.5f, 2f, 2.5f, 3f)
+
+    internal fun holdSpeedAt(initial: Float, displacementDp: Float): Float {
+        val steps = (displacementDp / HOLD_STEP_DP).toInt().coerceIn(-holdSpeedSteps.size, holdSpeedSteps.size)
+        if (steps == 0) return initial
+        // Older settings can contain speeds between the current slide presets.
+        val start = if (steps > 0) holdSpeedSteps.indexOfLast { it <= initial }
+            else holdSpeedSteps.indexOfFirst { it >= initial }.let { if (it < 0) holdSpeedSteps.size else it }
+        return holdSpeedSteps[(start + steps).coerceIn(holdSpeedSteps.indices)]
+    }
 }
