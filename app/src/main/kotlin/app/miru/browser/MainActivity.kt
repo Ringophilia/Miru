@@ -861,9 +861,9 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                 dismissButton = { TextButton(onClick = permissionActivity::dismissSitePermissionSettings) { Text(stringResource(android.R.string.cancel)) } },
             )
             editedBookmark?.let { bookmark ->
-                BookmarkEditDialog(bookmark, onDismiss = { editedBookmark = null }) { title, url ->
+                BookmarkEditDialog(bookmark, library, onDismiss = { editedBookmark = null }) { title, url, folderId ->
                     editedBookmark = null
-                    scope.launch { library.bookmarks.update(bookmark.id, title, url) }
+                    scope.launch { library.bookmarks.update(bookmark.id, title, url, folderId) }
                 }
             }
             if (adblockPanel && adblockPopup == null) AdblockSheet(

@@ -8,23 +8,35 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import java.io.Closeable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 
 /** One row per address; a revisit refreshes its time, title and count. */
 data class HistoryEntry(val url: String, val title: String, val lastVisited: Long, val visitCount: Int = 1)
 
-data class Bookmark(val id: Long, val url: String, val title: String, val created: Long)
+const val MOBILE_BOOKMARKS_FOLDER_ID = 1L
+
+data class BookmarkFolder(val id: Long, val parentId: Long?, val title: String)
+
+data class Bookmark(
+    val id: Long,
+    val url: String,
+    val title: String,
+    val created: Long,
+    val folderId: Long = MOBILE_BOOKMARKS_FOLDER_ID,
+)
 
 /**
  * Local history and bookmarks. Private tabs never reach it: Gecko does not call the history delegate for
  * private sessions, and callers must not record them either. Nothing here is synced or uploaded.
  */
-class BrowsingLibrary(context: Context, name: String? = "library.db") {
+class BrowsingLibrary(context: Context, name: String? = "library.db") : Closeable {
     private val helper = LibraryDatabase(context.applicationContext, name)
     private val version = MutableStateFlow(0)
     private val db: SQLiteDatabase get() = helper.writableDatabase
@@ -32,10 +44,13 @@ class BrowsingLibrary(context: Context, name: String? = "library.db") {
     val history = History()
     val bookmarks = Bookmarks()
 
+    override fun close() = helper.close()
+
     private suspend fun <T> read(block: SQLiteDatabase.() -> T): T = withContext(Dispatchers.IO) { db.block() }
-    private suspend fun write(block: SQLiteDatabase.() -> Unit) {
-        withContext(Dispatchers.IO) { db.block() }
-        version.value++
+    private suspend fun write(block: SQLiteDatabase.() -> Unit) = mutate(block)
+
+    private suspend fun <T> mutate(block: SQLiteDatabase.() -> T): T = withContext(Dispatchers.IO) {
+        db.block().also { version.update { current -> current + 1 } }
     }
 
     inner class History {
@@ -120,14 +135,20 @@ class BrowsingLibrary(context: Context, name: String? = "library.db") {
 
     inner class Bookmarks {
         @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-        fun observe(query: String = ""): Flow<List<Bookmark>> = version.mapLatest { search(query) }.flowOn(Dispatchers.IO)
+        fun observe(query: String = "", folderId: Long? = null): Flow<List<Bookmark>> =
+            version.mapLatest { search(query, folderId = folderId) }.flowOn(Dispatchers.IO)
+
+        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+        fun observeFolders(): Flow<List<BookmarkFolder>> = version.mapLatest { folders() }.flowOn(Dispatchers.IO)
 
         @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
         fun isBookmarked(url: String): Flow<Boolean> = version.mapLatest { find(url) != null }.flowOn(Dispatchers.IO)
 
-        suspend fun search(query: String, limit: Int = 1_000): List<Bookmark> = read {
-            val (where, args) = matching(query)
-            query("bookmarks", null, where, args, null, null, "created DESC", limit.toString()).use { it.bookmarks() }
+        suspend fun search(query: String, limit: Int = 1_000, folderId: Long? = null): List<Bookmark> = read {
+            val (match, args) = matching(query)
+            val where = if (folderId == null) match else "$match AND folder_id = ?"
+            val bindings = if (folderId == null) args else args + folderId.toString()
+            query("bookmarks", null, where, bindings, null, null, "created DESC, id DESC", limit.toString()).use { it.bookmarks() }
         }
 
         suspend fun find(url: String): Bookmark? = read {
@@ -140,14 +161,100 @@ class BrowsingLibrary(context: Context, name: String? = "library.db") {
             }, SQLiteDatabase.CONFLICT_IGNORE)
         }
 
-        suspend fun update(id: Long, title: String, url: String) = write {
-            updateWithOnConflict("bookmarks", ContentValues().apply { put("title", title); put("url", url) }, "id = ?", arrayOf(id.toString()), SQLiteDatabase.CONFLICT_IGNORE)
+        suspend fun update(id: Long, title: String, url: String, folderId: Long? = null) = write {
+            transaction {
+                updateWithOnConflict("bookmarks", ContentValues().apply {
+                    put("title", title)
+                    put("url", url)
+                    if (folderId != null) put("folder_id", existingBookmarkFolder(folderId))
+                }, "id = ?", arrayOf(id.toString()), SQLiteDatabase.CONFLICT_IGNORE)
+            }
         }
 
         suspend fun remove(url: String) = write { delete("bookmarks", "url = ?", arrayOf(url)) }
 
-        /** Undo for [remove]; keeps the original position by restoring its creation time. */
-        suspend fun restore(bookmark: Bookmark) = add(bookmark.url, bookmark.title, bookmark.created)
+        /** Undo keeps the original location, or uses the mobile folder if it was removed. */
+        suspend fun restore(bookmark: Bookmark) = write {
+            transaction {
+                insertWithOnConflict("bookmarks", null, ContentValues().apply {
+                    put("url", bookmark.url)
+                    put("title", bookmark.title)
+                    put("created", bookmark.created)
+                    put("folder_id", existingBookmarkFolder(bookmark.folderId))
+                }, SQLiteDatabase.CONFLICT_IGNORE)
+            }
+        }
+
+        suspend fun folders(): List<BookmarkFolder> = read {
+            query("bookmark_folders", null, null, null, null, null, "title COLLATE NOCASE, id").use { cursor ->
+                val id = cursor.getColumnIndexOrThrow("id")
+                val parent = cursor.getColumnIndexOrThrow("parent_id")
+                val title = cursor.getColumnIndexOrThrow("title")
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val parentId = if (cursor.isNull(parent)) null else cursor.getLong(parent)
+                        add(BookmarkFolder(cursor.getLong(id), parentId, cursor.getString(title)))
+                    }
+                }
+            }
+        }
+
+        suspend fun createFolder(title: String, parentId: Long = MOBILE_BOOKMARKS_FOLDER_ID): Long = mutate {
+            transaction {
+                insertOrThrow("bookmark_folders", null, ContentValues().apply {
+                    put("title", checkedFolderTitle(title))
+                    put("parent_id", existingBookmarkFolder(parentId))
+                })
+            }
+        }
+
+        suspend fun renameFolder(id: Long, title: String) = write {
+            if (id == MOBILE_BOOKMARKS_FOLDER_ID) return@write
+            update("bookmark_folders", ContentValues().apply { put("title", checkedFolderTitle(title)) }, "id = ?", arrayOf(id.toString()))
+        }
+
+        suspend fun moveFolder(id: Long, parentId: Long) = write {
+            if (id == MOBILE_BOOKMARKS_FOLDER_ID) return@write
+            execSQL(
+                """WITH RECURSIVE descendants(id) AS (
+                    SELECT id FROM bookmark_folders WHERE id = ?
+                    UNION ALL SELECT f.id FROM bookmark_folders f JOIN descendants d ON f.parent_id = d.id
+                ) UPDATE bookmark_folders SET parent_id = ? WHERE id = ?
+                    AND EXISTS (SELECT 1 FROM bookmark_folders WHERE id = ?)
+                    AND NOT EXISTS (SELECT 1 FROM descendants WHERE id = ?)""".trimIndent(),
+                arrayOf<Any>(id, parentId, id, parentId, parentId),
+            )
+        }
+
+        /** Removing a folder promotes its contents to its parent in a single transaction. */
+        suspend fun removeFolder(id: Long) = write {
+            if (id == MOBILE_BOOKMARKS_FOLDER_ID) return@write
+            transaction {
+                val key = arrayOf(id.toString())
+                val parentId = query("bookmark_folders", arrayOf("parent_id"), "id = ?", key, null, null, null).use {
+                    if (it.moveToFirst()) it.getLong(0) else return@transaction
+                }
+                update("bookmarks", ContentValues().apply { put("folder_id", parentId) }, "folder_id = ?", key)
+                update("bookmark_folders", ContentValues().apply { put("parent_id", parentId) }, "parent_id = ?", key)
+                delete("bookmark_folders", "id = ?", key)
+            }
+        }
+
+        private fun checkedFolderTitle(title: String): String = title.trim().also { require(it.isNotEmpty()) }
+
+        private fun SQLiteDatabase.existingBookmarkFolder(id: Long): Long =
+            query("bookmark_folders", arrayOf("id"), "id = ?", arrayOf(id.toString()), null, null, null).use {
+                if (it.moveToFirst()) id else MOBILE_BOOKMARKS_FOLDER_ID
+            }
+    }
+
+    private fun <T> SQLiteDatabase.transaction(block: SQLiteDatabase.() -> T): T {
+        beginTransaction()
+        try {
+            return block().also { setTransactionSuccessful() }
+        } finally {
+            endTransaction()
+        }
     }
 
     private fun matching(query: String): Pair<String, Array<String>> {
@@ -168,19 +275,47 @@ class BrowsingLibrary(context: Context, name: String? = "library.db") {
     private fun Cursor.bookmarks(): List<Bookmark> = buildList {
         val id = getColumnIndexOrThrow("id"); val url = getColumnIndexOrThrow("url")
         val title = getColumnIndexOrThrow("title"); val created = getColumnIndexOrThrow("created")
-        while (moveToNext()) add(Bookmark(getLong(id), getString(url), getString(title).orEmpty(), getLong(created)))
+        val folder = getColumnIndexOrThrow("folder_id")
+        while (moveToNext()) add(Bookmark(getLong(id), getString(url), getString(title).orEmpty(), getLong(created), getLong(folder)))
     }
 }
 
 /** A null [name] keeps the database in memory (tests). */
-private class LibraryDatabase(context: Context, name: String?) : SQLiteOpenHelper(context, name, null, 1) {
-    override fun onConfigure(db: SQLiteDatabase) { if (databaseName != null) db.enableWriteAheadLogging() }
+private class LibraryDatabase(context: Context, name: String?) : SQLiteOpenHelper(context, name, null, 2) {
+    override fun onConfigure(db: SQLiteDatabase) {
+        db.setForeignKeyConstraintsEnabled(true)
+        if (databaseName != null) db.enableWriteAheadLogging()
+    }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE history(url TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL DEFAULT '', last_visited INTEGER NOT NULL, visit_count INTEGER NOT NULL DEFAULT 1)")
         db.execSQL("CREATE INDEX history_last_visited ON history(last_visited)")
-        db.execSQL("CREATE TABLE bookmarks(id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL UNIQUE, title TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL)")
+        createBookmarkTables(db)
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE bookmarks RENAME TO bookmarks_v1")
+            createBookmarkTables(db)
+            db.execSQL("INSERT INTO bookmarks(id, url, title, created) SELECT id, url, title, created FROM bookmarks_v1")
+            db.execSQL("DROP TABLE bookmarks_v1")
+        }
+    }
+
+    private fun createBookmarkTables(db: SQLiteDatabase) {
+        db.execSQL("""CREATE TABLE bookmark_folders(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            parent_id INTEGER REFERENCES bookmark_folders(id),
+            title TEXT NOT NULL,
+            CHECK ((id = $MOBILE_BOOKMARKS_FOLDER_ID) = (parent_id IS NULL)))""".trimIndent())
+        db.execSQL("INSERT INTO bookmark_folders(id, title) VALUES ($MOBILE_BOOKMARKS_FOLDER_ID, '')")
+        db.execSQL("CREATE INDEX bookmark_folders_parent ON bookmark_folders(parent_id)")
+        db.execSQL("""CREATE TABLE bookmarks(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL DEFAULT '',
+            created INTEGER NOT NULL,
+            folder_id INTEGER NOT NULL DEFAULT $MOBILE_BOOKMARKS_FOLDER_ID REFERENCES bookmark_folders(id))""".trimIndent())
+        db.execSQL("CREATE INDEX bookmarks_folder ON bookmarks(folder_id)")
+    }
 }

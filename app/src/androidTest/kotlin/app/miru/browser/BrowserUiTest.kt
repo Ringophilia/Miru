@@ -118,7 +118,7 @@ class BrowserUiTest {
 }
 
 /** A loopback fixture in the device process: tests require neither internet nor a host server. */
-private class TestPages : Closeable {
+internal class TestPages : Closeable {
     private val server = ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"))
     private val running = AtomicBoolean(true)
     val baseUrl = "http://127.0.0.1:${server.localPort}"

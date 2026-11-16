@@ -18,4 +18,13 @@
     <string name="bookmarks_invalid_url">请输入有效的 http 或 https 网址</string>
     <string name="bookmarks_cancel">取消</string>
     <string name="bookmarks_save">保存</string>
+    <string name="bookmarks_mobile_folder">移动设备书签</string>
+    <string name="bookmarks_folder">文件夹</string>
+    <string name="bookmarks_new_folder">新建文件夹</string>
+    <string name="bookmarks_rename_folder">重命名文件夹</string>
+    <string name="bookmarks_move_folder">移动文件夹</string>
+    <string name="bookmarks_choose_folder">选择文件夹</string>
+    <string name="bookmarks_delete_folder">删除文件夹</string>
+    <string name="bookmarks_delete_folder_detail">删除「%1$s」后，其中的书签和子文件夹会移到上一级。</string>
+    <string name="bookmarks_empty_folder">此文件夹为空</string>
 </resources>

@@ -18,4 +18,13 @@
     <string name="bookmarks_invalid_url">Enter a valid http or https URL</string>
     <string name="bookmarks_cancel">Cancel</string>
     <string name="bookmarks_save">Save</string>
+    <string name="bookmarks_mobile_folder">Mobile bookmarks</string>
+    <string name="bookmarks_folder">Folder</string>
+    <string name="bookmarks_new_folder">New folder</string>
+    <string name="bookmarks_rename_folder">Rename folder</string>
+    <string name="bookmarks_move_folder">Move folder</string>
+    <string name="bookmarks_choose_folder">Choose folder</string>
+    <string name="bookmarks_delete_folder">Delete folder</string>
+    <string name="bookmarks_delete_folder_detail">Bookmarks and subfolders in “%1$s” will move to its parent folder.</string>
+    <string name="bookmarks_empty_folder">This folder is empty</string>
 </resources>
