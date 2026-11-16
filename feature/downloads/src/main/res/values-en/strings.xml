@@ -3,6 +3,10 @@
     <string name="download_install_permission">Allow Miru to install apps from this source, then tap the package again.</string>
     <string name="download_no_viewer">No app is available to open this file type.</string>
     <string name="downloads_title">Downloads</string>
+    <string name="download_storage_loading">Checking storage</string>
+    <string name="download_storage_summary">Downloads use %1$s · %2$s free on device</string>
+    <string name="download_storage_at_least">at least %1$s</string>
+    <string name="download_storage_unavailable">unknown</string>
     <string name="download_preparing">Preparing download</string>
     <string name="download_pause">Pause</string>
     <string name="download_resume">Resume</string>

@@ -3,6 +3,10 @@
     <string name="download_install_permission">允许 Miru 安装此来源的应用后，再次点击安装包。</string>
     <string name="download_no_viewer">没有可打开此类文件的应用。</string>
     <string name="downloads_title">下载内容</string>
+    <string name="download_storage_loading">正在读取存储空间</string>
+    <string name="download_storage_summary">下载已用 %1$s · 设备剩余 %2$s</string>
+    <string name="download_storage_at_least">至少 %1$s</string>
+    <string name="download_storage_unavailable">未知</string>
     <string name="download_preparing">正在准备下载</string>
     <string name="download_pause">暂停</string>
     <string name="download_resume">继续</string>

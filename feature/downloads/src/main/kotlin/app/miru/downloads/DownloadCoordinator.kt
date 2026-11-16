@@ -63,11 +63,14 @@ class DownloadCoordinator private constructor(private val context: Context) {
     }.stateIn(scope, SharingStarted.Eagerly, emptyList())
     private val manager = context.getSystemService(ConnectivityManager::class.java)
     private val tempDir = File(context.filesDir, "download-parts").apply { mkdirs() }
+    private val storage = DownloadStorage(context, tempDir)
     @Volatile private var serviceActive = false
     private val recovered = CompletableDeferred<Unit>()
     // Optional app hook can reacquire Cookie/authorization from Gecko after process death.
     var headerResolver: (suspend (DownloadItem) -> Map<String,String>?)? = null
     var openMedia: ((DownloadItem) -> Boolean)? = null
+
+    internal fun observeStorage(offlineBytes: suspend () -> Long): Flow<DownloadStorageUsage> = storage.observe(downloads, offlineBytes)
 
     init {
         scope.launch {

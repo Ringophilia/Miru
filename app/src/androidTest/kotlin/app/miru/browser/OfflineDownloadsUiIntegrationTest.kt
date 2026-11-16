@@ -199,7 +199,7 @@ class OfflineDownloadsUiIntegrationTest {
 }
 
 /** A bounded synthetic HLS source plus one ordinary file; no public network is involved. */
-private class OfflineDownloadsUiOrigin(private val assets: Context) : Closeable {
+internal class OfflineDownloadsUiOrigin(private val assets: Context) : Closeable {
     private val server = ServerSocket(0, 16, InetAddress.getByName("127.0.0.1"))
     private val running = AtomicBoolean(true)
     private val sockets = ConcurrentHashMap.newKeySet<Socket>()

@@ -225,6 +225,9 @@ class OfflineCoordinator private constructor(private val context: Context) {
         cache.keys.filter { it.startsWith(OfflineStorage.prefix(id)) }.sumOf { key -> cache.getCachedSpans(key).sumOf { it.length } }
     }
 
+    /** Bytes committed to the app's separate offline download cache. */
+    suspend fun downloadStorageBytes(): Long = withContext(Dispatchers.IO) { OfflineStorage.get(context).cache.cacheSpace }
+
     private suspend fun ensureManager(): DownloadManager = withContext(Dispatchers.Main.immediate) {
         manager ?: withContext(Dispatchers.IO) { OfflineStorage.get(context) }.let(::createManager)
     }

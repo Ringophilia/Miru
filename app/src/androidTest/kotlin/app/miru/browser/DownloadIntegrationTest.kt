@@ -111,10 +111,10 @@ class DownloadIntegrationTest {
 
 private fun ByteArray.hex(): String = joinToString("") { "%02x".format(it.toInt() and 255) }
 
-private data class RecordedDownloadRequest(val method: String, val range: Pair<Long,Long>?, val ifRange: String?)
+internal data class RecordedDownloadRequest(val method: String, val range: Pair<Long,Long>?, val ifRange: String?)
 
 /** In-device origin: requests never leave the emulator and are independent of host networking. */
-private class DownloadTestServer(
+internal class DownloadTestServer(
     val size: Long = 8L * 1024 * 1024,
     private val interruptOnce: Boolean = false,
     private val delayMillis: Long = 24,

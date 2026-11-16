@@ -165,6 +165,7 @@ fun DownloadsScreen(
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DownloadCategory.entries.forEach { value -> FilterChip(selected = category == value, onClick = { category = value }, label = { Text(categoryLabel(value)) }) }
             }
+            DownloadStorageBar(coordinator, offline)
             if(filtered.isEmpty()) Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Outlined.Download, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(16.dp)); Text(stringResource(if(query.isEmpty() && category == DownloadCategory.ALL) R.string.download_empty else R.string.download_no_results))
