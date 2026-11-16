@@ -15,6 +15,16 @@
     <string name="player_crop">填充</string>
     <string name="player_stretch">拉伸</string>
     <string name="player_pip">画中画</string>
+    <string name="player_skip_sections">跳过片头片尾</string>
+    <string name="player_skip_scope">应用范围</string>
+    <string name="player_skip_exact_page">仅此页面 · %1$s</string>
+    <string name="player_skip_intro">片头时长</string>
+    <string name="player_skip_outro">片尾时长（从结尾倒计）</string>
+    <string name="player_skip_set_current">设为当前位置</string>
+    <string name="player_skip_save">保存</string>
+    <string name="player_skip_invalid">请为可拖动的视频设置片头片尾，两段合计必须短于视频。</string>
+    <string name="player_skipped_intro">已跳过片头</string>
+    <string name="player_skipped_outro">已跳过片尾</string>
     <string name="player_background_playback">后台播放</string>
     <string name="player_rotate">切换屏幕方向</string>
     <string name="player_lock">锁定控制</string>

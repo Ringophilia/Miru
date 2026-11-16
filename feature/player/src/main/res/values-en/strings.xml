@@ -15,6 +15,16 @@
     <string name="player_crop">Crop</string>
     <string name="player_stretch">Stretch</string>
     <string name="player_pip">Picture in picture</string>
+    <string name="player_skip_sections">Skip intro and outro</string>
+    <string name="player_skip_scope">Apply to</string>
+    <string name="player_skip_exact_page">This page only · %1$s</string>
+    <string name="player_skip_intro">Intro length</string>
+    <string name="player_skip_outro">Outro length (from the end)</string>
+    <string name="player_skip_set_current">Set to current position</string>
+    <string name="player_skip_save">Save</string>
+    <string name="player_skip_invalid">Use a seekable video and keep the combined lengths shorter than the video.</string>
+    <string name="player_skipped_intro">Skipped intro</string>
+    <string name="player_skipped_outro">Skipped outro</string>
     <string name="player_background_playback">Background playback</string>
     <string name="player_rotate">Rotate screen</string>
     <string name="player_lock">Lock controls</string>

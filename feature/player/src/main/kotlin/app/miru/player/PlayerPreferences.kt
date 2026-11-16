@@ -53,6 +53,7 @@ data class PlayerPreferences(
 
 class PlayerPreferencesRepository(context: Context) {
     private val store = context.applicationContext.playerPreferences
+    private val data = store.data.catch { if(it is IOException) emit(emptyPreferences()) else throw it }
     private val cache = intPreferencesKey("cache.mb")
     private val buffer = intPreferencesKey("buffer.seconds")
     private val seek = intPreferencesKey("gesture.doubleTapSeconds")
@@ -78,7 +79,24 @@ class PlayerPreferencesRepository(context: Context) {
         SuperResMode.entries.firstOrNull { it.name == p[superMode] } ?: SuperResMode.OFF,
         SuperResTier.entries.firstOrNull { it.name == p[superTier] } ?: SuperResTier.BALANCED,
         p[superCeiling]?.let { SuperResTier.entries.getOrNull(it) }, backgroundPlayback = p[background] ?: false).bounded()
-    val settings = store.data.catch { if(it is IOException) emit(emptyPreferences()) else throw it }.map(::decode)
+    val settings = data.map(::decode)
+
+    internal fun skipRules(scopes: List<PlaybackSkipScope>) = data.map { preferences ->
+        buildMap {
+            for (scope in scopes) {
+                val intro = preferences[intPreferencesKey("${scope.key}.intro")] ?: continue
+                val outro = preferences[intPreferencesKey("${scope.key}.outro")] ?: continue
+                if (intro >= 0 && outro >= 0) put(scope, PlaybackSkipRule(intro, outro))
+            }
+        }
+    }
+
+    internal suspend fun saveSkipRule(scope: PlaybackSkipScope, rule: PlaybackSkipRule) {
+        store.edit { preferences ->
+            preferences[intPreferencesKey("${scope.key}.intro")] = rule.introSeconds
+            preferences[intPreferencesKey("${scope.key}.outro")] = rule.outroSeconds
+        }
+    }
     suspend fun update(transform: (PlayerPreferences) -> PlayerPreferences) {
         store.edit { p ->
             val next = transform(decode(p)).bounded()

@@ -21,6 +21,7 @@ import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.session.MediaSession
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.receiveAsFlow
 import java.util.Locale
 import java.io.ByteArrayOutputStream
 import androidx.compose.runtime.getValue
@@ -42,6 +44,7 @@ data class PlayerSnapshot(
     val decoder: String = "auto",
     val format: PlayerVideoInfo = PlayerVideoInfo(),
     val sourceRevision: Long = 0,
+    val seekableVod: Boolean = false,
 )
 
 data class PlayerVideoInfo(val codec: String = "", val bitrate: Int = 0, val frameRate: Float = 0f,
@@ -147,12 +150,26 @@ class PlayerController(
     private val progressKey = PlaybackPolicy.progressKey(request.pageUrl, request.url)
     private val settingsRepository = PlayerPreferencesRepository(context)
     val preferences = settingsRepository.settings.stateIn(scope, SharingStarted.Eagerly, PlayerPreferences())
+    internal val skipScopes = if (request.isPrivate) emptyList() else PlaybackSkipScope.forPage(request.pageUrl)
+    internal val skipRules = settingsRepository.skipRules(skipScopes).stateIn(
+        scope, SharingStarted.Eagerly, if (skipScopes.isEmpty()) emptyMap() else null,
+    )
+    private val skipTracker = PlaybackSkipTracker()
+    private val skipNotice = Channel<PlaybackSkipSection>(Channel.CONFLATED)
+    internal val skipNotices = skipNotice.receiveAsFlow()
+
+    internal suspend fun saveSkipRule(scope: PlaybackSkipScope, rule: PlaybackSkipRule) {
+        require(scope in skipScopes && state.value.seekableVod && rule.fits(state.value.duration))
+        skipTracker.positionDiscontinuity(userSeek = false)
+        settingsRepository.saveSkipRule(scope, rule)
+    }
 
     init { connectivity.registerDefaultNetworkCallback(networkCallback); open(request.positionMs, "auto", restore = !request.fromWeb) }
 
     private fun open(position: Long, decoder: String, restore: Boolean = false) {
         if(released) return
         val revision = ++sourceRevision
+        skipTracker.positionDiscontinuity(userSeek = false)
         cachedTimeline?.close(); cachedTimeline = null; mutableDiskRanges.value = emptyList()
         mainSourceSession?.close(); mainSourceSession = null
         resetPreviewSource()
@@ -164,11 +181,12 @@ class PlayerController(
         embeddedSubtitleText = ""
         embeddedCues = emptyList(); mutableCues.value = emptyList()
         mutableTracks.value = mutableTracks.value.copy(audio = emptyList(), subtitles = emptyList())
-        mutable.value = mutable.value.copy(ready = false, buffering = true, error = false, timedOut = false,
+        mutable.value = mutable.value.copy(ready = false, buffering = true, error = false, timedOut = false, seekableVod = false,
             decoder = decoder, sourceRevision = revision)
         initialization = scope.launch {
             try {
             val options = settingsRepository.settings.first()
+            if (skipScopes.isNotEmpty()) skipRules.first { it != null }
             val offline = request.offlineId?.let { id -> OfflineCoordinator.get(context).playback(id)
                 ?: throw java.io.IOException("Offline media is unavailable") }
             val disk = withContext(Dispatchers.IO) { if(request.isPrivate || offline != null) null else runCatching { PlaybackCache.get(context) }.getOrNull() }
@@ -219,6 +237,11 @@ class PlayerController(
             bindPreview(preview)
             created.addListener(object : Player.Listener {
                 override fun onEvents(player: Player, events: Player.Events) { update() }
+                override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                    if (!released && player === created && skipScopes.isNotEmpty()) {
+                        skipTracker.positionDiscontinuity(userSeek = reason == Player.DISCONTINUITY_REASON_SEEK)
+                    }
+                }
                 override fun onTracksChanged(tracks: Tracks) {
                     if(released || revision != sourceRevision || player !== created) return
                     applyTrackPreferences(created, tracks)
@@ -364,6 +387,8 @@ class PlayerController(
         cachedTimeline?.refresh()
         val size = target.videoSize
         val format = target.videoFormat
+        val seekableVod = target.isCurrentMediaItemSeekable && !target.isCurrentMediaItemLive &&
+            !target.isCurrentMediaItemDynamic && !target.isPlayingAd && target.duration > 0
         val transfer = format?.colorInfo?.colorTransfer
         val videoInfo = PlayerVideoInfo(format?.codecs ?: format?.sampleMimeType.orEmpty(),
             (format?.bitrate ?: 0).coerceAtLeast(0), (format?.frameRate ?: 0f).coerceAtLeast(0f),
@@ -377,9 +402,19 @@ class PlayerController(
         mutable.value = mutable.value.copy(ready = mutable.value.ready || target.playbackState == Player.STATE_READY || target.playbackState == Player.STATE_ENDED,
             playing = target.isPlaying, buffering = waitingForNetwork || target.playbackState == Player.STATE_BUFFERING,
             position = target.currentPosition.coerceAtLeast(0), duration = target.duration.coerceAtLeast(0), buffered = target.bufferedPosition.coerceAtLeast(0),
-            speed = target.playbackParameters.speed, width = size.width, height = size.height, live = target.isCurrentMediaItemLive, format = videoInfo)
+            speed = target.playbackParameters.speed, width = size.width, height = size.height, live = target.isCurrentMediaItemLive,
+            format = videoInfo, seekableVod = seekableVod)
         updateTracks(target)
         updateSubtitleText()
+
+        if (seekableVod && target.isPlaying && skipScopes.isNotEmpty()) {
+            val rules = skipRules.value ?: return
+            val rule = skipScopes.firstNotNullOfOrNull(rules::get) ?: PlaybackSkipRule()
+            skipTracker.next(rule, target.currentPosition, target.duration)?.let { section ->
+                target.seekTo(if (section == PlaybackSkipSection.INTRO) rule.introMs else target.duration)
+                skipNotice.trySend(section)
+            }
+        }
     }
 
     // Format identity survives manifest group reordering when rebuilding for auth or decoder changes.

@@ -97,6 +97,7 @@ fun PlayerScreen(
     var holdSpeed by remember { mutableStateOf<Float?>(null) }
     var speedPanel by remember { mutableStateOf(false) }
     var decoderPanel by remember { mutableStateOf(false) }
+    var skipPanel by remember { mutableStateOf(false) }
     var tracksPanel by remember { mutableStateOf(false) }
     var qualityPanel by remember { mutableStateOf(false) }
     var compare by remember { mutableStateOf(false) }
@@ -188,6 +189,15 @@ fun PlayerScreen(
     LaunchedEffect(embedded) { onEmbeddedModeChanged(embedded) }
     LaunchedEffect(locked) { onLockChanged(locked) }
     DisposableEffect(touch) { onDispose { touch.cancel() } }
+    LaunchedEffect(controller) {
+        controller.skipNotices.collect { section ->
+            val message = when (section) {
+                PlaybackSkipSection.INTRO -> R.string.player_skipped_intro
+                PlaybackSkipSection.OUTRO -> R.string.player_skipped_outro
+            }
+            Toast.makeText(activity, message, Toast.LENGTH_SHORT).show()
+        }
+    }
     LaunchedEffect(state.buffering) { buffering = false; if(state.buffering) { delay(300); buffering = true } }
     LaunchedEffect(visible, state.playing, locked, speedPanel, decoderPanel, tracksPanel, qualityPanel, drag != null) { if(visible && state.playing && drag == null && !speedPanel && !decoderPanel && !tracksPanel && !qualityPanel) { delay(3_000); if(drag == null) visible = false } }
     BackHandler { if(locked) { locked = false; visible = true } else onBack() }
@@ -334,7 +344,11 @@ fun PlayerScreen(
         if(speedPanel) AlertDialog(onDismissRequest = { speedPanel = false }, title = { Text(stringResource(R.string.player_speed)) }, text = { Column {
             listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 2.5f, 3f).forEach { speed -> TextButton(onClick = { controller.speed(speed); speedPanel = false }, modifier = Modifier.fillMaxWidth().semantics { selected = speed == state.speed }) { Text("${speed}x", color = if(speed == state.speed) MaterialTheme.colorScheme.primary else Color.White) } }
         } }, confirmButton = {})
-        if(decoderPanel) PlaybackOptionsDialog(activity, controller, onDismiss = { decoderPanel = false })
+        if(decoderPanel) PlaybackOptionsDialog(activity, controller, onDismiss = { decoderPanel = false }, onEditSkips = {
+            decoderPanel = false
+            skipPanel = true
+        })
+        if(skipPanel) PlaybackSkipDialog(controller, onDismiss = { skipPanel = false })
         if(tracksPanel) TracksDialog(controller, onImportSubtitle, onDismiss = { tracksPanel = false })
         if(qualityPanel) SuperResQualityPanel(controller, output, compare, onCompare = {
             compare = it
@@ -438,7 +452,7 @@ private fun TracksDialog(controller: PlayerController, onImportSubtitle: () -> U
 }
 
 @Composable
-private fun PlaybackOptionsDialog(activity: Activity, controller: PlayerController, onDismiss: () -> Unit) {
+private fun PlaybackOptionsDialog(activity: Activity, controller: PlayerController, onDismiss: () -> Unit, onEditSkips: () -> Unit) {
     val state by controller.state.collectAsState()
     val audio = remember(activity) { activity.getSystemService(AudioManager::class.java) }
     fun readBrightness() = activity.window.attributes.screenBrightness.takeIf { it >= 0 }
@@ -470,6 +484,11 @@ private fun PlaybackOptionsDialog(activity: Activity, controller: PlayerControll
                         if(!volumeFailureShown) { volumeFailureShown = true; Toast.makeText(activity, R.string.player_volume_unavailable, Toast.LENGTH_LONG).show() }
                     }
             }, modifier = Modifier.semantics { contentDescription = volumeLabel })
+            if (controller.skipScopes.isNotEmpty()) {
+                TextButton(onClick = onEditSkips, enabled = state.seekableVod) {
+                    Text(stringResource(R.string.player_skip_sections))
+                }
+            }
         }
     }, confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.player_options_done)) } })
 }
