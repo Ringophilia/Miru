@@ -1,7 +1,19 @@
 <resources>
     <string name="player">播放器</string>
     <string name="player_detail">手势、缓存、续播与画中画</string>
-    <string name="privacy_and_downloads">隐私与下载</string>
+    <string name="privacy_and_downloads">隐私与安全</string>
+    <string name="security_block_third_party">阻止第三方 Cookie</string>
+    <string name="security_block_third_party_detail">关闭后仍阻止已知跟踪器的 Cookie。重新加载网页后生效。</string>
+    <string name="security_https_only">仅 HTTPS 模式</string>
+    <string name="security_https_only_detail">将网页连接升级到 HTTPS。不支持 HTTPS 的网站会显示错误，本机和部分局域网地址按浏览器规则处理。</string>
+    <string name="security_dns">安全 DNS（DoH）</string>
+    <string name="security_dns_auto">自动</string>
+    <string name="security_dns_off">关闭</string>
+    <string name="security_dns_custom">自定义提供商</string>
+    <string name="security_dns_url">HTTPS 解析服务地址</string>
+    <string name="security_dns_invalid">请输入有效的 HTTPS 地址，无需用户名、密码或片段。</string>
+    <string name="security_dns_custom_detail">网页使用此服务解析域名。服务不可用时，部分网站可能打不开。</string>
+    <string name="security_dns_save">保存</string>
     <string name="adblock">广告拦截</string>
     <string name="adblock_detail">uBlock Origin、例外网站与过滤规则</string>
     <string name="downloads">下载设置</string>

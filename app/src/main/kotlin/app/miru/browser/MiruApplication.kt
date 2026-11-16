@@ -42,7 +42,7 @@ class AppContainer(application: Application) {
     val library = BrowsingLibrary(application)
     internal var searchSuggestions = app.miru.browser.engine.SearchSuggestionClient()
     val downloads = DownloadCoordinator.get(application)
-    val browser = BrowserController(application, scope, LibraryHistoryDelegate(library))
+    val browser = BrowserController(application, scope, LibraryHistoryDelegate(library), settings.settings.map { it.security })
     val privateTabsNotifications = PrivateTabsNotifications(application, browser, scope)
     val playerPreferences = PlayerPreferencesRepository(application)
     val mediaProbe = MediaResolutionProbe(application)

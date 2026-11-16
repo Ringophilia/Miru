@@ -29,6 +29,7 @@ data class BrowserSettings(
     val searchSuggestions: Boolean = true,
     val privateNotificationPrompted: Boolean = false,
     val introCompleted: Boolean = false,
+    val security: BrowserSecuritySettings = BrowserSecuritySettings(),
 )
 
 class SettingsRepository(context: Context) {
@@ -40,9 +41,16 @@ class SettingsRepository(context: Context) {
     private val searchKey = stringPreferencesKey("search.engine")
     private val suggestionsKey = booleanPreferencesKey("search.suggestions")
     private val privateNotificationKey = booleanPreferencesKey("privacy.privateNotificationPrompted")
+    private val thirdPartyKey = booleanPreferencesKey("privacy.blockThirdPartyCookies")
+    private val httpsOnlyKey = booleanPreferencesKey("privacy.httpsOnly")
+    private val dnsModeKey = stringPreferencesKey("privacy.secureDns.mode")
+    private val dnsUrlKey = stringPreferencesKey("privacy.secureDns.customUrl")
     val settings: Flow<BrowserSettings> = store.data.catch { error ->
         if (error is IOException) emit(emptyPreferences()) else throw error
     }.map { values ->
+        val dnsUrl = values[dnsUrlKey]?.let(::validatedSecureDnsUrl)
+        val dnsMode = enumValue<SecureDnsMode>(values[dnsModeKey])
+            ?.takeIf { it != SecureDnsMode.CUSTOM || dnsUrl != null } ?: SecureDnsMode.AUTOMATIC
         BrowserSettings(
             theme = enumValue<ThemeMode>(values[themeKey]) ?: ThemeMode.SYSTEM,
             dynamicColor = values[dynamicKey] ?: false,
@@ -52,6 +60,12 @@ class SettingsRepository(context: Context) {
             searchSuggestions = values[suggestionsKey] ?: true,
             privateNotificationPrompted = values[privateNotificationKey] ?: false,
             introCompleted = values.hasCompletedIntro(),
+            security = BrowserSecuritySettings(
+                blockThirdPartyCookies = values[thirdPartyKey] ?: true,
+                httpsOnly = values[httpsOnlyKey] ?: false,
+                secureDnsMode = dnsMode,
+                customDnsUrl = dnsUrl,
+            ),
         )
     }
     suspend fun setTheme(value: ThemeMode) { store.edit { it[themeKey] = value.name } }
@@ -62,6 +76,17 @@ class SettingsRepository(context: Context) {
     suspend fun setSearchSuggestions(value: Boolean) { store.edit { it[suggestionsKey] = value } }
     suspend fun setPrivateNotificationPrompted(value: Boolean) { store.edit { it[privateNotificationKey] = value } }
     suspend fun setIntroCompleted(value: Boolean) { store.edit { it[introCompletedKey] = value } }
+    suspend fun setBlockThirdPartyCookies(value: Boolean) { store.edit { it[thirdPartyKey] = value } }
+    suspend fun setHttpsOnly(value: Boolean) { store.edit { it[httpsOnlyKey] = value } }
+    suspend fun setSecureDns(mode: SecureDnsMode, customUrl: String? = null) {
+        val validUrl = if (mode == SecureDnsMode.CUSTOM) {
+            requireNotNull(customUrl?.let(::validatedSecureDnsUrl))
+        } else null
+        store.edit { prefs ->
+            prefs[dnsModeKey] = mode.name
+            if (validUrl != null) prefs[dnsUrlKey] = validUrl
+        }
+    }
 
     private inline fun <reified T : Enum<T>> enumValue(value: String?): T? = enumValues<T>().firstOrNull { it.name == value }
 }

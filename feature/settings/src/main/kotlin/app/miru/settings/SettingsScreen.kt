@@ -27,6 +27,7 @@ import app.miru.common.AccentColor
 import app.miru.design.accentPreviewColor
 import app.miru.common.SearchEngine
 import app.miru.data.BrowserSettings
+import app.miru.data.SecureDnsMode
 import app.miru.data.ThemeMode
 import app.miru.data.ToolbarPosition
 
@@ -47,6 +48,9 @@ fun SettingsScreen(
     onClearBrowsingData: () -> Unit = {},
     onSearchSuggestions: (Boolean) -> Unit = {},
     onAccent: (AccentColor) -> Unit = {},
+    onBlockThirdPartyCookies: (Boolean) -> Unit = {},
+    onHttpsOnly: (Boolean) -> Unit = {},
+    onSecureDns: (SecureDnsMode, String?) -> Unit = { _, _ -> },
 ) {
     var dialog by remember { mutableStateOf<String?>(null) }
     val suggestionsLabel=stringResource(R.string.search_suggestions)
@@ -80,6 +84,7 @@ fun SettingsScreen(
             SettingRow(stringResource(R.string.toolbar_position), positionName(settings.toolbarPosition)) { dialog = "position" }
             GroupLabel(R.string.privacy_and_downloads)
             SettingRow(stringResource(R.string.clear_browsing_data), stringResource(R.string.clear_browsing_data_summary), onClearBrowsingData)
+            BrowserSecurityRows(settings.security, onBlockThirdPartyCookies, onHttpsOnly, onSecureDns)
             SettingRow(stringResource(R.string.adblock), stringResource(R.string.adblock_detail), onAdblock)
             SettingRow(stringResource(R.string.downloads), stringResource(R.string.downloads_detail), onDownloads)
             SettingRow(stringResource(R.string.player), stringResource(R.string.player_detail), onPlayer)
@@ -121,10 +126,10 @@ fun SettingsScreen(
 })
 
 @Composable private fun GroupLabel(id: Int) { Text(stringResource(id), Modifier.padding(start = 16.dp, top = 24.dp, bottom = 8.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge) }
-@Composable private fun SettingRow(title: String, value: String, onClick: () -> Unit) {
+@Composable internal fun SettingRow(title: String, value: String, onClick: () -> Unit) {
     ListItem(headlineContent = { Text(title) }, supportingContent = { Text(value) }, trailingContent = { Icon(Icons.Rounded.ChevronRight, null) }, modifier = Modifier.clickable(onClick = onClick))
 }
-@Composable private fun <T> ChoiceDialog(title: String, choices: List<T>, selected: T, name: @Composable (T) -> String, onSelect: (T) -> Unit, onDismiss: () -> Unit) {
+@Composable internal fun <T> ChoiceDialog(title: String, choices: List<T>, selected: T, name: @Composable (T) -> String, onSelect: (T) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = {
         Column { choices.forEach { value ->
             Row(Modifier.fillMaxWidth().clickable { onSelect(value) }.padding(vertical = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {

@@ -1,7 +1,19 @@
 <resources>
     <string name="player">Player</string>
     <string name="player_detail">Gestures, cache, resume and picture-in-picture</string>
-    <string name="privacy_and_downloads">Privacy and downloads</string>
+    <string name="privacy_and_downloads">Privacy and security</string>
+    <string name="security_block_third_party">Block third-party cookies</string>
+    <string name="security_block_third_party_detail">Cookies from known trackers are still blocked when this switch is off. Reload pages to apply changes.</string>
+    <string name="security_https_only">HTTPS-only mode</string>
+    <string name="security_https_only_detail">Upgrade web connections to HTTPS and show an error if it is unavailable. Browser rules still apply to local addresses.</string>
+    <string name="security_dns">Secure DNS (DoH)</string>
+    <string name="security_dns_auto">Automatic</string>
+    <string name="security_dns_off">Off</string>
+    <string name="security_dns_custom">Custom provider</string>
+    <string name="security_dns_url">HTTPS resolver URL</string>
+    <string name="security_dns_invalid">Enter a valid HTTPS URL without a username, password or fragment.</string>
+    <string name="security_dns_custom_detail">Use this service to resolve website names. Some sites may fail to load if the service is unavailable.</string>
+    <string name="security_dns_save">Save</string>
     <string name="adblock">Ad blocking</string>
     <string name="adblock_detail">uBlock Origin, trusted sites and filters</string>
     <string name="downloads">Download settings</string>

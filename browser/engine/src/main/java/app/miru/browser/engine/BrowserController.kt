@@ -21,8 +21,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.coroutineScope
@@ -35,6 +37,7 @@ import mozilla.components.browser.session.storage.AutoSave
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import app.miru.data.BrowsingDataClearRequest
 import app.miru.data.BrowsingDataClearResult
+import app.miru.data.BrowserSecuritySettings
 import kotlinx.coroutines.withTimeout
 import mozilla.components.browser.state.action.ContentAction
 import mozilla.components.browser.state.action.EngineAction
@@ -68,6 +71,7 @@ class BrowserController(
     context: Context,
     private val applicationScope: CoroutineScope,
     private val historyDelegate: HistoryTrackingDelegate? = null,
+    private val securitySettings: Flow<BrowserSecuritySettings>,
 ) {
     private val applicationContext = context.applicationContext
     val websiteIcons = WebsiteIcons(applicationContext)
@@ -137,6 +141,7 @@ class BrowserController(
     @Volatile private var resettingForms = false
     private val viewBindings = mutableSetOf<EngineViewBinding>()
     private var initialization: Job? = null
+    private var securityUpdates: Job? = null
     private var interactedBeforeRestore = false
     private var isReady = false
     private var initializationError: String? = null
@@ -188,13 +193,14 @@ class BrowserController(
         initialization = applicationScope.launch(Dispatchers.Main) {
             yield()
             try {
+                val initialSecurity = securitySettings.first()
                 val runtimeConfiguration = withContext(Dispatchers.IO) { RuntimeConfiguration.prepare(applicationContext) }
                 val runtimeSettings = GeckoRuntimeSettings.Builder()
                     .configFilePath(runtimeConfiguration.absolutePath)
                     .remoteDebuggingEnabled(false)
                     .consoleOutput(false)
                     .crashHandler(null)
-                    .build()
+                    .build().also { it.applyBrowserSecurity(initialSecurity) }
                 val existingRuntime = runtime ?: GeckoRuntime.create(applicationContext, runtimeSettings).also { runtime = it }
                 existingRuntime.setWebNotificationDelegate(webNotifications.delegate)
                 val pendingReadiness = earlyAddonReadiness ?: if(engine == null)
@@ -221,6 +227,13 @@ class BrowserController(
                     ),
                     runtime = existingRuntime,
                 ).also { engine = it }
+                // Android Components applies recommended cookie behavior during engine setup.
+                // Reapply the user's choices before restoring or loading any tabs.
+                existingRuntime.settings.applyBrowserSecurity(securitySettings.first())
+                securityUpdates?.cancel()
+                securityUpdates = applicationScope.launch(Dispatchers.Main.immediate) {
+                    securitySettings.distinctUntilChanged().collect(existingRuntime.settings::applyBrowserSecurity)
+                }
                 // No telemetry SDK, crash uploader, Firefox account, experiments, or sync is initialized.
                 createdEngine.notifyTelemetryPrefChanged(false)
                 engine = createdEngine
