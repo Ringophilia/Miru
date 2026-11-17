@@ -128,7 +128,11 @@ class BrowserController(
     )
     val adblock = ublock.state
     val adblockPopup = ublock.popup
-    private val thumbnails = linkedMapOf<String, Bitmap>()
+    private data class TabThumbnail(val url: String, val bitmap: Bitmap)
+    private val thumbnails = linkedMapOf<String, TabThumbnail>()
+    private var renderedSession: EngineSession? = null
+    private var renderGeneration = 0L
+    private var thumbnailCaptureInFlight = false
     private val mutableState = MutableStateFlow(snapshot(store.state))
     val state: StateFlow<BrowserSnapshot> = mutableState.asStateFlow()
 
@@ -600,21 +604,36 @@ class BrowserController(
 
     fun captureThumbnail(view: EngineView) {
         val tab = store.state.selectedTab ?: return
-        if (tab.content.url == NEW_TAB_URL || tab.content.private) return
+        val session = tab.engineState.engineSession ?: return
+        if (tab.content.url == NEW_TAB_URL || tab.content.private || thumbnailCaptureInFlight ||
+            activeView?.get() !== view || renderedSession !== session || !view.asView().isShown) return
         val id = tab.id
+        val url = tab.content.url
+        val generation = renderGeneration
+        fun isCurrent(): Boolean = activeView?.get() === view && renderGeneration == generation &&
+            store.state.selectedTab?.let { it.id == id && it.content.url == url && !it.content.private } == true
+        thumbnailCaptureInFlight = true
         view.captureThumbnail { bitmap ->
-            if (bitmap != null) applicationScope.launch(Dispatchers.Main) {
-                if (store.state.tabs.none { it.id == id && !it.content.private }) return@launch
-                val width = minOf(bitmap.width, 360)
-                val height = (bitmap.height.toLong() * width / bitmap.width).toInt().coerceAtLeast(1)
-                thumbnails[id] = Bitmap.createScaledBitmap(bitmap, width, height, true)
-                while (thumbnails.size > 12) thumbnails.remove(thumbnails.keys.first())
-                mutableState.value = snapshot(store.state)
+            applicationScope.launch(Dispatchers.Main.immediate) {
+                try {
+                    if (bitmap == null || !isCurrent()) return@launch
+                    val preview = withContext(Dispatchers.Default) {
+                        val scale = minOf(1f, 360f / bitmap.width, 960f / bitmap.height)
+                        val width = (bitmap.width * scale).toInt().coerceAtLeast(1)
+                        val height = (bitmap.height * scale).toInt().coerceAtLeast(1)
+                        Bitmap.createScaledBitmap(bitmap, width, height, true)
+                    }
+                    if (!isCurrent()) return@launch
+                    thumbnails.remove(id)
+                    thumbnails[id] = TabThumbnail(url, preview)
+                    while (thumbnails.size > 12) thumbnails.remove(thumbnails.keys.first())
+                    mutableState.value = snapshot(store.state)
+                } finally { thumbnailCaptureInFlight = false }
             }
         }
     }
 
-    fun getThumbnail(id: String): Bitmap? = thumbnails[id]
+    fun getThumbnail(id: String): Bitmap? = thumbnails[id]?.bitmap
 
     fun saveSession() {
         if (!isReady) return
@@ -632,8 +651,34 @@ class BrowserController(
 
     fun bind(view: EngineView): EngineViewBinding {
         activeView = WeakReference(view)
+        renderedSession = null
+        renderGeneration++
+        val tracked = object : EngineView by view {
+            override fun render(session: EngineSession) {
+                view.render(session)
+                if (activeView?.get() === view && renderedSession !== session) {
+                    renderedSession = session
+                    renderGeneration++
+                }
+            }
+
+            override fun release() {
+                if (activeView?.get() === view) {
+                    renderedSession = null
+                    renderGeneration++
+                }
+                view.release()
+            }
+        }
         lateinit var binding: EngineViewBinding
-        binding = EngineViewBinding(SessionFeature(store, sessions.goBack, sessions.goForward, view), view) { viewBindings.remove(binding) }
+        binding = EngineViewBinding(SessionFeature(store, sessions.goBack, sessions.goForward, tracked), view) {
+            if (activeView?.get() === view) {
+                activeView = null
+                renderedSession = null
+                renderGeneration++
+            }
+            viewBindings.remove(binding)
+        }
         viewBindings.add(binding)
         if(resettingForms) binding.suspendRendering()
         return binding
@@ -658,7 +703,7 @@ class BrowserController(
                 certificate = if (tab.engineState.engineSession == null) null else CertificateDetails.from(
                     tab.content.url, tab.content.securityInfo.host, tab.content.securityInfo.certificate, tab.content.loading),
                 crashed = tab.engineState.crashed,
-                thumbnail = if (tab.content.private) null else thumbnails[tab.id],
+                thumbnail = if (tab.content.private) null else thumbnails[tab.id]?.takeIf { it.url == tab.content.url }?.bitmap,
                 icon = tab.content.icon,
                 findCurrent = tab.content.findResults.lastOrNull()?.let { if (it.numberOfMatches > 0) it.activeMatchOrdinal + 1 else 0 } ?: 0,
                 findTotal = tab.content.findResults.lastOrNull()?.numberOfMatches ?: 0,

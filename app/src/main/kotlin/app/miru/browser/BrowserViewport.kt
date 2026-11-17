@@ -46,6 +46,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import app.miru.browser.engine.BrowserController
+import kotlinx.coroutines.delay
 import mozilla.components.concept.engine.EngineView
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -70,6 +71,7 @@ internal fun BrowserViewport(
     forceToolbarVisible: Boolean = false,
     refreshEnabled: Boolean = true,
     reducedMotion: Boolean = false,
+    tabSwipeEnabled: Boolean = false,
     toolbar: @Composable () -> Unit,
     foreground: @Composable BoxScope.() -> Unit = {},
     overlay: @Composable BoxScope.() -> Unit,
@@ -80,6 +82,8 @@ internal fun BrowserViewport(
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     val motion = remember(controller, scope) { ViewportToolbarMotion(scope) }
+    val tabSwipe = remember(controller, scope) { ToolbarTabSwipe(controller, scope) }
+    val canSwipe = tabSwipeEnabled && toolbarVisible && snapshot.swipeTabs() != null
     val indicator = remember { GeckoRefreshIndicatorState() }
     var refreshing by remember { mutableStateOf(false) }
     var toolbarHeight by remember { mutableIntStateOf(0) }
@@ -88,6 +92,8 @@ internal fun BrowserViewport(
 
     SideEffect { motion.configure(activeHeight.toFloat(), forced, reducedMotion) }
     DisposableEffect(motion) { onDispose { motion.release() } }
+    LaunchedEffect(canSwipe, reducedMotion) { tabSwipe.cancel() }
+    LaunchedEffect(tab?.id) { tabSwipe.selectionChanged(tab?.id) }
     LaunchedEffect(tab?.id, tab?.showToolbarAsExpanded) {
         if (tab?.showToolbarAsExpanded == true) {
             motion.show()
@@ -136,6 +142,12 @@ internal fun BrowserViewport(
             motion.reset()
             engineView.verticalScrollPosition.collect { position -> motion.scroll(position) }
         }
+        LaunchedEffect(engineView, tab?.id, tab?.url, tab?.loading, webContent, tabSwipeEnabled) {
+            if (tabSwipeEnabled && webContent && tab?.isPrivate == false && !tab.loading) {
+                delay(180) // Let the newly bound document present a frame before warming the preview.
+                controller.captureThumbnail(engineView)
+            }
+        }
     }
 
     val shownPixels = (activeHeight - motion.hidden).coerceIn(0f, activeHeight.toFloat())
@@ -166,10 +178,18 @@ internal fun BrowserViewport(
             ),
             content = overlay,
         )
+        if (canSwipe) ToolbarTabPreviews(
+            tabSwipe, snapshot, reducedMotion,
+            Modifier.fillMaxSize().padding(
+                top = if (toolbarAtBottom) 0.dp else shownHeight,
+                bottom = if (toolbarAtBottom) shownHeight else 0.dp,
+            ),
+        )
         if (toolbarVisible) Box(
             Modifier.align(if (toolbarAtBottom) Alignment.BottomCenter else Alignment.TopCenter)
                 .offset { IntOffset(0, (if (toolbarAtBottom) motion.hidden else -motion.hidden).roundToInt()) }
                 .onSizeChanged { toolbarHeight = it.height }
+                .toolbarTabSwipe(tabSwipe, canSwipe, reducedMotion)
                 .testTag("browser-viewport-toolbar"),
         ) { toolbar() }
         if (webContent) PullToRefreshDefaults.Indicator(

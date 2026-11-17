@@ -698,6 +698,9 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         forceToolbarVisible = editing || finding || menuVisible || tabsVisible || route != Route.BROWSER ||
                             siteInfo || adblockPanel || mediaPanel || contextMenu != null || pagePrompt != null,
                         refreshEnabled = !webFullScreen && route == Route.BROWSER && !tabsVisible && !editing,
+                        tabSwipeEnabled = route == Route.BROWSER && !webFullScreen && !editing && !finding && !imeVisible &&
+                            !tabsVisible && !menuVisible && !siteInfo && !adblockPanel && !mediaPanel &&
+                            contextMenu == null && pagePrompt == null && sitePermissionPrompt == null && externalLink == null,
                         reducedMotion = reducedMotion, toolbar = toolbar,
                         foreground = {
                             if (editing) editorBounds?.let { target ->
