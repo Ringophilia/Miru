@@ -78,6 +78,7 @@ internal fun BrowserViewport(
     refreshEnabled: Boolean = true,
     reducedMotion: Boolean = false,
     toolbar: @Composable () -> Unit,
+    foreground: @Composable BoxScope.() -> Unit = {},
     overlay: @Composable BoxScope.() -> Unit,
 ) {
     val snapshot by controller.state.collectAsStateWithLifecycle()
@@ -184,6 +185,7 @@ internal fun BrowserViewport(
             modifier = Modifier.align(Alignment.TopCenter)
                 .padding(top = if (toolbarAtBottom) 0.dp else shownHeight),
         )
+        foreground()
     }
 }
 

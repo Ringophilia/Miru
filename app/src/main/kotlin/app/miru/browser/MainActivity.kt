@@ -23,6 +23,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -54,9 +55,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -106,12 +110,14 @@ import app.miru.data.ToolbarPosition
 import app.miru.design.MiruMotion
 import app.miru.design.MiruTheme
 import app.miru.design.animationsReduced
+import app.miru.design.withReducedMotionFade
 import app.miru.design.showMessage
 import app.miru.design.showUndo
 import app.miru.design.showWithAction
 import app.miru.history.HistoryScreen
 import app.miru.menu.MenuAction
 import app.miru.menu.MiruMenu
+import app.miru.toolbar.MiruAddressField
 import app.miru.ntp.NewTabPage
 import app.miru.settings.AboutScreen
 import app.miru.settings.SettingsScreen
@@ -312,6 +318,23 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     val pageUrl = tab?.url.orEmpty()
     val bookmarked by remember(pageUrl, webPage) { if (webPage) library.bookmarks.isBookmarked(pageUrl) else flowOf(false) }.collectAsState(initial = false)
     val reducedMotion = animationsReduced()
+    val focusMotion = remember { Animatable(0f) }
+    val focusProgress = remember(focusMotion) { { focusMotion.value } }
+    var homeSearchBounds by remember { mutableStateOf<Rect?>(null) }
+    var toolbarAddressBounds by remember { mutableStateOf<Rect?>(null) }
+    var editorBounds by remember { mutableStateOf<Rect?>(null) }
+    var addressSource by remember { mutableStateOf<Rect?>(null) }
+    var addressFromHome by remember { mutableStateOf(false) }
+    LaunchedEffect(editing, reducedMotion) {
+        val duration = if (reducedMotion) MiruMotion.short2 else if (editing) MiruMotion.medium2 else MiruMotion.short3
+        val easing = when {
+            reducedMotion -> MiruMotion.standard
+            !editing -> MiruMotion.standardAccelerate
+            addressFromHome -> MiruMotion.emphasizedDecelerate
+            else -> MiruMotion.emphasized
+        }
+        withReducedMotionFade(reducedMotion) { focusMotion.animateTo(if (editing) 1f else 0f, tween(duration, easing = easing)) }
+    }
     val unsupported = stringResource(R.string.unsupported_address)
     val unavailableRoute = stringResource(R.string.unavailable_route)
     val closedMessage = stringResource(R.string.closed_tab)
@@ -461,7 +484,14 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
         controller.newTab(url, private)
         route = Route.BROWSER; tabsVisible = false
     }
-    fun editAddress() { inputComposing=false;input = if(tab?.url == NEW_TAB_URL) "" else tab?.url.orEmpty(); editing = true }
+    fun editAddress(fromHome: Boolean = false) {
+        addressSource = if (fromHome) homeSearchBounds else toolbarAddressBounds
+        addressFromHome = fromHome
+        editorBounds = null
+        inputComposing = false
+        input = if (tab?.url == NEW_TAB_URL) "" else tab?.url.orEmpty()
+        editing = true
+    }
     fun closeTab(id: String) {
         val title = snapshot.tabs.firstOrNull { it.id == id }?.title.orEmpty().trim()
         controller.closeTab(id)
@@ -618,22 +648,24 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                 // The browser stays composed under full-screen routes, so the GeckoView is not torn down and
                 // recreated whenever the address bar is edited or settings/history/bookmarks are visited.
                 Box(Modifier.fillMaxSize().then(if (route != Route.BROWSER) Modifier.clearAndSetSemantics { } else Modifier)) {
+                    val toolbarState = ToolbarState(url = tab?.url.orEmpty(), title = tab?.title.orEmpty(), editing = editing, input = input, inlineAddress = inlineAddress?.text, inlineDestination = inlineAddress?.url, tabCount = snapshot.tabs.count { it.isPrivate == (tab?.isPrivate == true) }, loading = tab?.loading == true, progress = tab?.progress ?: 0, incognito = tab?.isPrivate == true, adblockAvailable = adblock.installed, blockedCount = adblock.blockedCount, secure = tab?.secure == true, downloading = activeDownloads > 0, adblockNeedsReload = adblock.pageNeedsReload, mediaCount = if(webPage) pageMedia.size else 0)
                     val toolbar: @Composable () -> Unit = {
                         Box {
                             if(finding) FindBar(findQuery, tab?.findCurrent ?: 0, tab?.findTotal ?: 0, { findQuery = it }, { controller.findNext(false) }, { controller.findNext(true) }, { finding = false })
                             else MiruToolbar(
-                                state = ToolbarState(url = tab?.url.orEmpty(), title = tab?.title.orEmpty(), editing = editing, input = input, inlineAddress = inlineAddress?.text, inlineDestination = inlineAddress?.url, tabCount = snapshot.tabs.count { it.isPrivate == (tab?.isPrivate == true) }, loading = tab?.loading == true, progress = tab?.progress ?: 0, incognito = tab?.isPrivate == true, adblockAvailable = adblock.installed, blockedCount = adblock.blockedCount, secure = tab?.secure == true, downloading = activeDownloads > 0, adblockNeedsReload = adblock.pageNeedsReload, mediaCount = if(webPage) pageMedia.size else 0),
-                                onEdit = ::editAddress,
-                                onTextChanged = { input = it },
-                                onSubmit = { navigate(it) },
+                                state = toolbarState,
+                                onEdit = { editAddress() },
                                 onCancelEdit = { editing = false;inputComposing=false },
-                                onCompositionChanged = { inputComposing=it },
                                 onTabs = { controller.captureThumbnail(); privateGroup = tab?.isPrivate == true; tabsVisible = true },
                                 onMenu = { menuVisible = true },
                                 onSiteInfo = { siteInfo = true },
                                 onAdblock = { adblockPanel = true },
                                 progressAtTop = toolbarAtBottom,
                                 onMedia = { mediaPanel = true },
+                                focusProgress = focusProgress,
+                                reducedMotion = reducedMotion,
+                                onAddressBounds = { toolbarAddressBounds = it },
+                                onEditorBounds = { editorBounds = it },
                             )
                             Box(Modifier.align(Alignment.TopEnd)) {
                                 MiruMenu(expanded = menuVisible, onDismiss = { menuVisible = false }, onAction = { action ->
@@ -667,14 +699,31 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         forceToolbarVisible = editing || finding || menuVisible || tabsVisible || route != Route.BROWSER ||
                             siteInfo || adblockPanel || mediaPanel || contextMenu != null || pagePrompt != null,
                         refreshEnabled = !webFullScreen && route == Route.BROWSER && !tabsVisible && !editing,
-                        reducedMotion = reducedMotion, toolbar = toolbar) {
+                        reducedMotion = reducedMotion, toolbar = toolbar,
+                        foreground = {
+                            if (editing) editorBounds?.let { target ->
+                                AddressFocusLayout(addressSource, target, reducedMotion, focusProgress) {
+                                    MiruAddressField(toolbarState, { input = it }, { navigate(it) }, { inputComposing = it },
+                                        Modifier.testTag("address-editor-capsule").graphicsLayer {
+                                            alpha = if (reducedMotion) focusProgress() else 1f
+                                        },
+                                    )
+                                }
+                            }
+                        },
+                    ) {
                         when {
-                            tab == null || tab.url == NEW_TAB_URL -> NewTabPage(incognito = tab?.isPrivate == true, onSearch = ::editAddress, onOpenUrl = { navigate(it) }, snackbar = snackbars)
+                            tab == null || tab.url == NEW_TAB_URL -> NewTabPage(
+                                incognito = tab?.isPrivate == true, onSearch = { editAddress(fromHome = true) },
+                                onOpenUrl = { navigate(it) }, snackbar = snackbars, editing = editing,
+                                reducedMotion = reducedMotion, motionProgress = focusProgress, onSearchBounds = { homeSearchBounds = it },
+                            )
                             snapshot.error != null -> ErrorContent(stringResource(R.string.engine_error), { controller.initialize() })
                             !snapshot.ready -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                             tab.crashed -> ErrorContent(stringResource(R.string.page_crashed), controller::reload)
                         }
-                        if (editing) Surface(Modifier.fillMaxSize()) {
+                        val addressBackground = MaterialTheme.colorScheme.surface
+                        if (editing) Surface(Modifier.fillMaxSize().graphicsLayer { alpha = focusProgress() }, color = addressBackground) {
                             Suggestions(
                                 input = input,
                                 engine = settings.searchEngine,
@@ -687,6 +736,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                                 onNavigate = { navigate(it) },
                                 onSwitchTab = { controller.selectTab(it); editing = false },
                                 onFill = { inputComposing=false;input = it },
+                                reducedMotion = reducedMotion,
                             )
                         }
                         if(mediaHint && pageMedia.any { it.playable } && !editing && route == Route.BROWSER) FilledTonalButton(
@@ -925,6 +975,7 @@ private data class OnlineMatches(val query: String,val engine: SearchEngine,val 
     onNavigate: (String) -> Unit,
     onSwitchTab: (String) -> Unit,
     onFill: (String) -> Unit,
+    reducedMotion: Boolean,
 ) {
     if (input.isBlank()) return
     val bookmarks by produceState(emptyList<Bookmark>(), input) { value = library.bookmarks.search(input, limit = 3) }
@@ -941,31 +992,54 @@ private data class OnlineMatches(val query: String,val engine: SearchEngine,val 
     val isSearch = target is AddressTarget.Web && target.url == engine.search(input.trim())
     val fillLabel = stringResource(R.string.fill_address)
     Column(Modifier.verticalScroll(rememberScrollState())) {
-        ListItem(
-            headlineContent = { Text(if (target is AddressTarget.Web && !isSearch) target.url else input, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            supportingContent = { Text(stringResource(if (isSearch) R.string.suggest_search else R.string.suggest_open)) },
-            leadingContent = { Icon(if (isSearch) Icons.Rounded.Search else Icons.Outlined.Public, null) },
-            modifier = Modifier.clickable { onNavigate(input) },
-        )
-        online.forEach { suggestion ->
+        var index = 1
+        SuggestionArrival(0, reducedMotion) {
             ListItem(
-                headlineContent = { Text(suggestion,maxLines=1,overflow=TextOverflow.Ellipsis) },
-                supportingContent = { Text(stringResource(R.string.suggest_online)) },
-                leadingContent = { Icon(Icons.Rounded.Search,null) },
-                trailingContent = { IconButton(onClick={ onFill(suggestion) }) { Icon(Icons.Rounded.NorthWest,fillLabel) } },
-                modifier = Modifier.clickable { onNavigate(engine.search(suggestion)) },
+                headlineContent = { Text(if (target is AddressTarget.Web && !isSearch) target.url else input, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                supportingContent = { Text(stringResource(if (isSearch) R.string.suggest_search else R.string.suggest_open)) },
+                leadingContent = { Icon(if (isSearch) Icons.Rounded.Search else Icons.Outlined.Public, null) },
+                modifier = Modifier.clickable { onNavigate(input) },
             )
+        }
+        online.forEach { suggestion ->
+            val position = index++
+            key("online", suggestion) {
+                SuggestionArrival(position, reducedMotion) {
+                    ListItem(
+                        headlineContent = { Text(suggestion, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        supportingContent = { Text(stringResource(R.string.suggest_online)) },
+                        leadingContent = { Icon(Icons.Rounded.Search, null) },
+                        trailingContent = { IconButton(onClick = { onFill(suggestion) }) { Icon(Icons.Rounded.NorthWest, fillLabel) } },
+                        modifier = Modifier.clickable { onNavigate(engine.search(suggestion)) },
+                    )
+                }
+            }
         }
         // Spec 5.3 order: history, bookmarks, then open tabs. A bookmarked page is listed once, as a bookmark.
         val bookmarkUrls = bookmarks.map { it.url }.toSet()
         history.filter { it.url !in bookmarkUrls }.take(3).forEach { entry ->
-            SuggestionRow(entry.title, entry.url, Icons.Outlined.History, fillLabel, { onNavigate(entry.url) }, { onFill(entry.url) })
+            val position = index++
+            key("history", entry.url) {
+                SuggestionArrival(position, reducedMotion) {
+                    SuggestionRow(entry.title, entry.url, Icons.Outlined.History, fillLabel, { onNavigate(entry.url) }, { onFill(entry.url) })
+                }
+            }
         }
         bookmarks.forEach { bookmark ->
-            SuggestionRow(bookmark.title, bookmark.url, Icons.Outlined.StarBorder, fillLabel, { onNavigate(bookmark.url) }, { onFill(bookmark.url) })
+            val position = index++
+            key("bookmark", bookmark.id) {
+                SuggestionArrival(position, reducedMotion) {
+                    SuggestionRow(bookmark.title, bookmark.url, Icons.Outlined.StarBorder, fillLabel, { onNavigate(bookmark.url) }, { onFill(bookmark.url) })
+                }
+            }
         }
         tabs.filter { it.url.contains(input, true) || it.title.contains(input, true) }.take(5).forEach { suggestion ->
-            ListItem(headlineContent = { Text(suggestion.title.ifBlank { AddressResolver.display(suggestion.url) }, maxLines = 1, overflow = TextOverflow.Ellipsis) }, supportingContent = { Text(stringResource(R.string.switch_tab)) }, leadingContent = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) }, modifier = Modifier.clickable { onSwitchTab(suggestion.id) })
+            val position = index++
+            key("tab", suggestion.id) {
+                SuggestionArrival(position, reducedMotion) {
+                    ListItem(headlineContent = { Text(suggestion.title.ifBlank { AddressResolver.display(suggestion.url) }, maxLines = 1, overflow = TextOverflow.Ellipsis) }, supportingContent = { Text(stringResource(R.string.switch_tab)) }, leadingContent = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) }, modifier = Modifier.clickable { onSwitchTab(suggestion.id) })
+                }
+            }
         }
     }
 }

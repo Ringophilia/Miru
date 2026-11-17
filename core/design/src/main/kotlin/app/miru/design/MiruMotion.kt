@@ -3,11 +3,22 @@
 
 package app.miru.design
 
+import android.database.ContentObserver
 import android.provider.Settings
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 object MiruMotion {
     const val instant = 50
@@ -19,6 +30,8 @@ object MiruMotion {
     const val medium3 = 350
     const val long1 = 450
     const val long2 = 500
+    const val suggestionStagger = 20
+    const val staggeredSuggestions = 6
     val standard = CubicBezierEasing(0.2f, 0f, 0f, 1f)
     val standardDecelerate = CubicBezierEasing(0f, 0f, 0f, 1f)
     val standardAccelerate = CubicBezierEasing(0.3f, 0f, 1f, 1f)
@@ -34,7 +47,24 @@ object MiruMotion {
 @Composable
 fun animationsReduced(): Boolean {
     val context = LocalContext.current
-    return remember(context) {
-        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
-    }
+    val reduced by remember(context.applicationContext) {
+        val resolver = context.applicationContext.contentResolver
+        val setting = Settings.Global.ANIMATOR_DURATION_SCALE
+        callbackFlow {
+            val observer = object : ContentObserver(null) {
+                override fun onChange(selfChange: Boolean) { trySend(Unit) }
+            }
+            resolver.registerContentObserver(Settings.Global.getUriFor(setting), false, observer)
+            trySend(Unit)
+            awaitClose { resolver.unregisterContentObserver(observer) }
+        }.conflate().map { Settings.Global.getFloat(resolver, setting, 1f) == 0f }.flowOn(Dispatchers.IO)
+    }.collectAsState(initial = false)
+    return reduced
+}
+
+private object FadeDurationScale : MotionDurationScale { override val scaleFactor = 1f }
+
+/** Preserve the short opacity change when Android has disabled spatial animation. */
+suspend fun withReducedMotionFade(reduced: Boolean, animate: suspend () -> Unit) {
+    if (reduced) withContext(FadeDurationScale) { animate() } else animate()
 }

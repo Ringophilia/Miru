@@ -18,16 +18,24 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import java.util.UUID
 import app.miru.design.SiteIcon
 import app.miru.design.showMessage
@@ -41,6 +49,10 @@ fun NewTabPage(
     onOpenUrl: (String) -> Unit,
     snackbar: SnackbarHostState,
     modifier: Modifier = Modifier,
+    editing: Boolean = false,
+    reducedMotion: Boolean = false,
+    motionProgress: () -> Float = { 0f },
+    onSearchBounds: (Rect) -> Unit = {},
 ) {
     val context = LocalContext.current
     val repository = remember(context.applicationContext) { ShortcutsRepository(context.applicationContext) }
@@ -69,7 +81,13 @@ fun NewTabPage(
             },
         )
     }
-    Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+    val lift = with(LocalDensity.current) { 16.dp.toPx() }
+    val outgoing = Modifier.graphicsLayer {
+        val progress = motionProgress()
+        alpha = 1f - progress
+        translationY = if (reducedMotion) 0f else -lift * progress
+    }
+    Surface(modifier.fillMaxSize().then(if (editing) Modifier.clearAndSetSemantics {} else Modifier), color = MaterialTheme.colorScheme.surface) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val topSpace = maxHeight * 0.16f
             Column(
@@ -77,29 +95,38 @@ fun NewTabPage(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Spacer(Modifier.height(topSpace.coerceAtLeast(32.dp)))
-                if (incognito) {
-                    Icon(Icons.Outlined.VisibilityOff, stringResource(R.string.ntp_incognito_title), Modifier.size(64.dp))
-                    Spacer(Modifier.height(16.dp))
-                    Text(stringResource(R.string.ntp_incognito_title), style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        stringResource(R.string.ntp_incognito_description),
-                        modifier = Modifier.widthIn(max = 360.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                    )
-                } else {
-                    Image(
-                        painterResource(app.miru.design.R.drawable.miru_wordmark),
-                        stringResource(R.string.ntp_miru_logo),
-                        Modifier.height(40.dp).width(132.dp),
-                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary),
-                    )
+                Column(outgoing, horizontalAlignment = Alignment.CenterHorizontally) {
+                    if (incognito) {
+                        Icon(Icons.Outlined.VisibilityOff, stringResource(R.string.ntp_incognito_title), Modifier.size(64.dp))
+                        Spacer(Modifier.height(16.dp))
+                        Text(stringResource(R.string.ntp_incognito_title), style = MaterialTheme.typography.titleLarge)
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            stringResource(R.string.ntp_incognito_description),
+                            modifier = Modifier.widthIn(max = 360.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                    } else {
+                        Image(
+                            painterResource(app.miru.design.R.drawable.miru_wordmark),
+                            stringResource(R.string.ntp_miru_logo),
+                            Modifier.height(40.dp).width(132.dp),
+                            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary),
+                        )
+                    }
                 }
                 Spacer(Modifier.height(24.dp))
                 Surface(
-                    modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().height(52.dp).clickable(onClick = onSearch),
+                    modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().height(52.dp)
+                        .onGloballyPositioned { coordinates ->
+                            val size = coordinates.size
+                            onSearchBounds(Rect(coordinates.positionInRoot(), Size(size.width.toFloat(), size.height.toFloat())))
+                        }
+                        .graphicsLayer { alpha = if (!editing || reducedMotion) 1f - motionProgress() else 0f }
+                        .testTag("new-tab-search")
+                        .clickable(enabled = !editing, onClick = onSearch),
                     color = MaterialTheme.colorScheme.surfaceContainer,
                     shape = RoundedCornerShape(50),
                 ) {
@@ -111,7 +138,7 @@ fun NewTabPage(
                 }
                 if (!incognito) {
                     Spacer(Modifier.height(28.dp))
-                    Column(Modifier.widthIn(max = 400.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(outgoing.widthIn(max = 400.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         val entries = shortcuts.map { it as Shortcut? } + if (shortcuts.size < 8) listOf(null) else emptyList()
                         entries.chunked(4).forEach { row ->
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
