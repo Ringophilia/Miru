@@ -1,4 +1,5 @@
 <resources>
+    <string name="toolbar_page_progress">Page loading progress</string>
     <string name="toolbar_media">Videos on this page</string>
     <string name="toolbar_adblock_reload">Reload this page to apply ad blocking fully</string>
     <string name="toolbar_search_hint">Search or enter address</string>

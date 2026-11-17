@@ -4,15 +4,12 @@
 package app.miru.toolbar
 
 import android.net.Uri
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,7 +25,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.FocusRequester
@@ -71,6 +67,7 @@ data class ToolbarState(
     val downloading: Boolean = false,
     val adblockNeedsReload: Boolean = false,
     val mediaCount: Int = 0,
+    val tabId: String? = null,
 )
 
 @Composable
@@ -83,7 +80,6 @@ fun MiruToolbar(
     onSiteInfo: () -> Unit,
     onAdblock: () -> Unit,
     modifier: Modifier = Modifier,
-    progressAtTop: Boolean = false,
     onMedia: () -> Unit = {},
     focusProgress: () -> Float = { 0f },
     reducedMotion: Boolean = false,
@@ -200,7 +196,9 @@ fun MiruToolbar(
             }
             Box(Modifier.weight(1f).height(44.dp).addressBounds(onEditorBounds))
         }
-        LoadingBar(state.loading && !state.editing, state.progress, Modifier.align(if (progressAtTop) Alignment.TopStart else Alignment.BottomStart))
+        if (!state.editing && state.url != "about:newtab") key(state.tabId) {
+            PageLoadingBar(state.loading, state.progress, reducedMotion, Modifier.align(Alignment.BottomStart))
+        }
     }
 }
 
@@ -284,35 +282,6 @@ fun MiruAddressField(
                 Icon(Icons.Outlined.Close, stringResource(R.string.toolbar_clear_input))
             }
         }
-    }
-}
-
-/** Overlays the toolbar edge, so starting or finishing a load never resizes the web content below. */
-@Composable
-private fun LoadingBar(loading: Boolean, progress: Int, modifier: Modifier) {
-    val target by rememberUpdatedState(progress / 100f)
-    val value = remember { Animatable(0f) }
-    LaunchedEffect(loading) {
-        if (loading) {
-            value.snapTo(0.1f)
-            snapshotFlow { target }.collect { value.animateTo(it.coerceAtLeast(value.value), spring(MiruMotion.springDamping, MiruMotion.springStiffness)) }
-        } else if (value.value > 0f) {
-            value.animateTo(1f, tween(MiruMotion.short2))
-        }
-    }
-    // Hold at 100% for 150 ms, then fade out.
-    val alpha by animateFloatAsState(
-        if (loading) 1f else 0f,
-        if (loading) tween(MiruMotion.short1) else tween(MiruMotion.short3, delayMillis = 150, easing = MiruMotion.standardAccelerate),
-        label = "loading",
-    )
-    if (alpha > 0f) {
-        LinearProgressIndicator(
-            progress = { value.value },
-            modifier = modifier.fillMaxWidth().height(2.dp).alpha(alpha),
-            gapSize = 0.dp,
-            drawStopIndicator = {},
-        )
     }
 }
 

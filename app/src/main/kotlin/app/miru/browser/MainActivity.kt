@@ -648,7 +648,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                 // The browser stays composed under full-screen routes, so the GeckoView is not torn down and
                 // recreated whenever the address bar is edited or settings/history/bookmarks are visited.
                 Box(Modifier.fillMaxSize().then(if (route != Route.BROWSER) Modifier.clearAndSetSemantics { } else Modifier)) {
-                    val toolbarState = ToolbarState(url = tab?.url.orEmpty(), title = tab?.title.orEmpty(), editing = editing, input = input, inlineAddress = inlineAddress?.text, inlineDestination = inlineAddress?.url, tabCount = snapshot.tabs.count { it.isPrivate == (tab?.isPrivate == true) }, loading = tab?.loading == true, progress = tab?.progress ?: 0, incognito = tab?.isPrivate == true, adblockAvailable = adblock.installed, blockedCount = adblock.blockedCount, secure = tab?.secure == true, downloading = activeDownloads > 0, adblockNeedsReload = adblock.pageNeedsReload, mediaCount = if(webPage) pageMedia.size else 0)
+                    val toolbarState = ToolbarState(url = tab?.url.orEmpty(), title = tab?.title.orEmpty(), editing = editing, input = input, inlineAddress = inlineAddress?.text, inlineDestination = inlineAddress?.url, tabCount = snapshot.tabs.count { it.isPrivate == (tab?.isPrivate == true) }, loading = tab?.loading == true, progress = tab?.progress ?: 0, incognito = tab?.isPrivate == true, adblockAvailable = adblock.installed, blockedCount = adblock.blockedCount, secure = tab?.secure == true, downloading = activeDownloads > 0, adblockNeedsReload = adblock.pageNeedsReload, mediaCount = if(webPage) pageMedia.size else 0, tabId = tab?.id)
                     val toolbar: @Composable () -> Unit = {
                         Box {
                             if(finding) FindBar(findQuery, tab?.findCurrent ?: 0, tab?.findTotal ?: 0, { findQuery = it }, { controller.findNext(false) }, { controller.findNext(true) }, { finding = false })
@@ -660,7 +660,6 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                                 onMenu = { menuVisible = true },
                                 onSiteInfo = { siteInfo = true },
                                 onAdblock = { adblockPanel = true },
-                                progressAtTop = toolbarAtBottom,
                                 onMedia = { mediaPanel = true },
                                 focusProgress = focusProgress,
                                 reducedMotion = reducedMotion,

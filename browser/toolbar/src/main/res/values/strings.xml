@@ -1,4 +1,5 @@
 <resources>
+    <string name="toolbar_page_progress">网页加载进度</string>
     <string name="toolbar_media">本页视频</string>
     <string name="toolbar_adblock_reload">广告拦截需要刷新网页</string>
     <string name="toolbar_search_hint">搜索或输入网址</string>
