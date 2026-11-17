@@ -6,13 +6,10 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.os.Build
-import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -49,10 +46,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import app.miru.browser.engine.BrowserController
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import mozilla.components.concept.engine.EngineView
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -187,71 +180,6 @@ internal fun BrowserViewport(
         )
         foreground()
     }
-}
-
-/** Reads Gecko compositor positions, never Compose scroll or a JavaScript scroll proxy. */
-@Stable
-private class ViewportToolbarMotion(private val scope: CoroutineScope) {
-    var hidden by mutableFloatStateOf(0f)
-        private set
-    private var height = 0f
-    private var forced = true
-    private var reducedMotion = false
-    private var touching = false
-    private var previousPosition: Float? = null
-    private var previousTime = 0L
-    private var velocity = 0f
-    private var settle: Job? = null
-
-    fun configure(height: Float, forced: Boolean, reducedMotion: Boolean) {
-        val changed = this.height != height || this.forced != forced || this.reducedMotion != reducedMotion
-        this.height = height
-        this.forced = forced
-        this.reducedMotion = reducedMotion
-        if (forced || height == 0f) show()
-        else if (changed) { hidden = hidden.coerceIn(0f, height); scheduleSettle() }
-    }
-
-    fun reset() { previousPosition = null; previousTime = 0; velocity = 0f; show() }
-    fun show() { settle?.cancel(); hidden = 0f; velocity = 0f }
-    fun touch(active: Boolean) {
-        touching = active
-        if (active) settle?.cancel() else scheduleSettle()
-    }
-
-    fun scroll(position: Float) {
-        if (!position.isFinite()) return
-        val now = SystemClock.uptimeMillis()
-        val oldPosition = previousPosition
-        val elapsed = (now - previousTime).coerceAtLeast(1)
-        previousPosition = position
-        previousTime = now
-        if (forced || position <= 1f) { show(); return }
-        if (oldPosition == null) return
-        val delta = position - oldPosition
-        if (abs(delta) < 0.01f) return
-        settle?.cancel()
-        val oldHidden = hidden
-        hidden = (hidden + delta).coerceIn(0f, height)
-        velocity = ((hidden - oldHidden) * 1000f / elapsed).coerceIn(-6000f, 6000f)
-        if (!touching) scheduleSettle()
-    }
-
-    private fun scheduleSettle() {
-        settle?.cancel()
-        if (touching || forced || hidden == 0f || hidden == height) return
-        settle = scope.launch {
-            // APZ may keep delivering fling positions after ACTION_UP. Every real
-            // position cancels this wait, so the spring starts after scrolling rests.
-            delay(100)
-            val target = if (hidden > height / 2f) height else 0f
-            if (reducedMotion) hidden = target
-            else Animatable(hidden).animateTo(target, spring(dampingRatio = 0.8f, stiffness = 380f), initialVelocity = velocity) {
-                hidden = value.coerceIn(0f, height)
-            }
-        }
-    }
-    fun release() { settle?.cancel() }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

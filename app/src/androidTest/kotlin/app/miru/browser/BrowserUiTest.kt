@@ -130,8 +130,13 @@ internal class TestPages : Closeable {
                     val reader = socket.getInputStream().bufferedReader()
                     val path = reader.readLine()?.split(' ')?.getOrNull(1)
                     while (!reader.readLine().isNullOrEmpty()) { }
-                    val title = if(path == "/second") "Miru Two" else "Miru One"
-                    val body = "<!doctype html><meta name='viewport' content='width=device-width'><title>$title</title><h1>Miru fixture</h1><p>$title</p><a href='/second'>Next page</a>".toByteArray()
+                    val title = when (path) {
+                        "/second" -> "Miru Two"
+                        "/long" -> "Miru long"
+                        else -> "Miru One"
+                    }
+                    val tail = if (path == "/long") "<div style='height:12000px'>Long page</div>" else ""
+                    val body = "<!doctype html><meta name='viewport' content='width=device-width'><title>$title</title><h1>Miru fixture</h1><p>$title</p><a href='/second'>Next page</a>$tail".toByteArray()
                     val output = socket.getOutputStream()
                     output.write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
                     output.write(body); output.flush()
