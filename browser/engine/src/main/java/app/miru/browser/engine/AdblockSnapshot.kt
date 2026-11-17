@@ -16,4 +16,5 @@ data class AdblockSnapshot(
     val error: String? = null,
     val startupTimedOut: Boolean = false,
     val pageNeedsReload: Boolean = false,
+    val badgeTabId: String? = null,
 )

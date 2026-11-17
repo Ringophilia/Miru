@@ -7,6 +7,9 @@ import android.net.ConnectivityManager
 import android.provider.Settings
 import android.util.Log
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -148,6 +151,16 @@ class AdblockIntegrationTest {
             compose.waitUntil(20_000) { selectedPage(reenabledTab, reenabled, reenabled.blockedTitle) && browser.adblock.value.blockedCount > 0 }
             assertEquals("Reenabled script must not reach its own case origin", before, server.adRequests(reenabled))
 
+            assertToolbarCount(browser.adblock.value.blockedCount)
+            val clean = compose.runOnIdle { browser.newTab("${server.origin}/clean") }
+            try {
+                compose.waitUntil(15_000) { browser.state.value.selectedTab?.let { it.id == clean && it.title == "Clean fixture" && !it.loading } == true }
+                assertToolbarCount(0)
+                compose.runOnIdle { browser.selectTab(reenabledTab) }
+                compose.waitUntil(5_000) { browser.adblock.value.badgeTabId == reenabledTab && browser.adblock.value.blockedCount > 0 }
+                assertToolbarCount(browser.adblock.value.blockedCount)
+            } finally { compose.runOnIdle { browser.closeTab(clean) } }
+
             compose.waitUntil(10_000) { browser.adblock.value.popupAvailable }
             compose.runOnIdle { assertTrue("The real extension action must open its popup session", browser.openAdblockPopup()) }
             compose.waitUntil(10_000) { browser.adblockPopup.value != null }
@@ -176,6 +189,14 @@ class AdblockIntegrationTest {
         compose.runOnIdle { id = browser.newTab(page.url) }
         compose.waitUntil(timeout) { selectedPage(id, page) }
         return id
+    }
+
+    private fun assertToolbarCount(count: Int) {
+        val description = compose.activity.getString(app.miru.toolbar.R.string.toolbar_adblock)
+        val message = compose.activity.resources.getQuantityString(app.miru.toolbar.R.plurals.toolbar_adblock_count, count, count)
+        val badge = hasContentDescription(description) and SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, message)
+        compose.waitUntil(5_000) { compose.onAllNodes(badge).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(badge).assertIsDisplayed()
     }
 
     private fun selectedPage(id: String, page: AdblockTestPage, title: String? = null): Boolean {
@@ -220,7 +241,7 @@ private class AdblockTestServer : Closeable {
                     val isAd=path=="/ads/custom_ads.js"
                     if(path == "/page") documents.computeIfAbsent(token) { AtomicInteger() }.incrementAndGet()
                     if(isAd) requests.computeIfAbsent(token) { AtomicInteger() }.incrementAndGet()
-                    val body=if(isAd) "window.miruAdAllowedToken='$token';" else """
+                    val body=if(isAd) "window.miruAdAllowedToken='$token';" else if(path == "/clean") "<title>Clean fixture</title>" else """
                         <!doctype html><meta name="viewport" content="width=device-width"><title>Miru fixture loading $token</title>
                         <h1>Miru uBlock Origin fixture</h1><script src="/ads/custom_ads.js?case=$token"></script>
                         <script>document.title=window.miruAdAllowedToken==='$token'?'Miru default filter $token allowed':'Miru default filter $token blocked';</script>

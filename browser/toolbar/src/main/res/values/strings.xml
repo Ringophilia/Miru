@@ -14,4 +14,7 @@
         <item quantity="one">%d 个标签页</item>
         <item quantity="other">%d 个标签页</item>
     </plurals>
+    <plurals name="toolbar_adblock_count">
+        <item quantity="other">已拦截 %d 项</item>
+    </plurals>
 </resources>

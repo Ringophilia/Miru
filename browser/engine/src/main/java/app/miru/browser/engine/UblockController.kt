@@ -277,13 +277,18 @@ internal class UblockController(
         closePopup(); onOpenUrl(url); return true
     }
 
-    private fun currentAction(): Action? = defaultAction?.copyWithOverride(store.state.selectedTabId?.let(tabActions::get)) ?: store.state.selectedTabId?.let(tabActions::get)
+    private fun currentAction(tabId: String? = store.state.selectedTabId): Action? {
+        val tabAction = tabId?.let(tabActions::get)
+        return defaultAction?.copyWithOverride(tabAction) ?: tabAction
+    }
 
     private fun publish() {
         val current = extension
         val installed = current != null
         val enabled = current?.isEnabled() ?: installation.desiredEnabled
-        val badge = if(enabled) currentAction()?.badgeText.orEmpty() else ""
+        val tabId = store.state.selectedTabId
+        val action = currentAction(tabId)
+        val badge = if(enabled) action?.badgeText.orEmpty() else ""
         mutableState.value = mutableState.value.copy(
             installed = installed,
             enabled = enabled,
@@ -292,9 +297,10 @@ internal class UblockController(
             status = installation.status,
             error = installation.error,
             badgeText = badge,
-            pageNeedsReload = enabled && (badge == "!" || pageWarnings.needsReload(store.state.selectedTabId)),
+            pageNeedsReload = enabled && (badge == "!" || pageWarnings.needsReload(tabId)),
             blockedCount = parseBadgeCount(badge),
-            popupAvailable = currentAction() != null && installed && enabled,
+            popupAvailable = action != null && installed && enabled,
+            badgeTabId = tabId,
         )
         val diagnostic = diagnosticState()
         if(diagnostic != lastDiagnosticState) {

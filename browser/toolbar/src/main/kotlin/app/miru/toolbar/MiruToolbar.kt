@@ -5,12 +5,6 @@ package app.miru.toolbar
 
 import android.net.Uri
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -47,7 +41,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import app.miru.design.MiruMotion
 import app.miru.design.MiruTheme
 
 data class ToolbarState(
@@ -124,25 +117,8 @@ fun MiruToolbar(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    if (state.url != "about:newtab" && state.adblockAvailable) {
-                        IconButton(onClick = onAdblock, enabled = !state.editing) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    if(state.adblockNeedsReload) Icons.Outlined.WarningAmber else Icons.Outlined.Shield,
-                                    stringResource(if(state.adblockNeedsReload) R.string.toolbar_adblock_reload else R.string.toolbar_adblock),
-                                    Modifier.size(18.dp),
-                                    tint = if(state.adblockNeedsReload) MaterialTheme.colorScheme.error else if (state.adblockAvailable && state.blockedCount > 0) MiruTheme.colors.adblock else MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                if (state.adblockAvailable && state.blockedCount > 0) {
-                                    AnimatedContent(state.blockedCount, transitionSpec = {
-                                        (slideInVertically(tween(MiruMotion.short2)) { it } + fadeIn(tween(MiruMotion.short2))) togetherWith
-                                            (slideOutVertically(tween(MiruMotion.short2)) { -it } + fadeOut(tween(MiruMotion.short2)))
-                                    }, label = "blockedCount") { count ->
-                                        Text(if (count > 999) "999+" else count.toString(), style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"))
-                                    }
-                                }
-                            }
-                        }
+                    if (state.url != "about:newtab" && state.adblockAvailable) key(state.tabId, state.url) {
+                        AdblockIndicator(state.blockedCount, state.adblockNeedsReload, reducedMotion, !state.editing, onAdblock)
                     }
                 }
             }

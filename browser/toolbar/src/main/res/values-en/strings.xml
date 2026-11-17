@@ -14,4 +14,8 @@
         <item quantity="one">%d tab</item>
         <item quantity="other">%d tabs</item>
     </plurals>
+    <plurals name="toolbar_adblock_count">
+        <item quantity="one">%d item blocked</item>
+        <item quantity="other">%d items blocked</item>
+    </plurals>
 </resources>
