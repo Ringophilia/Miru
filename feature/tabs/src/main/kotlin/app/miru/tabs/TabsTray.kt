@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,7 +25,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -44,6 +44,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.miru.design.MiruMotion
 import app.miru.design.SiteIcon
+import app.miru.design.withReducedMotionFade
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -130,7 +132,11 @@ fun TabsTray(
                             onSelect = { onSelect(tab.id) },
                             onClose = { onClose(tab.id) },
                             onBounds = { onCardBounds(tab.id, it) },
-                            modifier = Modifier.animateItem().graphicsLayer {
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = if (reducedMotion) null else tween(MiruMotion.short2),
+                                placementSpec = if (reducedMotion) null else spring(MiruMotion.springDamping, MiruMotion.springStiffness),
+                                fadeOutSpec = if (reducedMotion) null else tween(MiruMotion.short2),
+                            ).graphicsLayer {
                                 if (!reducedMotion) {
                                     val fraction = progress()
                                     if (tab.id == transformingTabId) {
@@ -141,6 +147,7 @@ fun TabsTray(
                                     }
                                 }
                             },
+                            reducedMotion = reducedMotion,
                         )
                     }
                 }
@@ -151,63 +158,84 @@ fun TabsTray(
 
 @Composable
 private fun TabCard(tab: TabItem, selected: Boolean, onSelect: () -> Unit, onClose: () -> Unit,
-    onBounds: (Rect?) -> Unit, modifier: Modifier = Modifier) {
-    val offset = remember(tab.id) { Animatable(0f) }
+    onBounds: (Rect?) -> Unit, reducedMotion: Boolean, modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
+    var offset by remember(tab.id) { mutableFloatStateOf(0f) }
     var cardWidth by remember { mutableIntStateOf(1) }
+    var settle by remember { mutableStateOf<Job?>(null) }
+    var closed by remember { mutableStateOf(false) }
+    val closeTab by rememberUpdatedState(onClose)
     val velocityThreshold = with(LocalDensity.current) { 1000.dp.toPx() }
     val newTab = stringResource(R.string.tabs_new)
     val closeLabel = stringResource(R.string.tabs_close_named, tab.title.ifBlank { newTab })
     val shape = RoundedCornerShape(12.dp)
     val latestBounds by rememberUpdatedState(onBounds)
     DisposableEffect(tab.id) { onDispose { latestBounds(null) } }
-    Column(
+
+    fun closeOnce() {
+        if (!closed) {
+            closed = true
+            closeTab()
+        }
+    }
+
+    fun finishSwipe(velocity: Float, cancelled: Boolean) {
+        if (closed) return
+        val direction = if (cancelled) 0 else tabDismissDirection(offset, cardWidth.toFloat(), velocity, velocityThreshold)
+        settle?.cancel()
+        settle = scope.launch {
+            val animation = Animatable(offset)
+            val target = cardWidth.toFloat() * direction
+            if (reducedMotion) withReducedMotionFade(true) {
+                animation.animateTo(target, tween(MiruMotion.short2)) { offset = value }
+            } else animation.animateTo(target, spring(MiruMotion.springDamping, MiruMotion.springStiffness), initialVelocity = velocity) {
+                offset = value
+            }
+            if (direction != 0) closeOnce()
+        }
+    }
+
+    // Track the pointer in the stationary grid slot, even as its visible card translates.
+    Box(
         modifier
             .onGloballyPositioned { onBounds(it.boundsInRoot().takeUnless { bounds -> bounds.isEmpty }) }
-            .testTag("tabs-card-${tab.id}")
             .onSizeChanged { cardWidth = it.width }
-            .graphicsLayer { translationX = offset.value; alpha = (1f - abs(offset.value) / cardWidth).coerceIn(0.25f, 1f) }
-            .pointerInput(tab.id, cardWidth) {
+            .pointerInput(tab.id, cardWidth, reducedMotion) {
                 val tracker = VelocityTracker()
                 detectHorizontalDragGestures(
-                    onDragStart = { tracker.resetTracking() },
+                    onDragStart = {
+                        tracker.resetTracking()
+                        settle?.cancel()
+                    },
                     onHorizontalDrag = { change, drag ->
-                        change.consume()
                         tracker.addPosition(change.uptimeMillis, change.position)
-                        scope.launch { offset.snapTo(offset.value + drag) }
+                        if (!closed) offset = (offset + drag).coerceIn(-cardWidth.toFloat(), cardWidth.toFloat())
                     },
-                    onDragCancel = {
-                        scope.launch { offset.animateTo(0f, spring(MiruMotion.springDamping, MiruMotion.springStiffness)) }
-                    },
-                    onDragEnd = {
-                        val speed = tracker.calculateVelocity().x
-                        scope.launch {
-                            if (abs(offset.value) >= cardWidth * 0.4f || abs(speed) > velocityThreshold) {
-                                val direction = if (abs(offset.value) >= cardWidth * 0.4f) {
-                                    if (offset.value < 0f) -1 else 1
-                                } else {
-                                    if (speed < 0f) -1 else 1
-                                }
-                                offset.animateTo(cardWidth.toFloat() * direction, spring(MiruMotion.springDamping, MiruMotion.springStiffness), initialVelocity = speed)
-                                onClose()
-                            } else offset.animateTo(0f, spring(MiruMotion.springDamping, MiruMotion.springStiffness), initialVelocity = speed)
-                        }
-                    },
+                    onDragCancel = { finishSwipe(0f, cancelled = true) },
+                    onDragEnd = { finishSwipe(tracker.calculateVelocity().x, cancelled = false) },
                 )
+            },
+    ) {
+        Column(Modifier.testTag("tabs-card-${tab.id}")
+            .graphicsLayer {
+                translationX = if (reducedMotion) 0f else offset
+                alpha = (1f - abs(offset) / cardWidth.coerceAtLeast(1)).coerceIn(0f, 1f)
             }
             .clip(shape)
             .background(MaterialTheme.colorScheme.surface)
             .then(if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
-            .clickable(onClick = onSelect),
-    ) {
-        Row(Modifier.fillMaxWidth().height(48.dp).padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            SiteIcon(tab.url, tab.title, size = 16.dp, bitmap = tab.icon, isPrivate = tab.incognito)
-            Spacer(Modifier.width(8.dp))
-            Text(tab.title.ifBlank { newTab }, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) { Icon(Icons.Outlined.Close, closeLabel, Modifier.size(18.dp)) }
+            .clickable(enabled = !closed, onClick = onSelect)) {
+            Row(Modifier.fillMaxWidth().height(48.dp).padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                SiteIcon(tab.url, tab.title, size = 16.dp, bitmap = tab.icon, isPrivate = tab.incognito)
+                Spacer(Modifier.width(8.dp))
+                Text(tab.title.ifBlank { newTab }, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                IconButton(onClick = { settle?.cancel(); closeOnce() }, enabled = !closed, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Outlined.Close, closeLabel, Modifier.size(18.dp))
+                }
+            }
+            TabPagePreview(tab, Modifier.fillMaxWidth().aspectRatio(0.65f).padding(2.dp)
+                .clip(RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp)))
         }
-        TabPagePreview(tab, Modifier.fillMaxWidth().aspectRatio(0.65f).padding(2.dp)
-            .clip(RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp)))
     }
 }
 

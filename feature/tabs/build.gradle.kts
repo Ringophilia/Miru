@@ -17,4 +17,7 @@ android {
     }
 }
 kotlin { jvmToolchain(17) }
-dependencies { implementation(project(":core:design")) }
+dependencies {
+    implementation(project(":core:design"))
+    testImplementation(libs.junit)
+}
