@@ -66,7 +66,7 @@ fun TabsTray(
     onIncognitoChanged: (Boolean) -> Unit,
     onSelect: (String) -> Unit,
     onClose: (String) -> Unit,
-    onNewTab: () -> Unit,
+    onNewTab: (Rect?) -> Unit,
     onCloseAll: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -76,11 +76,17 @@ fun TabsTray(
     onCardBounds: (String, Rect?) -> Unit = { _, _ -> },
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    var addBounds by remember { mutableStateOf<Rect?>(null) }
     val visibleTabs = tabs.filter { it.incognito == incognito }
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainer) {
         Column {
             Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onNewTab) { Icon(Icons.Outlined.Add, stringResource(R.string.tabs_new)) }
+                IconButton(
+                    onClick = { onNewTab(addBounds) },
+                    modifier = Modifier.testTag("tabs-add-button").onGloballyPositioned { coordinates ->
+                        addBounds = coordinates.boundsInRoot().takeUnless { it.isEmpty }
+                    },
+                ) { Icon(Icons.Outlined.Add, stringResource(R.string.tabs_new)) }
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Center) {
                     FilterChip(
                         selected = !incognito,
@@ -113,7 +119,7 @@ fun TabsTray(
                     Spacer(Modifier.height(16.dp))
                     Text(stringResource(if (incognito) R.string.tabs_empty_incognito else R.string.tabs_empty), style = MaterialTheme.typography.bodyLarge)
                     Spacer(Modifier.height(16.dp))
-                    TextButton(onClick = onNewTab) { Text(stringResource(R.string.tabs_new)) }
+                    TextButton(onClick = { onNewTab(null) }) { Text(stringResource(R.string.tabs_new)) }
                 }
             } else key(incognito) {
                 val selectedIndex = visibleTabs.indexOfFirst { it.id == selectedTabId }.coerceAtLeast(0)

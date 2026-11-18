@@ -782,7 +782,11 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                     visible = tabsVisible, tabs = snapshot.tabs.map { TabItem(it.id, it.title, it.url, it.isPrivate, thumbnail = it.thumbnail, icon = it.icon) },
                     selected = snapshot.selectedTabId, incognito = privateGroup, reducedMotion = reducedMotion,
                     onIncognitoChanged = { privateGroup = it }, onSelect = { controller.selectTab(it); tabsVisible = false },
-                    onClose = ::closeTab, onNewTab = { controller.newTab(isPrivate = privateGroup); tabsVisible = false }, onCloseAll = {
+                    onClose = ::closeTab, onNewTab = {
+                        val id = controller.newTab(isPrivate = privateGroup)
+                        tabsVisible = false
+                        id
+                    }, onCloseAll = {
                         controller.closeAllTabs(privateGroup)
                         scope.launch { if (snackbars.showUndo(closedAllMessage, undoLabel)) controller.undoClose() }
                     }, onDismiss = { tabsVisible = false },

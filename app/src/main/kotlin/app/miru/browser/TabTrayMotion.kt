@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import app.miru.browser.engine.NEW_TAB_URL
 import app.miru.design.MiruMotion
 import app.miru.design.withReducedMotionFade
 import app.miru.tabs.TabItem
@@ -37,7 +38,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 
-private data class TabFlight(val tab: TabItem, val card: Rect)
+private data class TabFlight(val tab: TabItem, val card: Rect?, val newPage: Boolean = false)
 
 /** Draws a page's preview between the viewport and the actual grid position. */
 @Composable
@@ -50,7 +51,7 @@ internal fun TabTrayMotion(
     onIncognitoChanged: (Boolean) -> Unit,
     onSelect: (String) -> Unit,
     onClose: (String) -> Unit,
-    onNewTab: () -> Unit,
+    onNewTab: () -> String,
     onCloseAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -77,8 +78,13 @@ internal fun TabTrayMotion(
                 else -> null
             }
             val easing = if (visible) MiruMotion.emphasized else MiruMotion.emphasizedDecelerate
+            val duration = when {
+                reducedMotion -> MiruMotion.short2
+                flight?.newPage == true -> MiruMotion.medium2
+                else -> MiruMotion.medium3
+            }
             withReducedMotionFade(reducedMotion) {
-                progress.animateTo(target, tween(if (reducedMotion) MiruMotion.short2 else MiruMotion.medium3, easing = easing))
+                progress.animateTo(target, tween(duration, easing = easing))
             }
         }
         flight = null
@@ -90,7 +96,7 @@ internal fun TabTrayMotion(
     }
     if (!visible && !mounted) return
 
-    val moving = flight?.takeIf { !reducedMotion && it.tab.incognito == incognito }
+    val moving = flight?.takeIf { !reducedMotion && it.tab.incognito == incognito && it.card != null }
     Box(Modifier.fillMaxSize()) {
         TabsTray(
             tabs, selected, incognito,
@@ -102,7 +108,14 @@ internal fun TabTrayMotion(
                 clicked = tabs.firstOrNull { it.id == id }?.let { tab -> bounds[id]?.let { TabFlight(tab, it) } }
                 onSelect(id)
             },
-            onClose = onClose, onNewTab = onNewTab, onCloseAll = onCloseAll, onDismiss = onDismiss,
+            onClose = onClose,
+            onNewTab = { anchor ->
+                if (visible && clicked?.newPage != true) {
+                    val id = onNewTab()
+                    clicked = TabFlight(TabItem(id, "", NEW_TAB_URL, incognito), anchor, newPage = true)
+                }
+            },
+            onCloseAll = onCloseAll, onDismiss = onDismiss,
             modifier = Modifier.testTag("tabs-tray").graphicsLayer { alpha = progress.value },
             progress = { progress.value },
             transformingTabId = moving?.tab?.id ?: selectedTab?.id?.takeIf { visible && !reducedMotion },
@@ -111,23 +124,25 @@ internal fun TabTrayMotion(
         )
         if (moving != null) {
             val preview = tabs.firstOrNull { it.id == moving.tab.id && it.url == moving.tab.url } ?: moving.tab
-            MovingTabPreview(preview, moving.card) { progress.value }
+            moving.card?.let { MovingTabPreview(preview, it, moving.newPage) { progress.value } }
         }
     }
 }
 
 @Composable
-private fun MovingTabPreview(tab: TabItem, card: Rect, progress: () -> Float) {
+private fun MovingTabPreview(tab: TabItem, card: Rect, newPage: Boolean, progress: () -> Float) {
     var origin by remember { mutableStateOf(Offset.Zero) }
+    val tag = if (newPage) "tabs-new-page-preview" else "tabs-container-preview"
     Layout(
         modifier = Modifier.fillMaxSize().onGloballyPositioned { origin = it.positionInRoot() },
         content = {
-            TabPagePreview(tab, Modifier.fillMaxSize().testTag("tabs-container-preview").clearAndSetSemantics { }
+            TabPagePreview(tab, Modifier.fillMaxSize().testTag(tag).clearAndSetSemantics { }
                 .graphicsLayer {
                     val fraction = progress()
                     shape = RoundedCornerShape(12.dp * fraction)
                     clip = true
-                    alpha = ((1f - fraction) / 0.2f).coerceIn(0f, 1f)
+                    val fromCard = ((1f - fraction) / 0.2f).coerceIn(0f, 1f)
+                    alpha = if (newPage) fromCard * (fraction / 0.15f).coerceIn(0f, 1f) else fromCard
                 })
         },
     ) { children, constraints ->
