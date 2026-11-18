@@ -4,7 +4,6 @@
 package app.miru.toolbar
 
 import android.net.Uri
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -128,11 +127,8 @@ fun MiruToolbar(
                 val scale = if (reducedMotion) 1f else 1f - 0.2f * progress
                 scaleX = scale; scaleY = scale
             }, verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.animation.AnimatedVisibility(state.mediaCount > 0) {
-                    TextButton(onClick = onMedia, enabled = !state.editing, contentPadding = PaddingValues(horizontal = 6.dp)) {
-                        Icon(Icons.Outlined.PlayArrow, stringResource(R.string.toolbar_media), Modifier.size(20.dp))
-                        AnimatedContent(state.mediaCount, label = "mediaCount") { Text(it.toString(), style = MaterialTheme.typography.labelMedium) }
-                    }
+                key(state.tabId, state.url.substringBefore('#')) {
+                    MediaPill(state.mediaCount, !state.editing, reducedMotion, onMedia)
                 }
                 val tabsDescription = stringResource(R.string.toolbar_tabs)
                 val tabsCount = pluralStringResource(R.plurals.toolbar_tab_count, state.tabCount, state.tabCount)

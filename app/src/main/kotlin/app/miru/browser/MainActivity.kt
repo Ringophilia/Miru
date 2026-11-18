@@ -316,6 +316,9 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     val isPrivate = if (tabsVisible) privateGroup else tab?.isPrivate == true
     val webPage = tab != null && tab.url != NEW_TAB_URL
     val pageUrl = tab?.url.orEmpty()
+    val videoCount = if (webPage) pageMedia.count {
+        it.playableVideo && it.pageUrl.substringBefore('#') == pageUrl.substringBefore('#')
+    } else 0
     val bookmarked by remember(pageUrl, webPage) { if (webPage) library.bookmarks.isBookmarked(pageUrl) else flowOf(false) }.collectAsState(initial = false)
     val reducedMotion = animationsReduced()
     val focusMotion = remember { Animatable(0f) }
@@ -649,7 +652,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                 // recreated whenever the address bar is edited or settings/history/bookmarks are visited.
                 Box(Modifier.fillMaxSize().then(if (route != Route.BROWSER) Modifier.clearAndSetSemantics { } else Modifier)) {
                     val toolbarBadge = adblock.takeIf { it.badgeTabId == tab?.id }
-                    val toolbarState = ToolbarState(url = tab?.url.orEmpty(), title = tab?.title.orEmpty(), editing = editing, input = input, inlineAddress = inlineAddress?.text, inlineDestination = inlineAddress?.url, tabCount = snapshot.tabs.count { it.isPrivate == (tab?.isPrivate == true) }, loading = tab?.loading == true, progress = tab?.progress ?: 0, incognito = tab?.isPrivate == true, adblockAvailable = adblock.installed, blockedCount = toolbarBadge?.blockedCount ?: 0, secure = tab?.secure == true, downloading = activeDownloads > 0, adblockNeedsReload = toolbarBadge?.pageNeedsReload == true, mediaCount = if(webPage) pageMedia.size else 0, tabId = tab?.id)
+                    val toolbarState = ToolbarState(url = tab?.url.orEmpty(), title = tab?.title.orEmpty(), editing = editing, input = input, inlineAddress = inlineAddress?.text, inlineDestination = inlineAddress?.url, tabCount = snapshot.tabs.count { it.isPrivate == (tab?.isPrivate == true) }, loading = tab?.loading == true, progress = tab?.progress ?: 0, incognito = tab?.isPrivate == true, adblockAvailable = adblock.installed, blockedCount = toolbarBadge?.blockedCount ?: 0, secure = tab?.secure == true, downloading = activeDownloads > 0, adblockNeedsReload = toolbarBadge?.pageNeedsReload == true, mediaCount = videoCount, tabId = tab?.id)
                     val toolbar: @Composable () -> Unit = {
                         Box {
                             if(finding) FindBar(findQuery, tab?.findCurrent ?: 0, tab?.findTotal ?: 0, { findQuery = it }, { controller.findNext(false) }, { controller.findNext(true) }, { finding = false })

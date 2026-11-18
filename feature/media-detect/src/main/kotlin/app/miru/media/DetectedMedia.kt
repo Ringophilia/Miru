@@ -25,7 +25,8 @@ class DetectedMedia(
     val isPrivate: Boolean = false,
 ) {
     val playable: Boolean get() = !drm && runCatching { URI(url).scheme in setOf("http", "https") }.getOrDefault(false)
-    val canAutoTakeover: Boolean get() = playable && playing && kind in setOf("VIDEO", "HLS", "DASH") &&
+    val playableVideo: Boolean get() = kind in setOf("VIDEO", "HLS", "DASH") && playable
+    val canAutoTakeover: Boolean get() = playableVideo && playing &&
         duration.isFinite() && duration > 0 && width > 0 && height > 0
     // Do not allow generated data-class toString() to print credentials.
     override fun toString(): String = "DetectedMedia(kind=$kind, playable=$playable)"

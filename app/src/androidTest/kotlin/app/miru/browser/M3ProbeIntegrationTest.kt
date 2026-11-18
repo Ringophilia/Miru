@@ -124,6 +124,7 @@ internal class ProbeOrigin(private val mp4: ByteArray = ByteArray(0)) : Closeabl
     val calls = CopyOnWriteArrayList<ProbeCall>()
     val active = AtomicInteger()
     val releaseSlow = CountDownLatch(1)
+    val releaseExtraVideo = CountDownLatch(1)
     @Volatile var redirect: String? = null
     val url = "http://127.0.0.1:${server.localPort}"
     init { thread(isDaemon = true, name = "miru-probe-origin") {
@@ -150,6 +151,26 @@ internal class ProbeOrigin(private val mp4: ByteArray = ByteArray(0)) : Closeabl
         var mime = "application/vnd.apple.mpegurl"
         var extra = ""
         var bytes = when {
+            path == "/media-count" -> {
+                mime = "text/html"
+                """<!doctype html><title>Miru video count fixture</title>
+                    <video preload="metadata" src="/fixture.mp4"></video>
+                    <script>
+                    fetch('/extra-video-ready').then(r => {
+                        if (!r.ok) return;
+                        const video = document.createElement('video');
+                        video.preload = 'metadata';
+                        video.src = '/second-fixture.mp4';
+                        document.body.append(video);
+                    });
+                    </script>
+                """.trimIndent().toByteArray()
+            }
+            path == "/extra-video-ready" -> {
+                mime = "text/plain"
+                if (!releaseExtraVideo.await(25, TimeUnit.SECONDS)) code = 408
+                ByteArray(0)
+            }
             path == "/page" -> {
                 mime = "text/html"
                 "<!doctype html><html><meta name=viewport content='width=device-width'><title>Miru quality fixture</title><body><h1>Miru quality fixture</h1><script>fetch('/master.m3u8').then(r=>r.text())</script></body></html>".toByteArray()
@@ -160,10 +181,10 @@ internal class ProbeOrigin(private val mp4: ByteArray = ByteArray(0)) : Closeabl
                 mime = "application/dash+xml"
                 """<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static"><Period><AdaptationSet contentType="video" mimeType="video/mp4"><Representation id="0" width="1280" height="720" bandwidth="500000"/><Representation id="1" width="3840" height="2160" bandwidth="8000000"/></AdaptationSet></Period></MPD>""".toByteArray()
             }
-            path == "/fixture.mp4" -> { mime = "video/mp4"; mp4 }
+            path == "/fixture.mp4" || path == "/second-fixture.mp4" -> { mime = "video/mp4"; mp4 }
             else -> { code = 404; ByteArray(0) }
         }
-        if(path == "/fixture.mp4") {
+        if(mime == "video/mp4") {
             val range = headers["range"]?.let { Regex("bytes=(\\d+)-(\\d*)").matchEntire(it) }
             val start = range?.groupValues?.get(1)?.toIntOrNull() ?: 0
             val end = (range?.groupValues?.get(2)?.toIntOrNull() ?: bytes.lastIndex).coerceAtMost(bytes.lastIndex)
@@ -180,5 +201,5 @@ internal class ProbeOrigin(private val mp4: ByteArray = ByteArray(0)) : Closeabl
             flush()
         }
     }
-    override fun close() { running.set(false); releaseSlow.countDown(); server.close(); sockets.forEach { runCatching { it.close() } } }
+    override fun close() { running.set(false); releaseSlow.countDown(); releaseExtraVideo.countDown(); server.close(); sockets.forEach { runCatching { it.close() } } }
 }

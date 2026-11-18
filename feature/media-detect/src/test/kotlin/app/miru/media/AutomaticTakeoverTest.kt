@@ -21,4 +21,12 @@ class AutomaticTakeoverTest {
         assertFalse(item(duration = Double.POSITIVE_INFINITY).canAutoTakeover)
         assertFalse(item(url = "blob:https://example.test/uuid").canAutoTakeover)
     }
+
+    @Test fun theToolbarCountsPlayableVideoEvenWhileItIsPaused() {
+        assertTrue(item(playing = false).playableVideo)
+        assertTrue(item(kind = "DASH").playableVideo)
+        assertFalse(item(kind = "AUDIO").playableVideo)
+        assertFalse(item(drm = true).playableVideo)
+        assertFalse(item(url = "blob:https://example.test/uuid").playableVideo)
+    }
 }

@@ -1,6 +1,10 @@
 <resources>
     <string name="toolbar_page_progress">Page loading progress</string>
     <string name="toolbar_media">Videos on this page</string>
+    <plurals name="toolbar_media_count">
+        <item quantity="one">%d video</item>
+        <item quantity="other">%d videos</item>
+    </plurals>
     <string name="toolbar_adblock_reload">Reload this page to apply ad blocking fully</string>
     <string name="toolbar_search_hint">Search or enter address</string>
     <string name="toolbar_cancel_edit">Cancel editing</string>
