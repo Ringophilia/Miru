@@ -39,9 +39,14 @@ internal class SitePermissionRepository(
      * cached autoplay answers before sessions load, so current policy is consulted.
      */
     suspend fun prepareNativePolicy() {
+        // The first storage query can wait on Gecko's cold profile startup.
+        val overrides = withNativeStorage(STARTUP_NATIVE_QUERY_TIMEOUT_MS) { storage ->
+            allNativePolicyPermissions(storage).filter { it.value != VALUE_PROMPT }
+        }
+        if (overrides.isEmpty()) return
+
         withNativeStorage { storage ->
-            val previous = allNativePolicyPermissions(storage)
-            previous.forEach { storage.setPermission(it, VALUE_PROMPT) }
+            overrides.forEach { storage.setPermission(it, VALUE_PROMPT) }
             repeat(VERIFY_ATTEMPTS) { attempt ->
                 if (allNativePolicyPermissions(storage).all { it.value == VALUE_PROMPT }) return@withNativeStorage
                 if (attempt < VERIFY_ATTEMPTS - 1) delay(VERIFY_DELAY_MS)
@@ -290,10 +295,13 @@ internal class SitePermissionRepository(
         checkNotNull(storage.getAllPermissions().await()) { "SITE_PERMISSION_NATIVE_QUERY_FAILED" }
             .filter { it.permission in setOf(PERMISSION_GEOLOCATION, PERMISSION_AUTOPLAY_AUDIBLE, PERMISSION_AUTOPLAY_INAUDIBLE) }
 
-    private suspend fun <T> withNativeStorage(block: suspend (StorageController) -> T): T = try {
+    private suspend fun <T> withNativeStorage(
+        timeoutMillis: Long = NATIVE_TIMEOUT_MS,
+        block: suspend (StorageController) -> T,
+    ): T = try {
         withContext(Dispatchers.Main.immediate) {
             val storage = runtime()?.storageController ?: error("SITE_PERMISSION_NATIVE_UNAVAILABLE")
-            val completed = withTimeoutOrNull(NATIVE_TIMEOUT_MS) { NativeValue(block(storage)) }
+            val completed = withTimeoutOrNull(timeoutMillis) { NativeValue(block(storage)) }
                 ?: error("SITE_PERMISSION_NATIVE_TIMEOUT")
             completed.value
         }
@@ -339,6 +347,7 @@ internal class SitePermissionRepository(
     private companion object {
         const val TABLE = "site_permissions"
         const val NATIVE_TIMEOUT_MS = 5_000L
+        const val STARTUP_NATIVE_QUERY_TIMEOUT_MS = 15_000L
         const val VERIFY_ATTEMPTS = 8
         const val VERIFY_DELAY_MS = 75L
 

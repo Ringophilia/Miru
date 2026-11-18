@@ -175,12 +175,8 @@ class OverflowMenuIntegrationTest {
         if (compose.onAllNodesWithText(skip).fetchSemanticsNodes().isNotEmpty()) compose.onNodeWithText(skip).performClick()
         val browser = container.browser
         compose.waitUntil(45_000) { browser.state.value.let { it.ready || it.error != null } }
-        if (!browser.state.value.ready) {
-            // A cold Gecko permission migration can time out while the native profile is starting.
-            // Relaunch the browser UI once so the menu test starts with a restored browser session.
-            compose.activityRule.scenario.recreate()
-            compose.waitUntil(45_000) { browser.state.value.ready }
-        }
+        val startup = browser.state.value
+        assertTrue("Browser startup failed: ${startup.error}", startup.ready)
         compose.waitUntilAtLeastOneExists(hasContentDescription(label(app.miru.toolbar.R.string.toolbar_menu)), 15_000)
     }
 
