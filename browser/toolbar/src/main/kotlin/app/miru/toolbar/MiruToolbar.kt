@@ -77,6 +77,7 @@ fun MiruToolbar(
     reducedMotion: Boolean = false,
     onAddressBounds: (Rect) -> Unit = {},
     onEditorBounds: (Rect) -> Unit = {},
+    overflowMenu: @Composable () -> Unit = {},
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     Box(modifier.background(MaterialTheme.colorScheme.surface)) {
@@ -143,11 +144,14 @@ fun MiruToolbar(
                         }
                     }
                 }
-                IconButton(onClick = onMenu, enabled = !state.editing) {
-                    Box {
-                        Icon(Icons.Outlined.MoreVert, stringResource(R.string.toolbar_menu))
-                        if (state.downloading) Box(Modifier.align(Alignment.TopEnd).size(6.dp).background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape))
+                Box(Modifier.testTag("browser-overflow-anchor")) {
+                    IconButton(onClick = onMenu, enabled = !state.editing) {
+                        Box {
+                            Icon(Icons.Outlined.MoreVert, stringResource(R.string.toolbar_menu))
+                            if (state.downloading) Box(Modifier.align(Alignment.TopEnd).size(6.dp).background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape))
+                        }
                     }
+                    overflowMenu()
                 }
             }
         }

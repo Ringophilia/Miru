@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import app.miru.design.AnchoredMenu
 
 enum class MenuAction {
     FORWARD, BOOKMARK, DOWNLOAD, PAGE_INFO, RELOAD,
@@ -36,12 +37,18 @@ fun MiruMenu(
     modifier: Modifier = Modifier,
     activeDownloads: Int = 0,
     blockedCount: Int = 0,
+    reducedMotion: Boolean = false,
 ) {
-    fun invoke(action: MenuAction) { onDismiss(); onAction(action) }
+    fun invoke(action: MenuAction) {
+        if (expanded) {
+            onDismiss()
+            onAction(action)
+        }
+    }
     // Unavailable page actions are left out rather than greyed; on the NTP the whole row disappears.
     // Forward stays visible but disabled on web pages, matching Chrome.
     val pageActions = listOf(MenuAction.FORWARD, MenuAction.BOOKMARK, MenuAction.DOWNLOAD, MenuAction.PAGE_INFO, MenuAction.RELOAD).filter { it in enabledActions }
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, modifier = modifier.width(260.dp)) {
+    AnchoredMenu(expanded, onDismiss, reducedMotion, modifier.width(260.dp)) {
         if (pageActions.isNotEmpty()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 pageActions.forEach { action ->

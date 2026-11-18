@@ -669,30 +669,42 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                                 reducedMotion = reducedMotion,
                                 onAddressBounds = { toolbarAddressBounds = it },
                                 onEditorBounds = { editorBounds = it },
+                                overflowMenu = {
+                                    MiruMenu(
+                                        expanded = menuVisible,
+                                        onDismiss = { menuVisible = false },
+                                        onAction = { action ->
+                                            when (action) {
+                                                MenuAction.FORWARD -> controller.goForward()
+                                                MenuAction.BOOKMARK -> toggleBookmark()
+                                                MenuAction.DOWNLOAD -> controller.downloadCurrentPage()
+                                                MenuAction.PAGE_INFO -> siteInfo = true
+                                                MenuAction.RELOAD -> if (tab?.loading == true) controller.stopLoading() else controller.reload()
+                                                MenuAction.NEW_TAB -> { controller.newTab(); editing = false }
+                                                MenuAction.NEW_PRIVATE_TAB -> { controller.newTab(isPrivate = true); editing = false }
+                                                MenuAction.HISTORY -> route = Route.HISTORY
+                                                MenuAction.BOOKMARKS -> route = Route.BOOKMARKS
+                                                MenuAction.DOWNLOADS -> route = Route.DOWNLOADS
+                                                MenuAction.ADBLOCK -> if (webPage) { adblockPanel = true } else { route = Route.ADBLOCK }
+                                                MenuAction.SHARE -> tab?.url?.takeIf { it != NEW_TAB_URL }?.let { url -> context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, url) }, null)) }
+                                                MenuAction.DESKTOP_SITE -> controller.setDesktopMode(tab?.desktopMode != true)
+                                                MenuAction.FIND_IN_PAGE -> { finding = true; findQuery = "" }
+                                                MenuAction.SETTINGS -> route = Route.SETTINGS
+                                                else -> Unit
+                                            }
+                                        },
+                                        enabledActions = menuActions,
+                                        canGoForward = tab?.canGoForward == true,
+                                        loading = tab?.loading == true,
+                                        desktopMode = tab?.desktopMode == true,
+                                        bookmarked = bookmarked,
+                                        modifier = Modifier.testTag("browser-overflow-menu"),
+                                        activeDownloads = activeDownloads,
+                                        blockedCount = adblock.blockedCount,
+                                        reducedMotion = reducedMotion,
+                                    )
+                                },
                             )
-                            Box(Modifier.align(Alignment.TopEnd)) {
-                                MiruMenu(expanded = menuVisible, onDismiss = { menuVisible = false }, onAction = { action ->
-                                    menuVisible = false
-                                    when(action) {
-                                        MenuAction.FORWARD -> controller.goForward()
-                                        MenuAction.BOOKMARK -> toggleBookmark()
-                                        MenuAction.DOWNLOAD -> controller.downloadCurrentPage()
-                                        MenuAction.PAGE_INFO -> siteInfo = true
-                                        MenuAction.RELOAD -> if(tab?.loading == true) controller.stopLoading() else controller.reload()
-                                        MenuAction.NEW_TAB -> { controller.newTab(); editing = false }
-                                        MenuAction.NEW_PRIVATE_TAB -> { controller.newTab(isPrivate = true); editing = false }
-                                        MenuAction.HISTORY -> route = Route.HISTORY
-                                        MenuAction.BOOKMARKS -> route = Route.BOOKMARKS
-                                        MenuAction.DOWNLOADS -> route = Route.DOWNLOADS
-                                        MenuAction.ADBLOCK -> if(webPage) { adblockPanel = true } else { route = Route.ADBLOCK }
-                                        MenuAction.SHARE -> tab?.url?.takeIf { it != NEW_TAB_URL }?.let { url -> context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, url) }, null)) }
-                                        MenuAction.DESKTOP_SITE -> controller.setDesktopMode(tab?.desktopMode != true)
-                                        MenuAction.FIND_IN_PAGE -> { finding = true; findQuery = "" }
-                                        MenuAction.SETTINGS -> route = Route.SETTINGS
-                                        else -> Unit
-                                    }
-                                }, enabledActions = menuActions, canGoForward = tab?.canGoForward == true, loading = tab?.loading == true, desktopMode = tab?.desktopMode == true, bookmarked = bookmarked, activeDownloads = activeDownloads, blockedCount = adblock.blockedCount)
-                            }
                         }
                     }
                     BrowserViewport(controller = controller,

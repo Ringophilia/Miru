@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.miru.design.AnchoredMenu
 import app.miru.design.MiruMotion
 import app.miru.design.SiteIcon
 import app.miru.design.withReducedMotionFade
@@ -101,13 +102,18 @@ fun TabsTray(
                         leadingIcon = { Icon(Icons.Outlined.VisibilityOff, null, Modifier.size(18.dp)) },
                     )
                 }
-                Box {
+                Box(Modifier.testTag("tabs-overflow-anchor")) {
                     IconButton(onClick = { menuOpen = true }) { Icon(Icons.Outlined.MoreVert, stringResource(R.string.tabs_menu)) }
-                    DropdownMenu(menuOpen, onDismissRequest = { menuOpen = false }) {
+                    AnchoredMenu(menuOpen, onDismissRequest = { menuOpen = false }, reducedMotion = reducedMotion, modifier = Modifier.testTag("tabs-overflow-menu")) {
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.tabs_close_all)) },
                             enabled = visibleTabs.isNotEmpty(),
-                            onClick = { menuOpen = false; onCloseAll() },
+                            onClick = {
+                                if (menuOpen) {
+                                    menuOpen = false
+                                    onCloseAll()
+                                }
+                            },
                         )
                     }
                 }
