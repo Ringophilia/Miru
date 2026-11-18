@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
@@ -27,11 +28,15 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -63,6 +68,10 @@ fun TabsTray(
     onCloseAll: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    progress: () -> Float = { 1f },
+    transformingTabId: String? = null,
+    reducedMotion: Boolean = false,
+    onCardBounds: (String, Rect?) -> Unit = { _, _ -> },
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val visibleTabs = tabs.filter { it.incognito == incognito }
@@ -104,9 +113,11 @@ fun TabsTray(
                     Spacer(Modifier.height(16.dp))
                     TextButton(onClick = onNewTab) { Text(stringResource(R.string.tabs_new)) }
                 }
-            } else {
+            } else key(incognito) {
+                val selectedIndex = visibleTabs.indexOfFirst { it.id == selectedTabId }.coerceAtLeast(0)
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
+                    state = rememberLazyGridState(initialFirstVisibleItemIndex = selectedIndex / 2 * 2),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -118,7 +129,18 @@ fun TabsTray(
                             selected = tab.id == selectedTabId,
                             onSelect = { onSelect(tab.id) },
                             onClose = { onClose(tab.id) },
-                            modifier = Modifier.animateItem(),
+                            onBounds = { onCardBounds(tab.id, it) },
+                            modifier = Modifier.animateItem().graphicsLayer {
+                                if (!reducedMotion) {
+                                    val fraction = progress()
+                                    if (tab.id == transformingTabId) {
+                                        alpha = ((fraction - 0.8f) / 0.2f).coerceIn(0f, 1f)
+                                    } else {
+                                        scaleX = 0.92f + 0.08f * fraction
+                                        scaleY = scaleX
+                                    }
+                                }
+                            },
                         )
                     }
                 }
@@ -128,7 +150,8 @@ fun TabsTray(
 }
 
 @Composable
-private fun TabCard(tab: TabItem, selected: Boolean, onSelect: () -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier) {
+private fun TabCard(tab: TabItem, selected: Boolean, onSelect: () -> Unit, onClose: () -> Unit,
+    onBounds: (Rect?) -> Unit, modifier: Modifier = Modifier) {
     val offset = remember(tab.id) { Animatable(0f) }
     val scope = rememberCoroutineScope()
     var cardWidth by remember { mutableIntStateOf(1) }
@@ -136,8 +159,12 @@ private fun TabCard(tab: TabItem, selected: Boolean, onSelect: () -> Unit, onClo
     val newTab = stringResource(R.string.tabs_new)
     val closeLabel = stringResource(R.string.tabs_close_named, tab.title.ifBlank { newTab })
     val shape = RoundedCornerShape(12.dp)
+    val latestBounds by rememberUpdatedState(onBounds)
+    DisposableEffect(tab.id) { onDispose { latestBounds(null) } }
     Column(
         modifier
+            .onGloballyPositioned { onBounds(it.boundsInRoot().takeUnless { bounds -> bounds.isEmpty }) }
+            .testTag("tabs-card-${tab.id}")
             .onSizeChanged { cardWidth = it.width }
             .graphicsLayer { translationX = offset.value; alpha = (1f - abs(offset.value) / cardWidth).coerceIn(0.25f, 1f) }
             .pointerInput(tab.id, cardWidth) {
@@ -179,20 +206,25 @@ private fun TabCard(tab: TabItem, selected: Boolean, onSelect: () -> Unit, onClo
             Text(tab.title.ifBlank { newTab }, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) { Icon(Icons.Outlined.Close, closeLabel, Modifier.size(18.dp)) }
         }
-        Box(
-            Modifier.fillMaxWidth().aspectRatio(0.65f).padding(2.dp).clip(RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-            contentAlignment = Alignment.Center,
-        ) {
-            when {
-                tab.incognito -> Icon(Icons.Outlined.VisibilityOff, stringResource(R.string.tabs_private_preview), Modifier.size(40.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                tab.thumbnail != null && !tab.thumbnail.isRecycled -> Image(tab.thumbnail.asImageBitmap(), tab.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                tab.url == "about:newtab" -> Text(stringResource(R.string.tabs_miru), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-                else -> Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Outlined.Public, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(12.dp))
-                    Text(runCatching { Uri.parse(tab.url).host }.getOrNull() ?: tab.url, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
+        TabPagePreview(tab, Modifier.fillMaxWidth().aspectRatio(0.65f).padding(2.dp)
+            .clip(RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp)))
+    }
+}
+
+@Composable
+fun TabPagePreview(tab: TabItem, modifier: Modifier = Modifier) {
+    Box(modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
+        when {
+            tab.incognito -> Icon(Icons.Outlined.VisibilityOff, stringResource(R.string.tabs_private_preview), Modifier.size(40.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            tab.thumbnail != null && !tab.thumbnail.isRecycled -> Image(
+                remember(tab.thumbnail) { tab.thumbnail.asImageBitmap() }, tab.title,
+                Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
+            )
+            tab.url == "about:newtab" -> Text(stringResource(R.string.tabs_miru), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+            else -> Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Outlined.Public, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(12.dp))
+                Text(runCatching { Uri.parse(tab.url).host }.getOrNull() ?: tab.url, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }

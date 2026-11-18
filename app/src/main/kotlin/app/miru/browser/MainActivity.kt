@@ -123,7 +123,6 @@ import app.miru.settings.AboutScreen
 import app.miru.settings.SettingsScreen
 import app.miru.settings.ClearBrowsingDataScreen
 import app.miru.tabs.TabItem
-import app.miru.tabs.TabsTray
 import app.miru.toolbar.MiruToolbar
 import app.miru.toolbar.ToolbarState
 import kotlinx.coroutines.delay
@@ -613,8 +612,9 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     DisposableEffect(Unit) { onDispose { downloadQueue.forEach { runCatching { it.bodyStream?.close() } } } }
     LaunchedEffect(finding, findQuery, tab?.id) { if(finding) { delay(150); controller.findAll(findQuery) } else controller.clearFind() }
     val privateDownloadDialog = offlineSelection?.source?.isPrivate == true || pendingDownload?.isPrivate == true
-    DisposableEffect(isPrivate, privateDownloadDialog) {
-        if(isPrivate || privateDownloadDialog) activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    val secureWindow = tab?.isPrivate == true || isPrivate || privateDownloadDialog
+    DisposableEffect(secureWindow) {
+        if(secureWindow) activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         else activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         onDispose { }
     }
@@ -650,7 +650,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
             Box(Modifier.fillMaxSize().then(if(webFullScreen) Modifier else Modifier.safeDrawingPadding().imePadding())) {
                 // The browser stays composed under full-screen routes, so the GeckoView is not torn down and
                 // recreated whenever the address bar is edited or settings/history/bookmarks are visited.
-                Box(Modifier.fillMaxSize().then(if (route != Route.BROWSER) Modifier.clearAndSetSemantics { } else Modifier)) {
+                Box(Modifier.fillMaxSize().then(if (route != Route.BROWSER || tabsVisible) Modifier.clearAndSetSemantics { } else Modifier)) {
                     val toolbarBadge = adblock.takeIf { it.badgeTabId == tab?.id }
                     val toolbarState = ToolbarState(url = tab?.url.orEmpty(), title = tab?.title.orEmpty(), editing = editing, input = input, inlineAddress = inlineAddress?.text, inlineDestination = inlineAddress?.url, tabCount = snapshot.tabs.count { it.isPrivate == (tab?.isPrivate == true) }, loading = tab?.loading == true, progress = tab?.progress ?: 0, incognito = tab?.isPrivate == true, adblockAvailable = adblock.installed, blockedCount = toolbarBadge?.blockedCount ?: 0, secure = tab?.secure == true, downloading = activeDownloads > 0, adblockNeedsReload = toolbarBadge?.pageNeedsReload == true, mediaCount = videoCount, tabId = tab?.id)
                     val toolbar: @Composable () -> Unit = {
@@ -778,12 +778,15 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         Route.ABOUT -> AboutScreen(BuildConfig.VERSION_NAME, { route = Route.SETTINGS }, { navigate(it, newTab = true) }, adblockVersion = adblock.version.takeIf { adblock.installed })
                     }
                 }
-                if(tabsVisible) {
-                    TabsTray(tabs = snapshot.tabs.map { TabItem(it.id, it.title, it.url, it.isPrivate, thumbnail = it.thumbnail, icon = it.icon) }, selectedTabId = snapshot.selectedTabId, incognito = privateGroup, onIncognitoChanged = { privateGroup = it }, onSelect = { controller.selectTab(it); tabsVisible = false }, onClose = ::closeTab, onNewTab = { controller.newTab(isPrivate = privateGroup); tabsVisible = false }, onCloseAll = {
+                TabTrayMotion(
+                    visible = tabsVisible, tabs = snapshot.tabs.map { TabItem(it.id, it.title, it.url, it.isPrivate, thumbnail = it.thumbnail, icon = it.icon) },
+                    selected = snapshot.selectedTabId, incognito = privateGroup, reducedMotion = reducedMotion,
+                    onIncognitoChanged = { privateGroup = it }, onSelect = { controller.selectTab(it); tabsVisible = false },
+                    onClose = ::closeTab, onNewTab = { controller.newTab(isPrivate = privateGroup); tabsVisible = false }, onCloseAll = {
                         controller.closeAllTabs(privateGroup)
                         scope.launch { if (snackbars.showUndo(closedAllMessage, undoLabel)) controller.undoClose() }
-                    }, onDismiss = { tabsVisible = false })
-                }
+                    }, onDismiss = { tabsVisible = false },
+                )
                 // Spec 6.6: floating 8 dp above a bottom toolbar, otherwise 8 dp above the screen edge.
                 val overToolbar = route == Route.BROWSER && !tabsVisible && toolbarAtBottom
                 SnackbarHost(snackbars, Modifier.align(Alignment.BottomCenter).padding(bottom = if (overToolbar) 56.dp else 0.dp).padding(8.dp))
