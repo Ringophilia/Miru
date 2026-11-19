@@ -34,6 +34,7 @@ data class MiruColors(
     val adblock: Color,
     val incognitoSurface: Color = Color(0xFF221D1B),
     val incognitoContainer: Color = Color(0xFF36302C),
+    val sheetScrim: Color = Color.Black.copy(alpha = 0.32f),
 )
 
 private val LocalMiruColors = staticCompositionLocalOf {
@@ -126,6 +127,7 @@ fun MiruTheme(
     val extraColors = MiruColors(
         success = if (dark) Color(0xFFA9CE97) else Color(0xFF47643B),
         adblock = if (dark) Color(0xFFA9CE97) else Color(0xFF47643B),
+        sheetScrim = scheme.scrim.copy(alpha = if (dark) 0.50f else 0.32f),
     )
     // enableEdgeToEdge only follows the system night mode; the app theme and incognito can differ from it.
     val view = LocalView.current

@@ -108,6 +108,7 @@ import app.miru.data.BrowsingLibrary
 import app.miru.data.HistoryEntry
 import app.miru.data.ToolbarPosition
 import app.miru.design.MiruMotion
+import app.miru.design.MiruBottomSheet
 import app.miru.design.MiruTheme
 import app.miru.design.animationsReduced
 import app.miru.design.withReducedMotionFade
@@ -859,7 +860,10 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         scope.launch { if(snackbars.showWithAction(downloadStarted, viewLabel)) route = Route.DOWNLOADS }
                     } catch(_: Exception) { cancelOfflinePreparation(); showMessage(offlineFailed) }
                 }) }
-            if(siteInfo && sitePermissionPrompt == null && pagePrompt == null && externalLink == null) ModalBottomSheet(onDismissRequest = { siteInfo = false }) {
+            if(siteInfo && sitePermissionPrompt == null && pagePrompt == null && externalLink == null) MiruBottomSheet(
+                onDismissRequest = { siteInfo = false },
+                skipPartiallyExpanded = true,
+            ) {
                 Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(AddressResolver.display(tab?.url.orEmpty()).ifBlank { stringResource(R.string.app_name) }, style = MaterialTheme.typography.titleLarge)
                     Text(stringResource(if(tab?.secure == true) R.string.connection_secure else R.string.connection_info), style = MaterialTheme.typography.bodyLarge)
@@ -909,7 +913,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
             }
             if(sitePermissionPrompt == null && pagePrompt == null) externalLink?.let { link ->
                 val externalLinkFailed = stringResource(R.string.external_link_failed)
-                ModalBottomSheet(onDismissRequest = { controller.externalLinks.dismiss(link.token) }) {
+                MiruBottomSheet(onDismissRequest = { controller.externalLinks.dismiss(link.token) }) {
                     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         Text(stringResource(if(link.canOpenApp) R.string.external_link_title else R.string.external_link_unavailable, link.appName ?: stringResource(R.string.external_link_other_app)), style = MaterialTheme.typography.titleLarge)
                         Text(link.origin, style = MaterialTheme.typography.bodyMedium)

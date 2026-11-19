@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.miru.design.MiruBottomSheet
 import app.miru.offline.OfflineCoordinator
 import java.text.DateFormat
 import java.util.Date
@@ -276,8 +277,8 @@ fun DownloadConfirmSheet(request:DownloadRequest,onDismiss:()->Unit,onConfirm:(D
     var directory by remember(request){mutableStateOf(request.directoryUri?:defaults.directoryUri)}
     LaunchedEffect(defaults.directoryUri){if(directory==null)directory=defaults.directoryUri}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()){uri->if(uri!=null){runCatching{context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)};directory=uri.toString()}}
-    ModalBottomSheet(onDismissRequest=onDismiss) {
-        Column(Modifier.fillMaxWidth().padding(24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+    MiruBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             Text(stringResource(R.string.download_confirm_title),style=MaterialTheme.typography.titleLarge)
             OutlinedTextField(name,{name=it},Modifier.fillMaxWidth(),singleLine=true,label={Text(stringResource(R.string.download_filename))})
             Text(if(request.contentLength>=0)formatDownloadBytes(request.contentLength)else stringResource(R.string.download_unknown_size),style=MaterialTheme.typography.bodyMedium)

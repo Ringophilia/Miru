@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlin.math.sin
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Rule
@@ -34,7 +35,8 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class SiteAutoplayIntegrationTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
-    private val browser get() = (compose.activity.application as MiruApplication).container.browser
+    private val container get() = (compose.activity.application as MiruApplication).container
+    private val browser get() = container.browser
     private val context get() = compose.activity
     private val automation get() = InstrumentationRegistry.getInstrumentation().uiAutomation
     private fun title(id: String, expected: String) = compose.waitUntil(20000) { browser.state.value.tabs.firstOrNull { it.id == id }?.let { it.title == expected && !it.loading } == true }
@@ -51,13 +53,18 @@ class SiteAutoplayIntegrationTest {
     private fun set(id: String, choice: SiteAutoplayChoice, muted: Boolean) {
         compose.waitUntil(8000) { browser.permissions.siteState.value?.let { it.tabId == id && !it.busy && !it.error } == true }
         compose.onNodeWithContentDescription(context.getString(app.miru.toolbar.R.string.toolbar_site_info)).performClick()
-        compose.onNodeWithContentDescription(context.getString(R.string.site_autoplay_title)).performScrollTo().performClick()
+        // Opening site information starts a fresh native permission read, disabling the menu while it runs.
+        val autoplayMenu = hasContentDescription(context.getString(R.string.site_autoplay_title)) and isEnabled()
+        compose.waitUntil(8_000) { compose.onAllNodes(autoplayMenu).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(autoplayMenu).performScrollTo().assertIsDisplayed().performClick()
         val text = when (choice) {
             SiteAutoplayChoice.ALLOW_ALL -> R.string.site_autoplay_allow_all
             SiteAutoplayChoice.BLOCK_AUDIBLE -> R.string.site_autoplay_block_audible
             SiteAutoplayChoice.BLOCK_ALL -> R.string.site_autoplay_block_all
         }
-        compose.onNodeWithText(context.getString(text)).performClick()
+        val option = context.getString(text)
+        compose.waitUntil(5_000) { compose.onAllNodesWithText(option).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(option).performClick()
         compose.waitUntil(8000) { browser.permissions.siteState.value?.let { !it.busy && !it.error && it.autoplay == choice } == true }
         compose.runOnIdle { context.onBackPressedDispatcher.onBackPressed() }
         title(id, outcome(muted, choice.allows(muted)))
@@ -138,7 +145,14 @@ class SiteAutoplayIntegrationTest {
     }
 
     private fun fixture(block: (AutoplayOrigin) -> Unit) {
+        val skip = context.getString(R.string.intro_skip)
+        compose.waitUntil(15_000) {
+            runBlocking { container.settings.settings.first().introCompleted } ||
+                compose.onAllNodesWithText(skip).fetchSemanticsNodes().isNotEmpty()
+        }
+        if (compose.onAllNodesWithText(skip).fetchSemanticsNodes().isNotEmpty()) compose.onNodeWithText(skip).performClick()
         compose.waitUntil(30000) { browser.state.value.ready }
+        compose.waitUntil(8_000) { compose.onAllNodesWithTag("browser-viewport").fetchSemanticsNodes().isNotEmpty() }
         val tabs = BrowserTabFixture(); compose.runOnIdle { tabs.capture(browser) }
         AutoplayOrigin().use { origin ->
             try { block(origin) }

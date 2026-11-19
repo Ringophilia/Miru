@@ -23,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.miru.browser.engine.BrowserContextMenu
+import app.miru.design.MiruBottomSheet
 import kotlinx.coroutines.*
 
 /** Context credentials/fetching stay in the injected browser owner, never in a URI or Intent. */
@@ -86,8 +87,8 @@ fun BrowserContextMenuSheet(
             finally { if(!published) uri?.let(ContextImageStore::remove); busy = false }
         }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    MiruBottomSheet(onDismissRequest = onDismiss, skipPartiallyExpanded = true) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(request.linkText?.takeIf { it.isNotBlank() } ?: request.title?.takeIf { it.isNotBlank() }
                 ?: stringResource(if(request.imageUrl != null) R.string.context_image_label else if(request.videoUrl != null) R.string.context_video_label else R.string.context_link_label),
                 style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))

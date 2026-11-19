@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import app.miru.design.MiruBottomSheet
 import app.miru.offline.OfflineItem
 import app.miru.offline.OfflineSelection
 
@@ -44,7 +45,7 @@ fun OfflineConfirmSheet(
         mutableStateOf(selection.qualities.filter { it.height > 0 }.minByOrNull { kotlin.math.abs(it.height - 720) }?.id ?: selection.qualities.firstOrNull()?.id)
     }
     var privateAcknowledged by remember(selection) { mutableStateOf(false) }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    MiruBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.offline_download_title), style = MaterialTheme.typography.headlineSmall)
             OutlinedTextField(title, { title = it.take(200) }, Modifier.fillMaxWidth().testTag("offline_download_title"), singleLine = true, label = { Text(stringResource(R.string.offline_video_name)) })

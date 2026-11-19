@@ -19,6 +19,7 @@ import app.miru.browser.engine.SitePermissionKind
 import app.miru.browser.engine.SitePermissionPrompt
 import app.miru.browser.engine.SitePermissionState
 import app.miru.browser.engine.SiteAutoplayChoice
+import app.miru.design.MiruBottomSheet
 
 @Composable
 private fun permissionName(kind: SitePermissionKind): String = stringResource(when(kind) {
@@ -48,7 +49,7 @@ internal fun SitePermissionSheet(
     val notifications = SitePermissionKind.NOTIFICATIONS in prompt.kinds
     val protectedMedia = SitePermissionKind.PROTECTED_MEDIA in prompt.kinds
     val alwaysRemember = notifications || protectedMedia
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    MiruBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(stringResource(R.string.site_permission_request), style = MaterialTheme.typography.titleLarge)

@@ -26,6 +26,7 @@ import app.miru.browser.engine.BrowserFileUploads
 import app.miru.browser.engine.BrowserUploadPhase
 import app.miru.browser.engine.BrowserUploadSource
 import app.miru.browser.engine.validChoiceSelection
+import app.miru.design.MiruBottomSheet
 import app.miru.browser.engine.normalizedFormColor
 
 /** All drafts remain in this composition; private/form/password state is never saved. */
@@ -73,7 +74,7 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
     }
     // Material picker components also use rememberSaveable internally. Form drafts never enter saved state.
     CompositionLocalProvider(LocalSaveableStateRegistry provides null) {
-    ModalBottomSheet(onDismissRequest = ::dismiss) {
+    MiruBottomSheet(onDismissRequest = ::dismiss) {
         CompositionLocalProvider(LocalSaveableStateRegistry provides null) {
         Column(Modifier.fillMaxWidth().testTag("browser_prompt_dialog").verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {

@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import app.miru.design.MiruBottomSheet
 
 enum class AdblockPhase { INSTALLING, READY, DISABLED, FAILED }
 data class AdblockUiState(val phase: AdblockPhase, val version: String = "", val busy: Boolean = false, val pageNeedsReload: Boolean = false) {
@@ -32,8 +33,8 @@ fun AdblockSheet(
     onOpenDashboard: () -> Unit,
     onReload: () -> Unit = {},
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    MiruBottomSheet(onDismissRequest = onDismiss, maxHeightFraction = 0.7f) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(host, style = MaterialTheme.typography.titleLarge)
             Status(state)
             if(state.pageNeedsReload) {
@@ -95,8 +96,8 @@ fun AdblockPopupSheet(
     pageNeedsReload: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.fillMaxWidth().fillMaxHeight(0.78f)) {
+    MiruBottomSheet(onDismissRequest = onDismiss, maxHeightFraction = 0.7f, skipPartiallyExpanded = true) {
+        Column(Modifier.fillMaxWidth().fillMaxHeight()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(host, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)

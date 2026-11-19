@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.miru.design.MiruBottomSheet
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -29,12 +30,12 @@ fun MediaSheet(
     var showShort by remember { mutableStateOf(false) }
     val short = items.filter { it.duration > 0 && it.duration < 30 && !it.playing }
     val visible = if(showShort) items else items - short.toSet()
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    MiruBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
             Text(stringResource(R.string.media_title), style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(16.dp))
             if(items.isEmpty()) Text(stringResource(R.string.media_empty))
-            LazyColumn(Modifier.heightIn(max = 440.dp)) {
+            LazyColumn(Modifier.weight(1f, fill = false).heightIn(max = 440.dp)) {
                 itemsIndexed(visible, key = { _, item -> item.id }) { index, item ->
                     var quality by remember(item.id, item.url, item.headers) { mutableStateOf<String?>(null) }
                     var probing by remember(item.id, item.url, item.headers) { mutableStateOf(false) }
