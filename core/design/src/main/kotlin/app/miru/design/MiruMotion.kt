@@ -3,6 +3,7 @@
 
 package app.miru.design
 
+import android.animation.ValueAnimator
 import android.database.ContentObserver
 import android.provider.Settings
 import androidx.compose.animation.core.CubicBezierEasing
@@ -58,7 +59,7 @@ fun animationsReduced(): Boolean {
             trySend(Unit)
             awaitClose { resolver.unregisterContentObserver(observer) }
         }.conflate().map { Settings.Global.getFloat(resolver, setting, 1f) == 0f }.flowOn(Dispatchers.IO)
-    }.collectAsState(initial = false)
+    }.collectAsState(initial = remember { !ValueAnimator.areAnimatorsEnabled() })
     return reduced
 }
 

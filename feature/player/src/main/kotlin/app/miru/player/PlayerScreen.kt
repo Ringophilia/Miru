@@ -244,7 +244,10 @@ fun PlayerScreen(
                                 key(state.sourceRevision, embedded, configuration.orientation) {
                                     val sliderSourceRevision = state.sourceRevision
                                     BoxWithConstraints(Modifier.fillMaxWidth().height(48.dp)) {
-                                        Slider(value = drag ?: state.position.toFloat().coerceIn(0f, maxOf(1f, state.duration.toFloat())), onValueChange = { position ->
+                                        val sliderRange = 0f..maxOf(1f, state.duration.toFloat())
+                                        val sliderState = remember(sliderRange) { SliderState(trackRange = sliderRange) }
+                                        sliderState.value = drag ?: state.position.toFloat().coerceIn(sliderRange)
+                                        Slider(state = sliderState, onValueChange = { position ->
                                             val current = controller.state.value
                                             if(canSeekNow() && current.sourceRevision == sliderSourceRevision) {
                                                 dragSourceRevision = sliderSourceRevision
@@ -253,7 +256,7 @@ fun PlayerScreen(
                                                 drag = target
                                                 controller.seekPreview.request(target.toLong())
                                             }
-                                        }, valueRange = 0f..maxOf(1f, state.duration.toFloat()), onValueChangeFinished = {
+                                        }, onValueChangeFinished = {
                                             if(dragOwner === seekOwner) {
                                                 val target = drag?.toLong()
                                                 val commit = target != null && canSeekNow() &&

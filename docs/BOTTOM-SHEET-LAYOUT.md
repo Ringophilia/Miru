@@ -9,4 +9,16 @@
 - 固定构建 `bottom-sheet-layout-build-03` 通过，778 项源码输入一致，Lint 有 29 项警告、0 项错误。设计、媒体检测和下载模块共 31 项 JVM 测试通过，广告拦截模块的 JVM 任务没有测试源。
 - `bottom-sheet-layout-device-04` 中的三项布局专项和真实网页的视频面板用例通过。实测了 90% 和 70% 上限、底边贴合、长内容滚动、短面板和深浅色遮罩。站点信息改为直接展开，测试也等待打开面板后的权限读取完成，再点启用的菜单。
 - 站点自动播放专项在前几轮出现菜单未找到和测试网页未就绪超时，原始失败均保留。2026-11-19 在重新启动的专用模拟器上用同一固定包单独运行 `bottom-sheet-layout-device-site-05`，该项通过，实际从站点面板切换三种策略、重载播放并重建 Activity。APK 大小及 SHA-256 已核对，临时 APK 副本和测试用户已移除。证据在 `artifacts/m3-cached-ranges/bottom-sheet-layout-*/` 与 `artifacts/bottom-sheet-layout/`。
-- 目前采用固定版 Material 3 的原生开关动效。§7.3 的 300 毫秒进入、200 毫秒退出，以及 §7.2 的减少动画淡入淡出仍待对齐和逐帧验证。[Material 3 1.4.0 底部面板源码](https://github.com/androidx/androidx/blob/5113b82a4ed6416d6344efa50e41db8cb65928ff/compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/ModalBottomSheet.kt)
+
+## 2026-11-19 · 面板进出动效
+
+面板从底部用 300 毫秒强调减速进入，遮罩同时渐显。点遮罩或按返回键时，用 200 毫秒强调加速收起，拖拽释放沿用 Material 的状态与速度交接，并采用项目弹簧参数。系统动画比例为零时，面板留在最终位置，用 150 毫秒淡入淡出。首次读取动画状态也考虑系统当前值。展开中关闭、关闭后重新打开、收起中切到减少动画都能结束，关闭回调只交付一次。
+
+为使用公开的动效接口，Material 3 固定到 `1.5.0-rc01`。构建仓库在本轮验证时提供的最新版本仍为这个候选版，`1.5.0` 的解析失败记录与仓库元数据已保留。播放器自定义进度条同步适配了新版接口。[MotionScheme 接口](https://developer.android.com/reference/kotlin/androidx/compose/material3/MotionScheme)
+
+- 固定构建 `bottom-sheet-motion-build-07` 通过，779 项源码输入无漂移，Lint 有 29 项警告、0 项错误。相关 JVM 测试共 130 项通过，包括设计、标签、媒体检测、下载和构建脚本要求的播放器测试。
+- API 35 x86_64 模拟器分轮覆盖 15 项专项。`bottom-sheet-motion-device-06` 通过站点自动播放策略、菜单位置与操作、普通面板过渡、尺寸与遮罩，以及播放器进度条的实际拖动和取消。该轮视频入口等待超时，中途切换动画模式的用例也暴露了重复启动淡出的问题。
+- 去掉重复启动后，最终包的 `bottom-sheet-motion-device-07` 通过全部 6 项，覆盖四项面板动效、视频入口和标签菜单。四项动效用例使用测试时钟与实际截图，检查移动、遮罩渐变、系统动画比例为零时的原位淡入淡出、过渡中关闭和关闭回调次数。
+- 早期截图未等待绘制完成，记录中保留了取到同一帧的失败。播放器截图变暗时，系统日志显示首次全屏提示正在遮挡窗口。后续临时用户预先确认该提示后，原有图片颜色及跳转断言通过。APK 大小及 SHA-256 已核对，临时 APK 副本和用户已移除，系统动画设置已恢复。证据在 `artifacts/m3-cached-ranges/bottom-sheet-motion-*/` 与 `artifacts/bottom-sheet-motion/`。
+
+面板内容按钮直接结束业务状态时的退出动画仍需统一。真机与高刷新率表现仍待核对。
