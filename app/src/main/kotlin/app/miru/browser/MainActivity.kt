@@ -360,6 +360,13 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     val offlineUnavailable = stringResource(R.string.offline_unavailable)
     val activeDownloads = downloadItems.count { it.status in setOf("queued", "running", "waiting_network") } +
         offlineItems.count { it.status in setOf("queued", "running", "waiting_network") }
+    var downloadStart by remember { mutableIntStateOf(0) }
+    var downloadArrival by remember { mutableIntStateOf(0) }
+    var keepDownloadDot by remember { mutableStateOf(false) }
+    var menuBounds by remember { mutableStateOf<Rect?>(null) }
+    val canShowDownloadFlight = route == Route.BROWSER && !tabsVisible && !webFullScreen &&
+        !editing && !finding && !menuVisible && !reducedMotion
+    val downloadInFlight = canShowDownloadFlight && downloadStart != downloadArrival
     val privateNotificationsDenied = stringResource(R.string.private_notifications_denied)
     val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         container.privateTabsNotifications.refresh()
@@ -519,9 +526,14 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
             }
         }
     }
+    fun recordDownloadStart() {
+        keepDownloadDot = activeDownloads > 0 && (keepDownloadDot || downloadStart == downloadArrival)
+        downloadStart++
+    }
     fun enqueueDownload(request: DownloadRequest) {
         try {
             downloads.enqueue(request)
+            recordDownloadStart()
             if (Build.VERSION.SDK_INT >= 33 && activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
@@ -658,7 +670,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                 // recreated whenever the address bar is edited or settings/history/bookmarks are visited.
                 Box(Modifier.fillMaxSize().then(if (route != Route.BROWSER || tabsVisible) Modifier.clearAndSetSemantics { } else Modifier)) {
                     val toolbarBadge = adblock.takeIf { it.badgeTabId == tab?.id }
-                    val toolbarState = ToolbarState(url = tab?.url.orEmpty(), title = tab?.title.orEmpty(), editing = editing, input = input, inlineAddress = inlineAddress?.text, inlineDestination = inlineAddress?.url, tabCount = snapshot.tabs.count { it.isPrivate == (tab?.isPrivate == true) }, loading = tab?.loading == true, progress = tab?.progress ?: 0, incognito = tab?.isPrivate == true, adblockAvailable = adblock.installed, blockedCount = toolbarBadge?.blockedCount ?: 0, secure = tab?.secure == true, downloading = activeDownloads > 0, adblockNeedsReload = toolbarBadge?.pageNeedsReload == true, mediaCount = videoCount, tabId = tab?.id)
+                    val toolbarState = ToolbarState(url = tab?.url.orEmpty(), title = tab?.title.orEmpty(), editing = editing, input = input, inlineAddress = inlineAddress?.text, inlineDestination = inlineAddress?.url, tabCount = snapshot.tabs.count { it.isPrivate == (tab?.isPrivate == true) }, loading = tab?.loading == true, progress = tab?.progress ?: 0, incognito = tab?.isPrivate == true, adblockAvailable = adblock.installed, blockedCount = toolbarBadge?.blockedCount ?: 0, secure = tab?.secure == true, downloading = activeDownloads > 0 && (!downloadInFlight || keepDownloadDot), adblockNeedsReload = toolbarBadge?.pageNeedsReload == true, mediaCount = videoCount, tabId = tab?.id)
                     val toolbar: @Composable () -> Unit = {
                         Box {
                             if(finding) FindBar(findQuery, tab?.findCurrent ?: 0, tab?.findTotal ?: 0, { findQuery = it }, { controller.findNext(false) }, { controller.findNext(true) }, { finding = false })
@@ -675,6 +687,8 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                                 reducedMotion = reducedMotion,
                                 onAddressBounds = { toolbarAddressBounds = it },
                                 onEditorBounds = { editorBounds = it },
+                                onMenuBounds = { menuBounds = it },
+                                downloadArrival = downloadArrival,
                                 overflowMenu = {
                                     MiruMenu(
                                         expanded = menuVisible,
@@ -717,7 +731,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         webContent = webPage && snapshot.error == null && tab?.crashed != true,
                         toolbarAtBottom = toolbarAtBottom,
                         toolbarVisible = !webFullScreen && (!bottomToolbar || editing || toolbarAtBottom),
-                        forceToolbarVisible = editing || finding || menuVisible || tabsVisible || route != Route.BROWSER ||
+                        forceToolbarVisible = editing || finding || menuVisible || tabsVisible || downloadInFlight || route != Route.BROWSER ||
                             siteInfo || adblockPanel || mediaPanel || contextMenu != null || pagePrompt != null,
                         refreshEnabled = !webFullScreen && route == Route.BROWSER && !tabsVisible && !editing,
                         tabSwipeEnabled = route == Route.BROWSER && !webFullScreen && !editing && !finding && !imeVisible &&
@@ -813,6 +827,13 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         }
                     }
                 }
+                DownloadArrowFlight(
+                    start = downloadStart,
+                    arrived = downloadArrival,
+                    visible = canShowDownloadFlight,
+                    menuBounds = menuBounds,
+                    onArrival = { if (downloadStart == it) downloadArrival = it },
+                )
                 TabTrayMotion(
                     visible = tabsVisible, tabs = snapshot.tabs.map { TabItem(it.id, it.title, it.url, it.isPrivate, thumbnail = it.thumbnail, icon = it.icon) },
                     selected = snapshot.selectedTabId, incognito = privateGroup, reducedMotion = reducedMotion,
@@ -879,6 +900,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                 onConfirm = { quality, title ->
                     try {
                         container.offline.enqueue(selection, quality, title)
+                        recordDownloadStart()
                         cancelOfflinePreparation()
                         if(Build.VERSION.SDK_INT >= 33 && activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
                         scope.launch { if(snackbars.showWithAction(downloadStarted, viewLabel)) route = Route.DOWNLOADS }

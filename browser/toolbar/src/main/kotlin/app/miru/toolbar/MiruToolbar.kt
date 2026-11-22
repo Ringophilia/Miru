@@ -4,10 +4,14 @@
 package app.miru.toolbar
 
 import android.net.Uri
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -41,6 +45,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.miru.design.MiruTheme
+import app.miru.design.MiruMotion
+import app.miru.design.withReducedMotionFade
 
 data class ToolbarState(
     val url: String = "about:newtab",
@@ -77,6 +83,8 @@ fun MiruToolbar(
     reducedMotion: Boolean = false,
     onAddressBounds: (Rect) -> Unit = {},
     onEditorBounds: (Rect) -> Unit = {},
+    onMenuBounds: (Rect) -> Unit = {},
+    downloadArrival: Int = 0,
     overflowMenu: @Composable () -> Unit = {},
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
@@ -144,11 +152,11 @@ fun MiruToolbar(
                         }
                     }
                 }
-                Box(Modifier.testTag("browser-overflow-anchor")) {
+                Box(Modifier.testTag("browser-overflow-anchor").addressBounds(onMenuBounds)) {
                     IconButton(onClick = onMenu, enabled = !state.editing) {
                         Box {
                             Icon(Icons.Outlined.MoreVert, stringResource(R.string.toolbar_menu))
-                            if (state.downloading) Box(Modifier.align(Alignment.TopEnd).size(6.dp).background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape))
+                            DownloadBadge(state.downloading, downloadArrival, reducedMotion, Modifier.align(Alignment.TopEnd))
                         }
                     }
                     overflowMenu()
@@ -175,6 +183,31 @@ fun MiruToolbar(
         if (!state.editing && state.url != "about:newtab") key(state.tabId) {
             PageLoadingBar(state.loading, state.progress, reducedMotion, Modifier.align(Alignment.BottomStart))
         }
+    }
+}
+
+@Composable
+private fun DownloadBadge(active: Boolean, arrival: Int, reduced: Boolean, modifier: Modifier) {
+    val opacity = remember { Animatable(if (active && !reduced) 1f else 0f) }
+    val scale = remember { Animatable(1f) }
+    LaunchedEffect(active, arrival, reduced) {
+        if (reduced) {
+            scale.snapTo(1f)
+            withReducedMotionFade(true) { opacity.animateTo(if (active) 1f else 0f, tween(MiruMotion.short2)) }
+        } else {
+            opacity.snapTo(if (active) 1f else 0f)
+            if (active && arrival != 0) {
+                scale.snapTo(0.65f)
+                scale.animateTo(1f, spring(dampingRatio = MiruMotion.bouncyDamping, stiffness = MiruMotion.bouncyStiffness))
+            } else scale.snapTo(1f)
+        }
+    }
+    if (active || opacity.value > 0f) {
+        Box(
+            modifier.size(6.dp).testTag("toolbar-download-dot")
+                .graphicsLayer { alpha = opacity.value; scaleX = scale.value; scaleY = scale.value }
+                .background(MaterialTheme.colorScheme.primary, CircleShape),
+        )
     }
 }
 
