@@ -24,11 +24,15 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.SeekableTransitionState
+import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -60,6 +64,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -763,32 +768,49 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         ) { Text(stringResource(app.miru.media.R.string.media_play)) }
                     }
                 }
-                AnimatedContent(route, transitionSpec = { routeTransition(initialState, targetState, reducedMotion) }, label = "route") { current ->
-                    when(current) {
-                        Route.BROWSER -> Box(Modifier.fillMaxSize())
-                        Route.HISTORY -> HistoryScreen(library, snackbars, onBack = { route = Route.BROWSER }, onOpen = { navigate(it) }, onOpenInNewTab = ::openInNewTab)
-                        Route.BOOKMARKS -> BookmarksScreen(library, snackbars, onBack = { route = Route.BROWSER }, onOpen = { navigate(it) }, onOpenInNewTab = ::openInNewTab)
-                        Route.DOWNLOADS -> DownloadsScreen(downloads, onBack = { route = Route.BROWSER }, snackbarHostState = snackbars,
-                            offline = container.offline, onOpenOffline = ::openOffline)
-                        Route.DOWNLOAD_SETTINGS -> DownloadSettingsScreen(downloads, onBack = { route = Route.SETTINGS })
-                        Route.ADBLOCK -> AdblockScreen(adblockUi, { route = Route.SETTINGS }, controller::setAdblockEnabled, controller::retryAdblock, { openAdblockDashboard(true) }, { openAdblockDashboard() })
-                        Route.SETTINGS -> SettingsScreen(
-                            settings, { route = Route.BROWSER }, { scope.launch { container.settings.setTheme(it) } },
-                            { scope.launch { container.settings.setDynamicColor(it) } },
-                            { scope.launch { container.settings.setToolbarPosition(it) } },
-                            { scope.launch { container.settings.setSearchEngine(it) } }, onDefaultBrowser,
-                            { route = Route.ABOUT }, { route = Route.ADBLOCK }, { route = Route.DOWNLOAD_SETTINGS },
-                            onPlayer = { route = Route.PLAYER_SETTINGS },
-                            onClearBrowsingData = { route = Route.CLEAR_DATA },
-                            onSearchSuggestions = { enabled -> scope.launch { container.settings.setSearchSuggestions(enabled) } },
-                            onAccent = { accent -> scope.launch { container.settings.setAccent(accent) } },
-                            onBlockThirdPartyCookies = { enabled -> scope.launch { container.settings.setBlockThirdPartyCookies(enabled) } },
-                            onHttpsOnly = { enabled -> scope.launch { container.settings.setHttpsOnly(enabled) } },
-                            onSecureDns = { mode, url -> scope.launch { container.settings.setSecureDns(mode, url) } },
-                        )
-                        Route.CLEAR_DATA -> ClearBrowsingDataScreen(container.browsingDataClearer, onBack = { route = Route.SETTINGS })
-                        Route.PLAYER_SETTINGS -> PlayerSettingsScreen(container.playerPreferences, snackbars, onBack = { route = Route.SETTINGS })
-                        Route.ABOUT -> AboutScreen(BuildConfig.VERSION_NAME, { route = Route.SETTINGS }, { navigate(it, newTab = true) }, adblockVersion = adblock.version.takeIf { adblock.installed })
+                val density = LocalDensity.current
+                val horizontalTravel = with(density) { 30.dp.roundToPx() }
+                val verticalTravel = with(density) { 24.dp.roundToPx() }
+                val routeState = remember { SeekableTransitionState(route) }
+                val routeMotion = rememberTransition(routeState, label = "Browser route")
+                LaunchedEffect(route, reducedMotion) {
+                    withReducedMotionFade(reducedMotion) { routeState.animateTo(route) }
+                }
+                routeMotion.AnimatedContent(
+                    transitionSpec = {
+                        routeTransition(initialState, targetState, reducedMotion, horizontalTravel, verticalTravel)
+                    },
+                ) { current ->
+                    Box(
+                        Modifier.fillMaxSize().testTag("route-${current.name}")
+                            .then(if (current != route) Modifier.clearAndSetSemantics { } else Modifier),
+                    ) {
+                        when(current) {
+                            Route.BROWSER -> Box(Modifier.fillMaxSize())
+                            Route.HISTORY -> HistoryScreen(library, snackbars, onBack = { route = Route.BROWSER }, onOpen = { navigate(it) }, onOpenInNewTab = ::openInNewTab)
+                            Route.BOOKMARKS -> BookmarksScreen(library, snackbars, onBack = { route = Route.BROWSER }, onOpen = { navigate(it) }, onOpenInNewTab = ::openInNewTab)
+                            Route.DOWNLOADS -> DownloadsScreen(downloads, onBack = { route = Route.BROWSER }, snackbarHostState = snackbars,
+                                offline = container.offline, onOpenOffline = ::openOffline)
+                            Route.DOWNLOAD_SETTINGS -> DownloadSettingsScreen(downloads, onBack = { route = Route.SETTINGS })
+                            Route.ADBLOCK -> AdblockScreen(adblockUi, { route = Route.SETTINGS }, controller::setAdblockEnabled, controller::retryAdblock, { openAdblockDashboard(true) }, { openAdblockDashboard() })
+                            Route.SETTINGS -> SettingsScreen(
+                                settings, { route = Route.BROWSER }, { scope.launch { container.settings.setTheme(it) } },
+                                { scope.launch { container.settings.setDynamicColor(it) } },
+                                { scope.launch { container.settings.setToolbarPosition(it) } },
+                                { scope.launch { container.settings.setSearchEngine(it) } }, onDefaultBrowser,
+                                { route = Route.ABOUT }, { route = Route.ADBLOCK }, { route = Route.DOWNLOAD_SETTINGS },
+                                onPlayer = { route = Route.PLAYER_SETTINGS },
+                                onClearBrowsingData = { route = Route.CLEAR_DATA },
+                                onSearchSuggestions = { enabled -> scope.launch { container.settings.setSearchSuggestions(enabled) } },
+                                onAccent = { accent -> scope.launch { container.settings.setAccent(accent) } },
+                                onBlockThirdPartyCookies = { enabled -> scope.launch { container.settings.setBlockThirdPartyCookies(enabled) } },
+                                onHttpsOnly = { enabled -> scope.launch { container.settings.setHttpsOnly(enabled) } },
+                                onSecureDns = { mode, url -> scope.launch { container.settings.setSecureDns(mode, url) } },
+                            )
+                            Route.CLEAR_DATA -> ClearBrowsingDataScreen(container.browsingDataClearer, onBack = { route = Route.SETTINGS })
+                            Route.PLAYER_SETTINGS -> PlayerSettingsScreen(container.playerPreferences, snackbars, onBack = { route = Route.SETTINGS })
+                            Route.ABOUT -> AboutScreen(BuildConfig.VERSION_NAME, { route = Route.SETTINGS }, { navigate(it, newTab = true) }, adblockVersion = adblock.version.takeIf { adblock.installed })
+                        }
                     }
                 }
                 TabTrayMotion(
@@ -982,14 +1004,32 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     }
 }
 
-/** Spec 7.3 shared axis X for full-screen routes; a cross-fade when system animations are off. */
-private fun routeTransition(from: Route, to: Route, reduced: Boolean): ContentTransform {
+private val libraryRoutes = setOf(Route.HISTORY, Route.BOOKMARKS, Route.DOWNLOADS)
+
+/** Spec 7.3 distinguishes entry to the browser library from navigation between settings pages. */
+private fun routeTransition(
+    from: Route,
+    to: Route,
+    reduced: Boolean,
+    horizontalTravel: Int,
+    verticalTravel: Int,
+): ContentTransform {
     if (reduced) return fadeIn(tween(MiruMotion.short2)) togetherWith fadeOut(tween(MiruMotion.short2))
-    val forward = to.ordinal > from.ordinal
-    val enter = fadeIn(tween(MiruMotion.medium2, easing = MiruMotion.emphasizedDecelerate)) +
-        slideInHorizontally(tween(MiruMotion.medium2, easing = MiruMotion.emphasizedDecelerate)) { (if (forward) 1 else -1) * it / 12 }
-    val exit = fadeOut(tween(MiruMotion.short3, easing = MiruMotion.emphasizedAccelerate)) +
-        slideOutHorizontally(tween(MiruMotion.short3, easing = MiruMotion.emphasizedAccelerate)) { (if (forward) -1 else 1) * it / 12 }
+    if (from == Route.BROWSER && to in libraryRoutes) {
+        val enter = fadeIn(tween(MiruMotion.medium1)) +
+            slideInVertically(tween(MiruMotion.medium1, easing = MiruMotion.emphasizedDecelerate)) { verticalTravel }
+        return enter togetherWith fadeOut(tween(MiruMotion.medium1))
+    }
+    if (from in libraryRoutes && to == Route.BROWSER) {
+        val exit = fadeOut(tween(MiruMotion.short3)) +
+            slideOutVertically(tween(MiruMotion.short3, easing = MiruMotion.emphasizedAccelerate)) { verticalTravel }
+        return fadeIn(tween(MiruMotion.short3)) togetherWith exit
+    }
+    val direction = if (to == Route.BROWSER || to == Route.SETTINGS && from != Route.BROWSER) -1 else 1
+    val enter = fadeIn(tween(MiruMotion.medium2, easing = MiruMotion.emphasized)) +
+        slideInHorizontally(tween(MiruMotion.medium2, easing = MiruMotion.emphasized)) { direction * horizontalTravel }
+    val exit = fadeOut(tween(MiruMotion.medium2, easing = MiruMotion.emphasized)) +
+        slideOutHorizontally(tween(MiruMotion.medium2, easing = MiruMotion.emphasized)) { -direction * horizontalTravel }
     return enter togetherWith exit
 }
 
