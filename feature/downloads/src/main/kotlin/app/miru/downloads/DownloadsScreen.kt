@@ -10,6 +10,8 @@ import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +23,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
@@ -28,6 +32,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.miru.design.MiruBottomSheet
+import app.miru.design.MiruMotion
+import app.miru.design.animationsReduced
+import app.miru.design.withReducedMotionFade
 import app.miru.offline.OfflineCoordinator
 import java.text.DateFormat
 import java.util.Date
@@ -51,6 +58,7 @@ fun DownloadsScreen(
 ) {
     val downloads by coordinator.downloads.collectAsState()
     val preferences by coordinator.settings.collectAsState()
+    val reducedMotion = animationsReduced()
     val hidden by coordinator.pendingDeletionIds.collectAsState()
     val offlineItems = if(offline != null) {
         val rows by offline.items.collectAsState()
@@ -175,6 +183,16 @@ fun DownloadsScreen(
                     item(key = "date-$date") { Text(date, Modifier.padding(horizontal = 16.dp, vertical = 12.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }
                     items(grouped, key = { it.key }) { row ->
                         val item = row.item
+                        val hasProgress = item.status in setOf("running", "paused", "waiting_network", "queued")
+                        val completed = item.status == "completed"
+                        val progress = if (item.totalBytes > 0) item.downloadedBytes.toFloat() / item.totalBytes else row.percent / 100f
+                        val completion = remember(row.key) { Animatable(if (completed) 1f else 0f) }
+                        LaunchedEffect(completed, reducedMotion) {
+                            if (completed) {
+                                val duration = if (reducedMotion) MiruMotion.short2 else MiruMotion.short3
+                                withReducedMotionFade(reducedMotion) { completion.animateTo(1f, tween(duration)) }
+                            } else completion.snapTo(0f)
+                        }
                         var menu by remember(row.key) { mutableStateOf(false) }
                         val swipe = rememberSwipeToDismissBoxState(confirmValueChange = { value ->
                             if(value == SwipeToDismissBoxValue.EndToStart) requestDelete(listOf(row))
@@ -194,17 +212,24 @@ fun DownloadsScreen(
                                 supportingContent = {
                                     Column {
                                         if(row.offline) Text(stringResource(R.string.download_offline_quality, row.quality.orEmpty()), style = MaterialTheme.typography.bodySmall)
-                                        Text(if(item.status == "removing") stringResource(R.string.download_removing) else downloadStatusLabel(context, item), style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"))
-                                        if(item.status in setOf("running", "paused", "waiting_network", "queued")) {
+                                        Text(
+                                            if (item.status == "removing") stringResource(R.string.download_removing) else downloadStatusLabel(context, item),
+                                            style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"),
+                                            color = lerp(MaterialTheme.colorScheme.onSurfaceVariant, MaterialTheme.colorScheme.onSurface, completion.value),
+                                        )
+                                        if (hasProgress || completed && completion.value < 1f) {
                                             Spacer(Modifier.height(8.dp))
-                                            val progress = if(item.totalBytes > 0) item.downloadedBytes.toFloat() / item.totalBytes else row.percent / 100f
-                                            if(progress >= 0) LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), drawStopIndicator = {})
-                                            else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                            val bar = Modifier.fillMaxWidth().testTag("download-row-progress")
+                                                .graphicsLayer { alpha = if (completed) 1f - completion.value else 1f }
+                                            if (completed || progress >= 0f) {
+                                                LinearProgressIndicator(progress = { if (completed) 1f else progress.coerceIn(0f, 1f) }, modifier = bar, drawStopIndicator = {})
+                                            } else LinearProgressIndicator(modifier = bar)
                                         }
                                     }
                                 },
                                 leadingContent = {
                                     if(selected.isNotEmpty()) Checkbox(row.key in selected, { checked -> selected = if(checked) selected + row.key else selected - row.key })
+                                    else if (hasProgress || completed) DownloadStatusIcon(progress, completed, completion.value, reducedMotion)
                                     else Icon(when(item.category) {
                                         DownloadCategory.VIDEO -> if(row.offline) Icons.Outlined.OfflinePin else Icons.Outlined.Movie
                                         DownloadCategory.AUDIO -> Icons.Outlined.MusicNote

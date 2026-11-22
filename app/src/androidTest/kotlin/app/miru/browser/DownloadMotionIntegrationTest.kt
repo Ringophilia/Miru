@@ -12,7 +12,9 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.miru.data.ToolbarPosition
+import app.miru.downloads.DownloadRequest
 import app.miru.downloads.R as DownloadStrings
+import java.util.concurrent.CountDownLatch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -67,6 +69,47 @@ class DownloadMotionIntegrationTest {
             await(dot)
             compose.onNode(arrow, useUnmergedTree = true).assertDoesNotExist()
             assertDot(target)
+        }
+    }
+
+    @Test fun completedDownloadMorphsTheIconAndFadesTheProgressBar() = withSettings("1") {
+        assertCompletionMotion()
+    }
+
+    @Test fun completedDownloadWithSystemMotionOffCrossfadesTheIcon() = withSettings("0") {
+        assertCompletionMotion()
+    }
+
+    private fun assertCompletionMotion() {
+        val releaseBody = CountDownLatch(1)
+        DownloadTestServer(size = 256 * 1024L, delayMillis = 0, releaseBody = releaseBody).use { origin ->
+            val downloads = container.downloads
+            val id = downloads.enqueue(DownloadRequest("${origin.origin}/download", fileName = "miru-completion-motion.bin"))
+            fun inRow(tag: String) = hasTestTag(tag) and hasAnyAncestor(hasTestTag("file_download_$id"))
+            try {
+                val menu = compose.activity.getString(app.miru.toolbar.R.string.toolbar_menu)
+                val entry = compose.activity.getString(app.miru.menu.R.string.menu_downloads)
+                compose.onNodeWithContentDescription(menu).performClick()
+                compose.onNodeWithText(entry).performClick()
+                await(inRow("download-progress-ring"))
+                compose.onNode(inRow("download-row-progress"), useUnmergedTree = true).assertIsDisplayed()
+                compose.mainClock.autoAdvance = false
+                releaseBody.countDown()
+                compose.waitUntil(20_000) { downloads.downloads.value.any { it.id == id && it.status == "completed" } }
+                advanceUntilPresent(inRow("download-completing-icon"))
+
+                compose.mainClock.advanceTimeBy(48)
+                compose.onNode(inRow("download-completing-icon"), useUnmergedTree = true).assertIsDisplayed()
+                compose.onNode(inRow("download-row-progress"), useUnmergedTree = true).assertIsDisplayed()
+                compose.mainClock.advanceTimeBy(240)
+                compose.onNode(inRow("download-completed-icon"), useUnmergedTree = true).assertIsDisplayed()
+                compose.onNode(inRow("download-row-progress"), useUnmergedTree = true).assertDoesNotExist()
+            } finally {
+                releaseBody.countDown()
+                compose.mainClock.autoAdvance = true
+                downloads.delete(id, deleteFile = true)
+                compose.waitUntil(10_000) { downloads.downloads.value.none { it.id == id } }
+            }
         }
     }
 

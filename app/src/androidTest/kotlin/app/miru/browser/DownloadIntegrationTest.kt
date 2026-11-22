@@ -15,6 +15,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.security.MessageDigest
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
@@ -118,6 +120,7 @@ internal class DownloadTestServer(
     val size: Long = 8L * 1024 * 1024,
     private val interruptOnce: Boolean = false,
     private val delayMillis: Long = 24,
+    private val releaseBody: CountDownLatch? = null,
 ) : Closeable {
     private val server = ServerSocket(0, 16, InetAddress.getByName("127.0.0.1"))
     private val open = AtomicBoolean(true)
@@ -170,6 +173,7 @@ internal class DownloadTestServer(
         }
         output.write(response.toByteArray())
         if(method == "HEAD") { output.flush(); return }
+        if (releaseBody != null && !releaseBody.await(15, TimeUnit.SECONDS)) return
         val shouldInterrupt = interruptOnce && interrupted.compareAndSet(false,true)
         var offset = first
         while(open.get() && offset <= last) {

@@ -57,7 +57,7 @@ internal fun DownloadArrowFlight(
         origin = it.positionInRoot()
         bounds = it.size
     }) {
-        if (ready && menuBounds != null) Icon(
+        if (ready) Icon(
             Icons.Outlined.Download,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
