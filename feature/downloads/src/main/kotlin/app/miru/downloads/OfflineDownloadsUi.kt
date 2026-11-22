@@ -45,7 +45,7 @@ fun OfflineConfirmSheet(
         mutableStateOf(selection.qualities.filter { it.height > 0 }.minByOrNull { kotlin.math.abs(it.height - 720) }?.id ?: selection.qualities.firstOrNull()?.id)
     }
     var privateAcknowledged by remember(selection) { mutableStateOf(false) }
-    MiruBottomSheet(onDismissRequest = onDismiss) {
+    MiruBottomSheet(onDismissRequest = onDismiss) { closeWith ->
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.offline_download_title), style = MaterialTheme.typography.headlineSmall)
             OutlinedTextField(title, { title = it.take(200) }, Modifier.fillMaxWidth().testTag("offline_download_title"), singleLine = true, label = { Text(stringResource(R.string.offline_video_name)) })
@@ -67,10 +67,13 @@ fun OfflineConfirmSheet(
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.download_cancel)) }
+                TextButton(onClick = { closeWith(onDismiss) }) { Text(stringResource(R.string.download_cancel)) }
                 Spacer(Modifier.width(8.dp))
                 Button(enabled = title.isNotBlank() && selected != null && (!selection.source.isPrivate || privateAcknowledged),
-                    onClick = { selected?.let { onConfirm(it, title.trim()) } }, modifier = Modifier.testTag("offline_download_start")) {
+                    onClick = {
+                        val confirmedTitle = title.trim()
+                        selected?.let { quality -> closeWith { onConfirm(quality, confirmedTitle) } }
+                    }, modifier = Modifier.testTag("offline_download_start")) {
                     Text(stringResource(R.string.download_start))
                 }
             }

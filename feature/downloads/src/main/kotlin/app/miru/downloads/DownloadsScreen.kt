@@ -277,7 +277,7 @@ fun DownloadConfirmSheet(request:DownloadRequest,onDismiss:()->Unit,onConfirm:(D
     var directory by remember(request){mutableStateOf(request.directoryUri?:defaults.directoryUri)}
     LaunchedEffect(defaults.directoryUri){if(directory==null)directory=defaults.directoryUri}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()){uri->if(uri!=null){runCatching{context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)};directory=uri.toString()}}
-    MiruBottomSheet(onDismissRequest = onDismiss) {
+    MiruBottomSheet(onDismissRequest = onDismiss) { closeWith ->
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             Text(stringResource(R.string.download_confirm_title),style=MaterialTheme.typography.titleLarge)
             OutlinedTextField(name,{name=it},Modifier.fillMaxWidth(),singleLine=true,label={Text(stringResource(R.string.download_filename))})
@@ -285,7 +285,17 @@ fun DownloadConfirmSheet(request:DownloadRequest,onDismiss:()->Unit,onConfirm:(D
             TextButton(onClick={picker.launch(directory?.let(Uri::parse))}) { Icon(Icons.Outlined.FolderOpen,null);Spacer(Modifier.width(8.dp));Text(if(directory==null)stringResource(R.string.download_default_folder)else Uri.parse(directory).lastPathSegment.orEmpty()) }
             if(Build.VERSION.SDK_INT<29&&directory==null)Text(stringResource(R.string.download_choose_folder_required),color=MaterialTheme.colorScheme.error)
             if(request.isPrivate)Text(stringResource(R.string.download_private_warning),style=MaterialTheme.typography.bodySmall)
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End){TextButton(onClick=onDismiss){Text(stringResource(R.string.download_cancel))};Spacer(Modifier.width(8.dp));Button(enabled=name.isNotBlank()&&(Build.VERSION.SDK_INT>=29||directory!=null),onClick={onConfirm(request.copy(fileName=name,directoryUri=directory))}){Text(stringResource(R.string.download_start))}}
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { closeWith(onDismiss) }) { Text(stringResource(R.string.download_cancel)) }
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    enabled = name.isNotBlank() && (Build.VERSION.SDK_INT >= 29 || directory != null),
+                    onClick = {
+                        val confirmed = request.copy(fileName = name, directoryUri = directory)
+                        closeWith { onConfirm(confirmed) }
+                    },
+                ) { Text(stringResource(R.string.download_start)) }
+            }
         }
     }
 }

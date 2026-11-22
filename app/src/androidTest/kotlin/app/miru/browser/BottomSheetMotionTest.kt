@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -38,6 +40,7 @@ class BottomSheetMotionTest {
     @get:Rule val compose = createComposeRule()
     private var open by mutableStateOf(false)
     private var dismissed = 0
+    private var confirmed = 0
     private var viewportHeight = 0
     private var reducedOverride by mutableStateOf<Boolean?>(null)
     private val tag = "miru-bottom-sheet"
@@ -119,6 +122,36 @@ class BottomSheetMotionTest {
         sheet().assertDoesNotExist()
     }
 
+    @Test fun confirmRunsOnlyAfterSlidingOut() = withAnimationScale("1") {
+        confirmAndCheckExit(reduced = false)
+    }
+
+    @Test fun confirmWithSystemAnimationsOffWaitsForTheFade() = withAnimationScale("0") {
+        confirmAndCheckExit(reduced = true)
+    }
+
+    private fun confirmAndCheckExit(reduced: Boolean) {
+        display()
+        show()
+        compose.mainClock.advanceTimeBy(352)
+        val resting = bounds()
+        val confirm = compose.onNodeWithText("Confirm")
+        confirm.performClick()
+        if (compose.onAllNodesWithText("Confirm").fetchSemanticsNodes().isNotEmpty()) {
+            confirm.performClick()
+        }
+        dismissWithScrim()
+        compose.mainClock.advanceTimeBy(64)
+        assertEquals(0, confirmed)
+        val exiting = bounds()
+        if (reduced) assertEquals(resting, exiting)
+        else assertTrue("Confirmation should slide the panel down", exiting.top > resting.top)
+        compose.mainClock.advanceTimeBy(240)
+        sheet().assertDoesNotExist()
+        assertEquals(1, confirmed)
+        assertEquals(0, dismissed)
+    }
+
     private fun display() {
         compose.setContent {
             viewportHeight = LocalWindowInfo.current.containerSize.height
@@ -128,8 +161,10 @@ class BottomSheetMotionTest {
                     onDismissRequest = { open = false; dismissed++ },
                     skipPartiallyExpanded = true,
                     reducedMotion = reducedOverride ?: animationsReduced(),
-                ) {
-                    Box(Modifier.fillMaxWidth().height(180.dp).background(Color.Red))
+                ) { closeWith ->
+                    Box(Modifier.fillMaxWidth().height(180.dp).background(Color.Red)) {
+                        Button(onClick = { closeWith { open = false; confirmed++ } }) { Text("Confirm") }
+                    }
                 }
             }
         }

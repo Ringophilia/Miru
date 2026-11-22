@@ -49,7 +49,7 @@ internal fun SitePermissionSheet(
     val notifications = SitePermissionKind.NOTIFICATIONS in prompt.kinds
     val protectedMedia = SitePermissionKind.PROTECTED_MEDIA in prompt.kinds
     val alwaysRemember = notifications || protectedMedia
-    MiruBottomSheet(onDismissRequest = onDismiss) {
+    MiruBottomSheet(onDismissRequest = onDismiss) { closeWith ->
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(stringResource(R.string.site_permission_request), style = MaterialTheme.typography.titleLarge)
@@ -66,8 +66,9 @@ internal fun SitePermissionSheet(
                     Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { onAnswer(false, rememberChoice || alwaysRemember) }) { Text(stringResource(R.string.site_permission_block)) }
-                FilledTonalButton(onClick = { onAnswer(true, rememberChoice || alwaysRemember) }) { Text(stringResource(R.string.site_permission_allow)) }
+                val rememberAnswer = rememberChoice || alwaysRemember
+                TextButton(onClick = { closeWith { onAnswer(false, rememberAnswer) } }) { Text(stringResource(R.string.site_permission_block)) }
+                FilledTonalButton(onClick = { closeWith { onAnswer(true, rememberAnswer) } }) { Text(stringResource(R.string.site_permission_allow)) }
             }
         }
     }

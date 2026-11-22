@@ -19,20 +19,26 @@ import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
@@ -45,7 +51,7 @@ fun MiruBottomSheet(
     maxHeightFraction: Float = 0.9f,
     skipPartiallyExpanded: Boolean = false,
     reducedMotion: Boolean = animationsReduced(),
-    content: @Composable ColumnScope.() -> Unit,
+    content: @Composable ColumnScope.(closeWith: (() -> Unit) -> Unit) -> Unit,
 ) {
     val reduced = reducedMotion
     val currentReduced = rememberUpdatedState(reduced)
@@ -54,11 +60,12 @@ fun MiruBottomSheet(
     val exiting = remember { mutableStateOf(false) }
     val dismissDelivered = remember { mutableStateOf(false) }
     val opacity = remember { Animatable(0f) }
+    var closingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     val finishDismiss = remember {
         {
             if (!dismissDelivered.value) {
                 dismissDelivered.value = true
-                currentDismiss.value()
+                (closingAction ?: currentDismiss.value)()
             }
         }
     }
@@ -76,6 +83,19 @@ fun MiruBottomSheet(
         confirmValueChange = confirmChange,
     )
     val fading = reduced || closing.value
+    val closeWith: (() -> Unit) -> Unit = { action ->
+        if (!exiting.value && !dismissDelivered.value) {
+            closingAction = action
+            exiting.value = true
+            if (currentReduced.value) closing.value = true
+        }
+    }
+    LaunchedEffect(sheet, closingAction) {
+        if (closingAction != null && !fading) {
+            sheet.hide()
+            if (!sheet.isVisible && !currentReduced.value) finishDismiss()
+        }
+    }
     LaunchedEffect(fading, exiting.value) {
         val duration = when {
             fading -> MiruMotion.short2
@@ -105,7 +125,11 @@ fun MiruBottomSheet(
             },
             modifier = modifier.testTag("miru-bottom-sheet").graphicsLayer { alpha = if (fading) opacity.value else 1f },
             sheetState = sheet,
-            sheetGesturesEnabled = !reduced,
+            sheetGesturesEnabled = !reduced && closingAction == null,
+            properties = ModalBottomSheetProperties(
+                shouldDismissOnBackPress = closingAction == null,
+                shouldDismissOnClickOutside = closingAction == null,
+            ),
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
             tonalElevation = 3.dp,
@@ -125,9 +149,15 @@ fun MiruBottomSheet(
                         val bodyHeight = (constraints.maxHeight - reservedHeight).coerceAtLeast(constraints.minHeight)
                         val body = measurable.measure(constraints.copy(maxHeight = bodyHeight))
                         layout(body.width, body.height) { body.placeRelative(0, 0) }
-                    },
-                    content = content,
-                )
+                    }.then(
+                        if (closingAction == null) Modifier else Modifier.clearAndSetSemantics { }
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+                                }
+                            },
+                    ),
+                ) { content(closeWith) }
             }
         }
     }

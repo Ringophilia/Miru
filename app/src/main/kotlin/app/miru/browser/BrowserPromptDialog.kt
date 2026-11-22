@@ -74,7 +74,7 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
     }
     // Material picker components also use rememberSaveable internally. Form drafts never enter saved state.
     CompositionLocalProvider(LocalSaveableStateRegistry provides null) {
-    MiruBottomSheet(onDismissRequest = ::dismiss) {
+    MiruBottomSheet(onDismissRequest = ::dismiss) { closeWith ->
         CompositionLocalProvider(LocalSaveableStateRegistry provides null) {
         Column(Modifier.fillMaxWidth().testTag("browser_prompt_dialog").verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -140,14 +140,16 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
                 }
             }
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                if(state.kind == BrowserPromptKind.DATE_TIME) TextButton(onClick = { prompts.clearDate(state.token) }, modifier = Modifier.testTag("page_prompt_date_clear")) { Text(stringResource(R.string.page_prompt_clear)) }
+                if(state.kind == BrowserPromptKind.DATE_TIME) TextButton(onClick = { closeWith { prompts.clearDate(state.token) } }, modifier = Modifier.testTag("page_prompt_date_clear")) { Text(stringResource(R.string.page_prompt_clear)) }
                 if(state.kind == BrowserPromptKind.CONFIRM && state.neutralButtonTitle.isNotBlank()) {
-                    TextButton(onClick = { prompts.answerConfirm(state.token, BrowserPromptButton.NEUTRAL, allowMore) },
+                    TextButton(onClick = { closeWith { prompts.answerConfirm(state.token, BrowserPromptButton.NEUTRAL, allowMore) } },
                         modifier = Modifier.testTag("page_prompt_neutral")) { Text(state.neutralButtonTitle) }
                 }
                 if(state.kind != BrowserPromptKind.ALERT) TextButton(onClick = {
-                    if(state.kind == BrowserPromptKind.CONFIRM) prompts.answerConfirm(state.token, BrowserPromptButton.NEGATIVE, allowMore)
-                    else dismiss()
+                    closeWith {
+                        if(state.kind == BrowserPromptKind.CONFIRM) prompts.answerConfirm(state.token, BrowserPromptButton.NEGATIVE, allowMore)
+                        else dismiss()
+                    }
                 }, modifier = Modifier.testTag("page_prompt_cancel")) {
                     Text(when(state.kind) {
                         BrowserPromptKind.BEFORE_UNLOAD -> stringResource(R.string.page_prompt_stay)
@@ -160,19 +162,25 @@ internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserProm
                     else if(state.kind == BrowserPromptKind.COLOR) normalizedFormColor(colorValue) != null
                     else if(choicePrompt) validChoiceSelection(state.choices, selectedChoices, state.kind == BrowserPromptKind.MULTIPLE_CHOICE)
                     else state.kind !in setOf(BrowserPromptKind.FILE, BrowserPromptKind.FOLDER) || !uploadBusy, onClick = {
+                    val enteredText = text
+                    val enteredUsername = username
+                    val enteredPassword = password
+                    val choiceIds = selectedChoices
+                    val date = dateValue
+                    val color = colorValue
                     when(state.kind) {
-                        BrowserPromptKind.ALERT -> prompts.acknowledgeAlert(state.token, allowMore)
-                        BrowserPromptKind.CONFIRM -> prompts.answerConfirm(state.token, BrowserPromptButton.POSITIVE, allowMore)
-                        BrowserPromptKind.TEXT -> prompts.answerText(state.token, text, allowMore)
-                        BrowserPromptKind.BEFORE_UNLOAD -> prompts.answerBeforeUnload(state.token, leave = true)
-                        BrowserPromptKind.REPOST -> prompts.answerRepost(state.token, resubmit = true)
-                        BrowserPromptKind.AUTHENTICATION -> prompts.authenticate(state.token, username, password)
-                        BrowserPromptKind.FILE -> uploads.choose(state.token)
-                        BrowserPromptKind.FOLDER -> uploads.choose(state.token)
-                        BrowserPromptKind.FOLDER_CONFIRM -> prompts.answerFolderUpload(state.token, allow = true)
-                        BrowserPromptKind.SINGLE_CHOICE, BrowserPromptKind.MULTIPLE_CHOICE, BrowserPromptKind.MENU_CHOICE -> prompts.answerChoice(state.token, selectedChoices)
-                        BrowserPromptKind.DATE_TIME -> prompts.answerDate(state.token, dateValue)
-                        BrowserPromptKind.COLOR -> prompts.answerColor(state.token, colorValue)
+                        BrowserPromptKind.ALERT -> closeWith { prompts.acknowledgeAlert(state.token, allowMore) }
+                        BrowserPromptKind.CONFIRM -> closeWith { prompts.answerConfirm(state.token, BrowserPromptButton.POSITIVE, allowMore) }
+                        BrowserPromptKind.TEXT -> closeWith { prompts.answerText(state.token, enteredText, allowMore) }
+                        BrowserPromptKind.BEFORE_UNLOAD -> closeWith { prompts.answerBeforeUnload(state.token, leave = true) }
+                        BrowserPromptKind.REPOST -> closeWith { prompts.answerRepost(state.token, resubmit = true) }
+                        BrowserPromptKind.AUTHENTICATION -> closeWith { prompts.authenticate(state.token, enteredUsername, enteredPassword) }
+                        BrowserPromptKind.FILE, BrowserPromptKind.FOLDER -> uploads.choose(state.token)
+                        BrowserPromptKind.FOLDER_CONFIRM -> closeWith { prompts.answerFolderUpload(state.token, allow = true) }
+                        BrowserPromptKind.SINGLE_CHOICE, BrowserPromptKind.MULTIPLE_CHOICE, BrowserPromptKind.MENU_CHOICE ->
+                            closeWith { prompts.answerChoice(state.token, choiceIds) }
+                        BrowserPromptKind.DATE_TIME -> closeWith { prompts.answerDate(state.token, date) }
+                        BrowserPromptKind.COLOR -> closeWith { prompts.answerColor(state.token, color) }
                         BrowserPromptKind.CERTIFICATE -> onChooseClientCertificate(state.token)
                     }
                 }, modifier = Modifier.testTag(when(state.kind) {

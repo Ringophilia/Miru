@@ -33,22 +33,22 @@ fun AdblockSheet(
     onOpenDashboard: () -> Unit,
     onReload: () -> Unit = {},
 ) {
-    MiruBottomSheet(onDismissRequest = onDismiss, maxHeightFraction = 0.7f) {
+    MiruBottomSheet(onDismissRequest = onDismiss, maxHeightFraction = 0.7f) { closeWith ->
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(host, style = MaterialTheme.typography.titleLarge)
             Status(state)
             if(state.pageNeedsReload) {
                 Text(stringResource(R.string.reload_needed), color = MaterialTheme.colorScheme.error)
-                Button(onClick = onReload) { Text(stringResource(R.string.reload)) }
+                Button(onClick = { closeWith(onReload) }) { Text(stringResource(R.string.reload)) }
             }
             if (state.phase == AdblockPhase.READY) {
                 if(!state.pageNeedsReload) Text(stringResource(R.string.blocked_on_page, count), style = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum"))
-                Button(onClick = onOpenSiteControls, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) {
+                Button(onClick = { closeWith { onOpenSiteControls(); onDismiss() } }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) {
                     Icon(Icons.Outlined.Shield, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.site_controls))
                 }
                 Text(stringResource(R.string.site_controls_detail), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (state.installed) TextButton(onClick = onOpenDashboard, enabled = state.phase == AdblockPhase.READY && !state.busy) {
+            if (state.installed) TextButton(onClick = { closeWith(onOpenDashboard) }, enabled = state.phase == AdblockPhase.READY && !state.busy) {
                 Icon(Icons.Outlined.Settings, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.advanced))
             }
             if (state.phase == AdblockPhase.FAILED) Button(onClick = onRetry, enabled = !state.busy) { Text(stringResource(R.string.retry)) }
@@ -96,15 +96,15 @@ fun AdblockPopupSheet(
     pageNeedsReload: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    MiruBottomSheet(onDismissRequest = onDismiss, maxHeightFraction = 0.7f, skipPartiallyExpanded = true) {
+    MiruBottomSheet(onDismissRequest = onDismiss, maxHeightFraction = 0.7f, skipPartiallyExpanded = true) { closeWith ->
         Column(Modifier.fillMaxWidth().fillMaxHeight()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(host, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     Text(if(pageNeedsReload) stringResource(R.string.protection_unconfirmed) else stringResource(R.string.blocked_on_page, count), style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"))
                 }
-                IconButton(onClick = onOpenDashboard) { Icon(Icons.Outlined.Settings, stringResource(R.string.advanced)) }
-                IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, stringResource(R.string.close_and_reload)) }
+                IconButton(onClick = { closeWith(onOpenDashboard) }) { Icon(Icons.Outlined.Settings, stringResource(R.string.advanced)) }
+                IconButton(onClick = { closeWith(onDismiss) }) { Icon(Icons.Outlined.Close, stringResource(R.string.close_and_reload)) }
             }
             Text(stringResource(R.string.popup_hint), Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Box(Modifier.fillMaxWidth().weight(1f)) { content() }

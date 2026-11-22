@@ -44,27 +44,23 @@ fun BrowserContextMenuSheet(
     val scope = rememberCoroutineScope()
     var busy by remember(request.token) { mutableStateOf(false) }
     var transfer by remember(request.token) { mutableStateOf<Job?>(null) }
-    DisposableEffect(request.token) { onDispose { transfer?.cancel() } }
+    var stagedImage by remember(request.token) { mutableStateOf<Uri?>(null) }
+    DisposableEffect(request.token) {
+        onDispose {
+            transfer?.cancel()
+            stagedImage?.let(ContextImageStore::remove)
+        }
+    }
     val clipboard = remember(context) { context.getSystemService(ClipboardManager::class.java) }
     fun message(id: Int) { val text = resources.getString(id); onMessage?.invoke(text) ?: Toast.makeText(context, text, Toast.LENGTH_SHORT).show() }
     fun sensitive(clip: ClipData): ClipData = clip.apply {
         if(request.isPrivate && Build.VERSION.SDK_INT >= 33) description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
     }
-    fun action(block: () -> Unit) {
-        if(busy) return
-        if(!isCurrent(request)) { message(R.string.context_expired); onDismiss(); return }
-        runCatching { block(); onDismiss() }.onFailure { message(R.string.context_action_failed) }
-    }
-    fun copyText(text: String) = action {
-        clipboard.setPrimaryClip(sensitive(ClipData.newPlainText(resources.getString(R.string.context_clipboard_label), text)))
-        message(R.string.context_copied)
-    }
-    fun image(share: Boolean) {
+    fun image(share: Boolean, closeWith: (() -> Unit) -> Unit) {
         if(busy) return
         busy = true
         transfer = scope.launch {
             var uri: Uri? = null
-            var published = false
             try {
                 if(!isCurrent(request)) { message(R.string.context_expired); return@launch }
                 val payload = withTimeout(20_000) { loadImage(request) } ?: throw IllegalArgumentException("Image unavailable")
@@ -75,19 +71,46 @@ fun BrowserContextMenuSheet(
                 if(!isCurrent(request)) { message(R.string.context_expired); return@launch }
                 val target = checkNotNull(uri)
                 val clip = sensitive(ClipData.newUri(context.contentResolver, resources.getString(R.string.context_image_label), target))
-                if(share) {
-                    val send = Intent(Intent.ACTION_SEND).setType(context.contentResolver.getType(target))
-                        .putExtra(Intent.EXTRA_STREAM, target).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION).apply { clipData = clip }
-                    context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION).apply { clipData = clip })
-                } else { clipboard.setPrimaryClip(clip); message(R.string.context_copied) }
-                published = true
-                onDismiss()
+                stagedImage = target
+                closeWith {
+                    if (isCurrent(request)) {
+                        runCatching {
+                            if (share) {
+                                val send = Intent(Intent.ACTION_SEND).setType(context.contentResolver.getType(target))
+                                    .putExtra(Intent.EXTRA_STREAM, target).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION).apply { clipData = clip }
+                                context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION).apply { clipData = clip })
+                            } else {
+                                clipboard.setPrimaryClip(clip)
+                                message(R.string.context_copied)
+                            }
+                            stagedImage = null
+                        }.onFailure { message(R.string.context_image_failed) }
+                    }
+                    onDismiss()
+                }
             } catch(cancelled: CancellationException) { throw cancelled }
             catch(_: Exception) { message(R.string.context_image_failed) }
-            finally { if(!published) uri?.let(ContextImageStore::remove); busy = false }
+            finally {
+                if (stagedImage == null) {
+                    uri?.let(ContextImageStore::remove)
+                    busy = false
+                }
+            }
         }
     }
-    MiruBottomSheet(onDismissRequest = onDismiss, skipPartiallyExpanded = true) {
+    MiruBottomSheet(onDismissRequest = onDismiss, skipPartiallyExpanded = true) { closeWith ->
+        fun action(block: () -> Unit) {
+            if (busy) return
+            closeWith {
+                if (isCurrent(request)) runCatching(block).onFailure { message(R.string.context_action_failed) }
+                else message(R.string.context_expired)
+                onDismiss()
+            }
+        }
+        fun copyText(text: String) = action {
+            clipboard.setPrimaryClip(sensitive(ClipData.newPlainText(resources.getString(R.string.context_clipboard_label), text)))
+            message(R.string.context_copied)
+        }
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(request.linkText?.takeIf { it.isNotBlank() } ?: request.title?.takeIf { it.isNotBlank() }
                 ?: stringResource(if(request.imageUrl != null) R.string.context_image_label else if(request.videoUrl != null) R.string.context_video_label else R.string.context_link_label),
@@ -113,8 +136,8 @@ fun BrowserContextMenuSheet(
                 if(request.linkUrl != null) HorizontalDivider()
                 ContextAction(R.string.context_open_image, "context_open_image", !busy) { action { onOpenTab(imageUrl, request.isPrivate) } }
                 ContextAction(R.string.context_download_image, "context_download_image", !busy) { action { onDownload(request, imageUrl) } }
-                ContextAction(R.string.context_copy_image, "context_copy_image", !busy) { image(false) }
-                ContextAction(R.string.context_share_image, "context_share_image", !busy) { image(true) }
+                ContextAction(R.string.context_copy_image, "context_copy_image", !busy) { image(false, closeWith) }
+                ContextAction(R.string.context_share_image, "context_share_image", !busy) { image(true, closeWith) }
             }
             request.videoUrl?.let { videoUrl ->
                 if(request.linkUrl != null || request.imageUrl != null) HorizontalDivider()

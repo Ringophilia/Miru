@@ -808,7 +808,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                 val overToolbar = route == Route.BROWSER && !tabsVisible && toolbarAtBottom
                 SnackbarHost(snackbars, Modifier.align(Alignment.BottomCenter).padding(bottom = if (overToolbar) 56.dp else 0.dp).padding(8.dp))
             }
-            if(route == Route.BROWSER && !tabsVisible && !editing) contextMenu?.let { owner ->
+            if(route == Route.BROWSER && !tabsVisible && !editing) contextMenu?.let { owner -> key(owner.token) {
                 BrowserContextMenuSheet(owner, onDismiss = { controller.contextMenus.dismiss(owner.token) },
                     onOpenTab = ::openInNewTab,
                     onDownload = { request, url ->
@@ -829,7 +829,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                                 headers = headers, isPrivate = request.isPrivate)))
                         }
                     }, loadImage = { loadContextImage(controller, it) }, isCurrent = controller.contextMenus::isCurrent, onMessage = ::showMessage)
-            }
+            } }
             mediaAddress?.let { (url, newTab) -> AlertDialog(
                 onDismissRequest = { mediaAddress = null }, title = { Text(stringResource(R.string.media_open_question)) },
                 confirmButton = { TextButton(onClick = {
@@ -842,8 +842,10 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                 }) { Text(stringResource(app.miru.media.R.string.media_play)) } },
                 dismissButton = { TextButton(onClick = { mediaAddress = null; if(newTab) controller.newTab(url) else controller.navigate(url); route = Route.BROWSER; tabsVisible = false }) { Text(stringResource(R.string.media_open_web)) } },
             ) }
-            if(mediaPanel) MediaSheet(pageMedia, onDismiss = { mediaPanel = false }, onPlay = ::playMedia,
-                resolve = { item -> container.mediaProbe.probe(item)?.let { "${it.label} · ${it.width} × ${it.height}" } }, onDownload = ::downloadMedia)
+            if(mediaPanel) key(tab?.id, tab?.url) {
+                MediaSheet(pageMedia, onDismiss = { mediaPanel = false }, onPlay = ::playMedia,
+                    resolve = { item -> container.mediaProbe.probe(item)?.let { "${it.label} · ${it.width} × ${it.height}" } }, onDownload = ::downloadMedia)
+            }
             if(offlineBusy) AlertDialog(onDismissRequest = ::cancelOfflinePreparation,
                 title = { Text(stringResource(R.string.offline_preparing)) },
                 text = { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -863,7 +865,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
             if(siteInfo && sitePermissionPrompt == null && pagePrompt == null && externalLink == null) MiruBottomSheet(
                 onDismissRequest = { siteInfo = false },
                 skipPartiallyExpanded = true,
-            ) {
+            ) { closeWith ->
                 Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(AddressResolver.display(tab?.url.orEmpty()).ifBlank { stringResource(R.string.app_name) }, style = MaterialTheme.typography.titleLarge)
                     Text(stringResource(if(tab?.secure == true) R.string.connection_secure else R.string.connection_info), style = MaterialTheme.typography.bodyLarge)
@@ -895,25 +897,26 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         }
                     }
                     HorizontalDivider()
-                    TextButton(onClick = { siteInfo = false; adblockPanel = true }) { Text(stringResource(app.miru.adblock.R.string.title)) }
+                    TextButton(onClick = { closeWith { siteInfo = false; adblockPanel = true } }) { Text(stringResource(app.miru.adblock.R.string.title)) }
                 }
             }
-            sitePermissionPrompt?.let { prompt ->
+            sitePermissionPrompt?.let { prompt -> key(prompt.token) {
                 SitePermissionSheet(prompt, onDismiss = { controller.permissions.dismiss(prompt.token) },
                     onAnswer = { allow, remember ->
                         android.util.Log.d("MiruPermissionsUi", "answer allow=$allow hostFocused=${activity.hasWindowFocus()}")
                         controller.permissions.answer(prompt.token, allow, remember)
                     })
-            }
+            } }
             if(sitePermissionPrompt == null) pagePrompt?.let { prompt ->
                 key(prompt.token) { BrowserPromptDialog(prompt, controller.prompts, controller.uploads, permissionActivity::requestClientCertificate) }
             }
             tab?.certificate?.takeIf { certificateTarget == (tab.id to it.sha256) }?.let { details ->
                 CertificateDialog(details, secure = tab.secure, onDismiss = { certificateTarget = null })
             }
-            if(sitePermissionPrompt == null && pagePrompt == null) externalLink?.let { link ->
+            if(sitePermissionPrompt == null && pagePrompt == null) externalLink?.let { link -> key(link.token) {
                 val externalLinkFailed = stringResource(R.string.external_link_failed)
-                MiruBottomSheet(onDismissRequest = { controller.externalLinks.dismiss(link.token) }) {
+                val dismissLink = { controller.externalLinks.dismiss(link.token) }
+                MiruBottomSheet(onDismissRequest = dismissLink) { closeWith ->
                     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         Text(stringResource(if(link.canOpenApp) R.string.external_link_title else R.string.external_link_unavailable, link.appName ?: stringResource(R.string.external_link_other_app)), style = MaterialTheme.typography.titleLarge)
                         Text(link.origin, style = MaterialTheme.typography.bodyMedium)
@@ -924,14 +927,16 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                             Text(link.webUrl.orEmpty(), style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            TextButton(onClick = { controller.externalLinks.dismiss(link.token) }) { Text(stringResource(android.R.string.cancel)) }
+                            TextButton(onClick = { closeWith(dismissLink) }) { Text(stringResource(android.R.string.cancel)) }
                             if(link.canOpenApp || link.canOpenWeb) FilledTonalButton(onClick = {
-                                if(!controller.externalLinks.open(link.token, activity)) showMessage(externalLinkFailed)
+                                closeWith {
+                                    if(!controller.externalLinks.open(link.token, activity)) showMessage(externalLinkFailed)
+                                }
                             }) { Text(stringResource(if(link.canOpenApp) R.string.external_link_open else R.string.external_link_open_web)) }
                         }
                     }
                 }
-            }
+            } }
             if(permissionActivity.sitePermissionSettingsRequired && sitePermissionPrompt == null && pagePrompt == null) AlertDialog(
                 onDismissRequest = permissionActivity::dismissSitePermissionSettings,
                 title = { Text(stringResource(R.string.site_permission_settings_title)) },
@@ -957,7 +962,22 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                     AdblockPopupContent(controller, popup)
                 }
             }
-            pendingDownload?.let { request -> DownloadConfirmSheet(request, onDismiss = { runCatching { request.bodyStream?.close() }; downloadQueue = downloadQueue.drop(1) }, onConfirm = { downloadQueue = downloadQueue.drop(1); enqueueDownload(it) }) }
+            pendingDownload?.let { request -> key(System.identityHashCode(request)) {
+                DownloadConfirmSheet(request,
+                    onDismiss = {
+                        if (downloadQueue.firstOrNull() === request) {
+                            runCatching { request.bodyStream?.close() }
+                            downloadQueue = downloadQueue.drop(1)
+                        }
+                    },
+                    onConfirm = {
+                        if (downloadQueue.firstOrNull() === request) {
+                            downloadQueue = downloadQueue.drop(1)
+                            enqueueDownload(it)
+                        }
+                    },
+                )
+            } }
         }
     }
 }

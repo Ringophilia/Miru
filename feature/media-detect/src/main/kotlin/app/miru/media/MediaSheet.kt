@@ -30,7 +30,7 @@ fun MediaSheet(
     var showShort by remember { mutableStateOf(false) }
     val short = items.filter { it.duration > 0 && it.duration < 30 && !it.playing }
     val visible = if(showShort) items else items - short.toSet()
-    MiruBottomSheet(onDismissRequest = onDismiss) {
+    MiruBottomSheet(onDismissRequest = onDismiss) { closeWith ->
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
             Text(stringResource(R.string.media_title), style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(16.dp))
@@ -61,10 +61,10 @@ fun MediaSheet(
                         },
                         trailingContent = {
                             Row {
-                                if(onDownload != null) IconButton(onClick = { onDownload(item) }, enabled = item.playable, modifier = Modifier.testTag("media_download_${item.id}")) {
+                                if(onDownload != null) IconButton(onClick = { closeWith { onDismiss(); onDownload(item) } }, enabled = item.playable, modifier = Modifier.testTag("media_download_${item.id}")) {
                                     Icon(Icons.Outlined.Download, stringResource(R.string.media_download))
                                 }
-                                IconButton(onClick = { onPlay(item) }, enabled = item.playable, modifier = Modifier.testTag("media_play_${item.id}")) {
+                                IconButton(onClick = { closeWith { onDismiss(); onPlay(item) } }, enabled = item.playable, modifier = Modifier.testTag("media_play_${item.id}")) {
                                     Icon(Icons.Outlined.PlayArrow, stringResource(R.string.media_play))
                                 }
                             }
