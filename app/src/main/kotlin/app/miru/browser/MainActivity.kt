@@ -513,15 +513,28 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
         val message = if (title.isEmpty()) closedMessage else closedNamedMessage.format(if (title.length > 24) title.take(23) + "…" else title)
         scope.launch { if (snackbars.showUndo(message, undoLabel)) controller.undoClose() }
     }
-    fun toggleBookmark() {
-        val page = tab?.takeIf { it.url != NEW_TAB_URL } ?: return
+    fun toggleBookmark(onSaved: (Boolean?) -> Unit) {
+        val page = tab?.takeIf { it.url != NEW_TAB_URL }
+        if (page == null) {
+            onSaved(null)
+            return
+        }
         scope.launch {
-            val existing = library.bookmarks.find(page.url)
+            val existing = try {
+                library.bookmarks.find(page.url).also { bookmark ->
+                    if (bookmark != null) library.bookmarks.remove(page.url)
+                    else library.bookmarks.add(page.url, page.title.ifBlank { AddressResolver.display(page.url) })
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                onSaved(null)
+                return@launch
+            }
+            onSaved(existing == null)
             if (existing != null) {
-                library.bookmarks.remove(page.url)
                 if (snackbars.showUndo(bookmarkRemoved, undoLabel)) library.bookmarks.restore(existing)
             } else {
-                library.bookmarks.add(page.url, page.title.ifBlank { AddressResolver.display(page.url) })
                 if (snackbars.showWithAction(bookmarkAdded, editLabel)) editedBookmark = library.bookmarks.find(page.url)
             }
         }
@@ -693,10 +706,10 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                                     MiruMenu(
                                         expanded = menuVisible,
                                         onDismiss = { menuVisible = false },
+                                        onBookmark = ::toggleBookmark,
                                         onAction = { action ->
                                             when (action) {
                                                 MenuAction.FORWARD -> controller.goForward()
-                                                MenuAction.BOOKMARK -> toggleBookmark()
                                                 MenuAction.DOWNLOAD -> controller.downloadCurrentPage()
                                                 MenuAction.PAGE_INFO -> siteInfo = true
                                                 MenuAction.RELOAD -> if (tab?.loading == true) controller.stopLoading() else controller.reload()
@@ -718,6 +731,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                                         loading = tab?.loading == true,
                                         desktopMode = tab?.desktopMode == true,
                                         bookmarked = bookmarked,
+                                        bookmarkUrl = pageUrl,
                                         modifier = Modifier.testTag("browser-overflow-menu"),
                                         activeDownloads = activeDownloads,
                                         blockedCount = adblock.blockedCount,

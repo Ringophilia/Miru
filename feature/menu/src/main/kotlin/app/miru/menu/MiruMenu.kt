@@ -7,10 +7,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.AddToHomeScreen
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -29,11 +29,13 @@ fun MiruMenu(
     expanded: Boolean,
     onDismiss: () -> Unit,
     onAction: (MenuAction) -> Unit,
+    onBookmark: ((Boolean?) -> Unit) -> Unit,
     enabledActions: Set<MenuAction>,
     canGoForward: Boolean = false,
     loading: Boolean = false,
     desktopMode: Boolean = false,
     bookmarked: Boolean = false,
+    bookmarkUrl: String = "",
     modifier: Modifier = Modifier,
     activeDownloads: Int = 0,
     blockedCount: Int = 0,
@@ -54,11 +56,9 @@ fun MiruMenu(
                 pageActions.forEach { action ->
                     when (action) {
                         MenuAction.FORWARD -> MenuIcon(Icons.AutoMirrored.Outlined.ArrowForward, R.string.menu_forward, canGoForward) { invoke(action) }
-                        MenuAction.BOOKMARK -> MenuIcon(
-                            if (bookmarked) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                            if (bookmarked) R.string.menu_bookmark_remove else R.string.menu_bookmark,
-                            tint = if (bookmarked) MaterialTheme.colorScheme.primary else LocalContentColor.current,
-                        ) { invoke(action) }
+                        MenuAction.BOOKMARK -> key(bookmarkUrl) {
+                            BookmarkMenuButton(bookmarked, expanded, reducedMotion, onBookmark, onDismiss)
+                        }
                         MenuAction.DOWNLOAD -> MenuIcon(Icons.Outlined.Download, R.string.menu_download_page) { invoke(action) }
                         MenuAction.PAGE_INFO -> MenuIcon(Icons.Outlined.Info, R.string.menu_page_info) { invoke(action) }
                         else -> MenuIcon(if (loading) Icons.Outlined.Close else Icons.Outlined.Refresh, if (loading) R.string.menu_stop else R.string.menu_reload) { invoke(action) }
