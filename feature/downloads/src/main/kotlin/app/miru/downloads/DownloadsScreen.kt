@@ -32,6 +32,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.miru.design.MiruBottomSheet
+import app.miru.design.MiruSnackbarHost
 import app.miru.design.MiruMotion
 import app.miru.design.animationsReduced
 import app.miru.design.withReducedMotionFade
@@ -167,7 +168,7 @@ fun DownloadsScreen(
                 }
             },
         )
-    }, snackbarHost = { if(snackbarHostState == null) SnackbarHost(snackbar) }) { padding ->
+    }, snackbarHost = { if(snackbarHostState == null) MiruSnackbarHost(snackbar, Modifier.padding(8.dp)) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp), singleLine = true,
                 placeholder = { Text(stringResource(R.string.download_search)) }, leadingIcon = { Icon(Icons.Outlined.Search, null) })

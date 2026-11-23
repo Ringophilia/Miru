@@ -38,7 +38,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.withTimeoutOrNull
 
 /** Site host without "www.", or the raw value when it is not a URL. */
 fun siteHost(url: String): String =
@@ -120,16 +119,23 @@ fun MiruSearchField(
  * Shows an undo snackbar for 6 seconds (spec 6.6) and reports whether undo was chosen.
  * Any snackbar already showing is replaced, so undo always refers to the latest action.
  */
-suspend fun SnackbarHostState.showUndo(message: String, undoLabel: String): Boolean = showWithAction(message, undoLabel)
+suspend fun SnackbarHostState.showUndo(message: String, undoLabel: String): Boolean =
+    replaceSnackbar(message, undoLabel, SnackbarDuration.Long) == SnackbarResult.ActionPerformed
 
-/** Snackbars with an action default to Indefinite in Material 3; this bounds them to 6 seconds like undo. */
-suspend fun SnackbarHostState.showWithAction(message: String, actionLabel: String): Boolean {
-    currentSnackbarData?.dismiss()
-    return withTimeoutOrNull(6_000) { showSnackbar(message, actionLabel, duration = SnackbarDuration.Indefinite) } == SnackbarResult.ActionPerformed
-}
+/** Shows an ordinary four-second message with an action. */
+suspend fun SnackbarHostState.showWithAction(message: String, actionLabel: String): Boolean =
+    replaceSnackbar(message, actionLabel, SnackbarDuration.Short) == SnackbarResult.ActionPerformed
 
 /** Shows a plain message for the standard 4 seconds, replacing any current one. */
 suspend fun SnackbarHostState.showMessage(message: String) {
+    replaceSnackbar(message, null, SnackbarDuration.Short)
+}
+
+private suspend fun SnackbarHostState.replaceSnackbar(
+    message: String,
+    actionLabel: String?,
+    duration: SnackbarDuration,
+): SnackbarResult {
     currentSnackbarData?.dismiss()
-    showSnackbar(message)
+    return showSnackbar(message, actionLabel, duration = duration)
 }

@@ -114,6 +114,7 @@ import app.miru.data.HistoryEntry
 import app.miru.data.ToolbarPosition
 import app.miru.design.MiruMotion
 import app.miru.design.MiruBottomSheet
+import app.miru.design.MiruSnackbarHost
 import app.miru.design.MiruTheme
 import app.miru.design.animationsReduced
 import app.miru.design.withReducedMotionFade
@@ -863,7 +864,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                 )
                 // Spec 6.6: floating 8 dp above a bottom toolbar, otherwise 8 dp above the screen edge.
                 val overToolbar = route == Route.BROWSER && !tabsVisible && toolbarAtBottom
-                SnackbarHost(snackbars, Modifier.align(Alignment.BottomCenter).padding(bottom = if (overToolbar) 56.dp else 0.dp).padding(8.dp))
+                MiruSnackbarHost(snackbars, Modifier.align(Alignment.BottomCenter).padding(bottom = if (overToolbar) 56.dp else 0.dp).padding(8.dp))
             }
             if(route == Route.BROWSER && !tabsVisible && !editing) contextMenu?.let { owner -> key(owner.token) {
                 BrowserContextMenuSheet(owner, onDismiss = { controller.contextMenus.dismiss(owner.token) },
