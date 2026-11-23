@@ -196,7 +196,8 @@ internal fun BrowserViewport(
             state = indicator,
             isRefreshing = refreshing,
             modifier = Modifier.align(Alignment.TopCenter)
-                .padding(top = if (toolbarAtBottom) 0.dp else shownHeight),
+                .padding(top = if (toolbarAtBottom) 0.dp else shownHeight)
+                .testTag("browser-pull-refresh"),
         )
         foreground()
     }
@@ -218,15 +219,17 @@ private class GeckoRefreshIndicatorState : PullToRefreshState {
  * APZ decides interception; the transparent native indicator supplies only its
  * real pull distance to the Material 3 indicator above the AndroidView.
  */
-private class GeckoRefreshLayout(context: Context, private val engine: EngineView) : SwipeRefreshLayout(context) {
+internal class GeckoRefreshLayout(context: Context, private val engine: EngineView) : SwipeRefreshLayout(context) {
     var onGestureStart: (() -> Unit)? = null
     var onTouchState: ((Boolean) -> Unit)? = null
     var onIndicator: ((Float, Boolean) -> Unit)? = null
+    internal var performThresholdFeedback: (Int) -> Unit = { engine.asView().performHapticFeedback(it) }
     private val startOffset = -(40 * resources.displayMetrics.density).roundToInt()
     private val endOffset = (72 * resources.displayMetrics.density).roundToInt()
     private var previousFraction = -1f
     private var previousRefreshing = false
     private var thresholdFeedback = false
+    private var movingFinger = false
     private var maximumHeight = -1
     private var clipping = -1
 
@@ -257,10 +260,15 @@ private class GeckoRefreshLayout(context: Context, private val engine: EngineVie
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-            onGestureStart?.invoke()
-            thresholdFeedback = false
-            onTouchState?.invoke(true)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                movingFinger = false
+                thresholdFeedback = false
+                onGestureStart?.invoke()
+                onTouchState?.invoke(true)
+            }
+            MotionEvent.ACTION_MOVE -> movingFinger = true
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> movingFinger = false
         }
         val handled = super.dispatchTouchEvent(event)
         reportIndicator()
@@ -278,9 +286,11 @@ private class GeckoRefreshLayout(context: Context, private val engine: EngineVie
         val fraction = if (circle?.visibility == View.VISIBLE && isEnabled) {
             ((circle.top - startOffset).toFloat() / (endOffset - startOffset)).coerceAtLeast(0f)
         } else 0f
-        if (fraction >= 1f && !thresholdFeedback && !isRefreshing) {
+        // Native spinner settling also reports offsets. Emit feedback only for a
+        // threshold crossing while the finger is still moving the spinner.
+        if (movingFinger && previousFraction < 1f && fraction >= 1f && !thresholdFeedback && !isRefreshing) {
             thresholdFeedback = true
-            engine.asView().performHapticFeedback(
+            performThresholdFeedback(
                 if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.GESTURE_THRESHOLD_ACTIVATE else HapticFeedbackConstants.CONTEXT_CLICK,
             )
         }
@@ -291,5 +301,5 @@ private class GeckoRefreshLayout(context: Context, private val engine: EngineVie
         }
     }
 
-    fun clearCallbacks() { onGestureStart = null; onTouchState = null; onIndicator = null }
+    fun clearCallbacks() { movingFinger = false; onGestureStart = null; onTouchState = null; onIndicator = null }
 }

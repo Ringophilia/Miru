@@ -121,6 +121,7 @@ class BrowserUiTest {
 internal class TestPages : Closeable {
     private val server = ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"))
     private val running = AtomicBoolean(true)
+    val longLoads = java.util.concurrent.atomic.AtomicInteger()
     val baseUrl = "http://127.0.0.1:${server.localPort}"
     init {
         thread(isDaemon = true, name = "miru-browser-test-pages") {
@@ -138,6 +139,7 @@ internal class TestPages : Closeable {
                         else -> "Miru One"
                     }
                     val tail = if (path == "/long") "<div style='height:12000px'>Long page</div>" else ""
+                    if (path == "/long") longLoads.incrementAndGet()
                     val background = when (path) {
                         "/red" -> "<style>html{background:#ac2018}</style>"
                         "/blue" -> "<style>html{background:#1830b0}</style>"
@@ -145,7 +147,8 @@ internal class TestPages : Closeable {
                     }
                     val body = "<!doctype html><meta name='viewport' content='width=device-width'><title>$title</title>$background<h1>Miru fixture</h1><p>$title</p><a href='/second'>Next page</a>$tail".toByteArray()
                     val output = socket.getOutputStream()
-                    output.write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
+                    val cacheControl = if (path == "/long") "Cache-Control: no-store\r\n" else ""
+                    output.write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\n${cacheControl}Connection: close\r\n\r\n".toByteArray())
                     output.write(body); output.flush()
                 }
             }
