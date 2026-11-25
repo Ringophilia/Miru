@@ -16,8 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import app.miru.design.MiruChoiceDialog
 import kotlinx.coroutines.*
 import app.miru.superres.SuperResFit
 import app.miru.superres.SuperResMode
@@ -94,7 +96,7 @@ fun PlayerSettingsScreen(repository: PlayerPreferencesRepository, snackbar: Snac
         "default-decoder" -> PlayerChoice(stringResource(R.string.player_default_decoder), listOf("auto", "hardware", "software"), options.defaultDecoder, { stringResource(decoderLabel(it)) }, { value -> change { it.copy(defaultDecoder = value) }; dialog = null }, { dialog = null })
         "clear-cache", "clear-progress" -> {
             val cache = dialog == "clear-cache"
-            AlertDialog(onDismissRequest = { dialog = null }, title = { Text(stringResource(if(cache) R.string.player_clear_cache_title else R.string.player_clear_progress_title)) },
+            AlertDialog(onDismissRequest = { dialog = null }, title = { Text(stringResource(if(cache) R.string.player_clear_cache_title else R.string.player_clear_progress_title), modifier = Modifier.semantics { heading() }) },
                 text = { Text(stringResource(if(cache) R.string.player_clear_cache_detail else R.string.player_clear_progress_detail)) },
                 confirmButton = { TextButton(onClick = {
                     dialog = null; busy = true
@@ -111,16 +113,14 @@ fun PlayerSettingsScreen(repository: PlayerPreferencesRepository, snackbar: Snac
     }
 }
 
-@Composable private fun PlayerGroup(label: Int) { Text(stringResource(label), Modifier.padding(start = 16.dp, top = 24.dp, bottom = 8.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge) }
+@Composable private fun PlayerGroup(label: Int) { Text(stringResource(label), Modifier.padding(start = 16.dp, top = 24.dp, bottom = 8.dp).semantics { heading() }, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge) }
 @Composable private fun PlayerSetting(title: String, value: String, onClick: () -> Unit) { ListItem(headlineContent = { Text(title) }, supportingContent = { Text(value) }, trailingContent = { Icon(Icons.Outlined.ChevronRight, null) }, modifier = Modifier.clickable(onClick = onClick)) }
 @Composable private fun PlayerSwitch(label: Int, value: Boolean, onChange: (Boolean) -> Unit) {
     val title = stringResource(label)
     ListItem(headlineContent = { Text(title) }, trailingContent = { Switch(value, onChange, Modifier.semantics { contentDescription = title }) })
 }
 @Composable private fun <T> PlayerChoice(title: String, choices: List<T>, selected: T, label: @Composable (T) -> String, onSelect: (T) -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = { Column { choices.forEach { value ->
-        Row(Modifier.fillMaxWidth().clickable { onSelect(value) }.padding(vertical = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { RadioButton(value == selected, onClick = { onSelect(value) }); Text(label(value), Modifier.padding(start = 8.dp)) }
-    } } }, confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.player_cancel)) } })
+    MiruChoiceDialog(title, choices, selected, stringResource(R.string.player_cancel), label, onSelect, onDismiss)
 }
 
 private fun fitLabel(fit: SuperResFit): Int = when (fit) {

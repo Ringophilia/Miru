@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import app.miru.data.BrowserSecuritySettings
@@ -43,7 +44,7 @@ internal fun BrowserSecurityRows(
     if (editDns) {
         var input by remember { mutableStateOf(settings.customDnsUrl.orEmpty()) }
         val validated = validatedSecureDnsUrl(input)
-        AlertDialog(onDismissRequest = { editDns = false }, title = { Text(stringResource(R.string.security_dns_custom)) },
+        AlertDialog(onDismissRequest = { editDns = false }, title = { Text(stringResource(R.string.security_dns_custom), modifier = Modifier.semantics { heading() }) },
             text = {
                 Column {
                     Text(stringResource(R.string.security_dns_custom_detail))

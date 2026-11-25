@@ -11,12 +11,21 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -70,16 +79,47 @@ fun MiruSnackbarHost(hostState: SnackbarHostState, modifier: Modifier = Modifier
             (enter togetherWith fadeOut(effects)).using(null)
         },
     ) { data ->
-        if (data != null) Snackbar(
-            snackbarData = data,
-            modifier = Modifier.testTag("miru-snackbar").then(
+        if (data != null) Surface(
+            modifier = Modifier.fillMaxWidth().testTag("miru-snackbar").then(
                 if (data == current) Modifier.semantics {
                     liveRegion = LiveRegionMode.Polite
                     dismiss { data.dismiss(); true }
                 } else Modifier.clearAndSetSemantics { },
             ),
             shape = RoundedCornerShape(8.dp),
-            containerColor = MaterialTheme.colorScheme.inverseSurface,
-        )
+            color = MaterialTheme.colorScheme.inverseSurface,
+            contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+            shadowElevation = 6.dp,
+        ) {
+            val actionLabel = data.visuals.actionLabel
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(
+                    start = 16.dp,
+                    end = if (actionLabel != null || data.visuals.withDismissAction) 8.dp else 16.dp,
+                    top = 6.dp,
+                    bottom = 6.dp,
+                ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = data.visuals.message,
+                    modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (actionLabel != null) {
+                    TextButton(
+                        onClick = { data.performAction() },
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.inversePrimary),
+                    ) {
+                        Text(actionLabel)
+                    }
+                }
+                if (data.visuals.withDismissAction) {
+                    IconButton(onClick = { data.dismiss() }) {
+                        Icon(Icons.Outlined.Close, null)
+                    }
+                }
+            }
+        }
     }
 }

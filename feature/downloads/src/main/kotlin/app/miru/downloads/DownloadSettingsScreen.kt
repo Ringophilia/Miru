@@ -96,19 +96,21 @@ fun DownloadSettingsScreen(coordinator: DownloadCoordinator, onBack: () -> Unit)
                     Text(stringResource(R.string.download_reset_folder))
                 }
             }
-            Text(stringResource(R.string.download_concurrent, preferences.maxConcurrent), Modifier.padding(16.dp))
+            val concurrentLabel = stringResource(R.string.download_concurrent, preferences.maxConcurrent)
+            Text(concurrentLabel, Modifier.padding(16.dp))
             Slider(
                 value = preferences.maxConcurrent.toFloat(),
                 onValueChange = { value -> coordinator.updatePreferences { it.copy(maxConcurrent = value.toInt()) } },
-                modifier = Modifier.padding(horizontal = 24.dp),
+                modifier = Modifier.padding(horizontal = 24.dp).semantics { contentDescription = concurrentLabel },
                 valueRange = 1f..5f,
                 steps = 3,
             )
-            Text(stringResource(R.string.download_threads, preferences.threadsPerFile), Modifier.padding(16.dp))
+            val threadsLabel = stringResource(R.string.download_threads, preferences.threadsPerFile)
+            Text(threadsLabel, Modifier.padding(16.dp))
             Slider(
                 value = preferences.threadsPerFile.toFloat(),
                 onValueChange = { value -> coordinator.updatePreferences { it.copy(threadsPerFile = value.toInt()) } },
-                modifier = Modifier.padding(horizontal = 24.dp),
+                modifier = Modifier.padding(horizontal = 24.dp).semantics { contentDescription = threadsLabel },
                 valueRange = 1f..8f,
                 steps = 6,
             )

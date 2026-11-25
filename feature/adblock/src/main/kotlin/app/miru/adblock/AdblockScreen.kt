@@ -13,6 +13,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.miru.design.MiruBottomSheet
 
@@ -35,7 +38,7 @@ fun AdblockSheet(
 ) {
     MiruBottomSheet(onDismissRequest = onDismiss, maxHeightFraction = 0.7f) { closeWith ->
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(host, style = MaterialTheme.typography.titleLarge)
+            Text(host, style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
             Status(state)
             if(state.pageNeedsReload) {
                 Text(stringResource(R.string.reload_needed), color = MaterialTheme.colorScheme.error)
@@ -72,8 +75,14 @@ fun AdblockScreen(
         })
     }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-            ListItem(headlineContent = { Text(stringResource(R.string.global_switch)) }, supportingContent = { Status(state) }, trailingContent = {
-                Switch(checked = state.phase == AdblockPhase.READY, enabled = state.installed && !state.busy, onCheckedChange = onEnabledChanged)
+            val switchLabel = stringResource(R.string.global_switch)
+            ListItem(headlineContent = { Text(switchLabel) }, supportingContent = { Status(state) }, trailingContent = {
+                Switch(
+                    checked = state.phase == AdblockPhase.READY,
+                    enabled = state.installed && !state.busy,
+                    onCheckedChange = onEnabledChanged,
+                    modifier = Modifier.semantics { contentDescription = switchLabel },
+                )
             }, leadingContent = { Icon(Icons.Outlined.Shield, null) })
             if (state.phase == AdblockPhase.INSTALLING) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
             if (state.phase == AdblockPhase.FAILED) TextButton(onClick = onRetry, modifier = Modifier.padding(horizontal = 16.dp), enabled = !state.busy) { Text(stringResource(R.string.retry)) }
@@ -100,7 +109,7 @@ fun AdblockPopupSheet(
         Column(Modifier.fillMaxWidth().fillMaxHeight()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(host, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    Text(host, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
                     Text(if(pageNeedsReload) stringResource(R.string.protection_unconfirmed) else stringResource(R.string.blocked_on_page, count), style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"))
                 }
                 IconButton(onClick = { closeWith(onOpenDashboard) }) { Icon(Icons.Outlined.Settings, stringResource(R.string.advanced)) }

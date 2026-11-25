@@ -209,12 +209,13 @@ private fun WebZoomDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.web_zoom_value, percent), style = MaterialTheme.typography.titleMedium)
+                val zoomDesc = stringResource(R.string.web_zoom)
                 Slider(
                     value = percent.toFloat(),
                     onValueChange = { value -> percent = ((value / 10f).roundToInt() * 10).coerceIn(50, 200) },
                     valueRange = 50f..200f,
                     steps = 14,
-                    modifier = Modifier.testTag("web-zoom-slider"),
+                    modifier = Modifier.testTag("web-zoom-slider").semantics { contentDescription = zoomDesc },
                 )
                 TextButton(onClick = { percent = 100 }, modifier = Modifier.testTag("web-zoom-reset")) {
                     Text(stringResource(R.string.web_zoom_reset))
@@ -270,7 +271,7 @@ private fun ClearOnExitTypesDialog(
 }
 
 @Composable private fun AccentDialog(selected: AccentColor, onSelect: (AccentColor) -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.accent_color)) }, text = {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.accent_color), modifier = Modifier.semantics { heading() }) }, text = {
         Column(Modifier.selectableGroup().verticalScroll(rememberScrollState())) {
             AccentColor.entries.forEach { value ->
                 Row(Modifier.fillMaxWidth().heightIn(min = 56.dp)
@@ -294,7 +295,7 @@ private fun ClearOnExitTypesDialog(
     AccentColor.GRAPHITE -> R.string.accent_graphite
 })
 
-@Composable private fun GroupLabel(id: Int) { Text(stringResource(id), Modifier.padding(start = 16.dp, top = 24.dp, bottom = 8.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge) }
+@Composable private fun GroupLabel(id: Int) { Text(stringResource(id), Modifier.padding(start = 16.dp, top = 24.dp, bottom = 8.dp).semantics { heading() }, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge) }
 @Composable internal fun SettingRow(title: String, value: String, onClick: () -> Unit) =
     SettingRow(title, value, Modifier, onClick)
 @Composable internal fun SettingRow(title: String, value: String, modifier: Modifier, onClick: () -> Unit) {

@@ -29,6 +29,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.miru.design.MiruBottomSheet
@@ -196,7 +198,7 @@ fun DownloadsScreen(
                 val placeSpec = if (reducedMotion) null else tween<androidx.compose.ui.unit.IntOffset>(MiruMotion.medium1, easing = MiruMotion.standard)
                 filtered.groupBy { DownloadLogic.dateGroup(it.item.createdAt) }.forEach { (group, grouped) ->
                     item(key = "date-${group.name}") {
-                        Text(dateGroupLabel(group), Modifier.padding(horizontal = 16.dp, vertical = 12.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        Text(dateGroupLabel(group), Modifier.padding(horizontal = 16.dp, vertical = 12.dp).semantics { heading() }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     }
                     items(grouped, key = { it.key }) { row ->
                         val item = row.item

@@ -101,7 +101,7 @@ fun MiruToolbar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
-                Modifier.weight(1f).height(44.dp)
+                Modifier.weight(1f).height(48.dp)
                     .addressBounds(onAddressBounds)
                     .testTag("address-rest-capsule")
                     .graphicsLayer { alpha = if (!state.editing) 1f else if (reducedMotion) 1f - focusProgress() else 0f },
@@ -193,9 +193,10 @@ fun MiruToolbar(
                     }
                 }
                 Box(Modifier.testTag("browser-overflow-anchor").addressBounds(onMenuBounds)) {
-                    IconButton(onClick = onMenu, enabled = !state.editing) {
+                    val menuDesc = stringResource(R.string.toolbar_menu)
+                    IconButton(onClick = onMenu, enabled = !state.editing, modifier = Modifier.semantics { contentDescription = menuDesc }) {
                         Box {
-                            Icon(Icons.Outlined.MoreVert, stringResource(R.string.toolbar_menu))
+                            Icon(Icons.Outlined.MoreVert, null)
                             DownloadBadge(state.downloading, downloadArrival, reducedMotion, Modifier.align(Alignment.TopEnd))
                         }
                     }
