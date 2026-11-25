@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const sandbox = vm.createContext({});
-vm.runInContext(fs.readFileSync(new URL('../browser/engine/src/main/assets/extensions/miru-bridge/web-video-hold.js', import.meta.url), 'utf8'), sandbox);
+vm.runInContext(fs.readFileSync(new URL('../browser/engine-gecko/src/main/assets/extensions/miru-bridge/web-video-hold.js', import.meta.url), 'utf8'), sandbox);
 
 function fixture() {
   let now = 0, sequence = 0, shown = 0, hidden = 0;

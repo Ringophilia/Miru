@@ -35,7 +35,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import app.miru.browser.engine.BrowserController
+import app.miru.browser.engine.BrowserEngineController
 import app.miru.browser.engine.BrowserSnapshot
 import app.miru.browser.engine.BrowserTab
 import app.miru.design.MiruMotion
@@ -65,7 +65,7 @@ internal fun BrowserSnapshot.swipeTabs(): SwipeTabs? {
 }
 
 @Stable
-internal class ToolbarTabSwipe(private val controller: BrowserController, private val scope: CoroutineScope) {
+internal class ToolbarTabSwipe(private val controller: BrowserEngineController, private val scope: CoroutineScope) {
     var tabs by mutableStateOf<SwipeTabs?>(null)
         private set
     var fraction by mutableFloatStateOf(0f)

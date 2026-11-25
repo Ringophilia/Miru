@@ -1,0 +1,17 @@
+[package]
+name = "miru-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Unified Miru Rust native library (adblock + media + url) exposing C FFI for Chromium C++ and JNI for Android/JVM"
+
+[lib]
+name = "miru_core"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+miru-adblock = { path = "../miru-adblock" }
+miru-media = { path = "../miru-media" }
+miru-url = { path = "../miru-url" }
+jni = "0.21"
+serde_json = "1"

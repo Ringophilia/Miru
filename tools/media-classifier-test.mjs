@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 const context = vm.createContext({ URL });
-vm.runInContext(fs.readFileSync(new URL('../browser/engine/src/main/assets/extensions/miru-bridge/media-classifier.js', import.meta.url), 'utf8'), context);
+vm.runInContext(fs.readFileSync(new URL('../browser/engine-gecko/src/main/assets/extensions/miru-bridge/media-classifier.js', import.meta.url), 'utf8'), context);
 const { classify, key, headers } = context.MiruMedia;
 assert.equal(classify('https://cdn.example/master?x=1', 'application/vnd.apple.mpegurl', 200), 'HLS');
 assert.equal(classify('https://cdn.example/master', 'application/dash+xml', 100), 'DASH');

@@ -43,7 +43,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
-import mozilla.components.concept.engine.EngineView
+import app.miru.browser.engine.BrowserEngineView
+import app.miru.browser.engine.BrowserEngineViews
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
@@ -649,10 +650,7 @@ internal class FolderUploadDriver(val compose: AndroidComposeTestRule<ActivitySc
         }
         var bounds = android.graphics.Rect()
         compose.runOnIdle {
-            fun find(view: View): EngineView? = if(view is EngineView) view else (view as? ViewGroup)?.let { group ->
-                (0 until group.childCount).firstNotNullOfOrNull { find(group.getChildAt(it)) }
-            }
-            val engine = checkNotNull(find(compose.activity.window.decorView)).asView()
+            val engine = checkNotNull(BrowserEngineViews.findIn(compose.activity.window.decorView)).asView()
             assertTrue("The actual Gecko touch recipient must be visible", engine.isShown)
             val xy = IntArray(2); engine.getLocationOnScreen(xy)
             bounds = android.graphics.Rect(xy[0], xy[1], xy[0] + engine.width, xy[1] + engine.height)

@@ -12,7 +12,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
 
-const assets = path.resolve(__dirname, '../browser/engine/src/main/assets/extensions/miru-bridge');
+const assets = path.resolve(__dirname, '../browser/engine-gecko/src/main/assets/extensions/miru-bridge');
 const DOCUMENT = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const SECOND_DOCUMENT = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const PRESS = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';

@@ -1,0 +1,9 @@
+[package]
+name = "miru-url"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "URL origin normalization, referrer policy, external link scheme checks, and media cache-key signature stripping"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

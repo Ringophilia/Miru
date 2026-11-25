@@ -21,7 +21,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Miru"
-include(":app", ":core:common", ":core:data", ":core:design", ":browser:engine", ":browser:toolbar")
+include(":app", ":core:common", ":core:data", ":core:design", ":browser:engine-api", ":browser:engine-gecko", ":browser:adblock-rust", ":browser:toolbar")
 include(":feature:ntp", ":feature:tabs", ":feature:menu", ":feature:history", ":feature:bookmarks", ":feature:settings")
 include(":feature:adblock", ":feature:downloads")
 include(":feature:media-detect", ":feature:player")

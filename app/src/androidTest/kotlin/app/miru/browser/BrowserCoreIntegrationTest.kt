@@ -38,7 +38,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
-import mozilla.components.concept.engine.EngineView
+import app.miru.browser.engine.BrowserEngineView
+import app.miru.browser.engine.BrowserEngineViews
 import org.junit.Assert.*
 import org.junit.After
 import org.junit.Before
@@ -251,7 +252,7 @@ class BrowserCoreIntegrationTest {
             val destinationDocument = (System.nanoTime() and Int.MAX_VALUE.toLong()).toInt().coerceAtLeast(1)
             val destination = "${origin.url}/long?viewportDoc=$destinationDocument"
             val scrollPosition = AtomicReference<Float?>(null)
-            var observedEngine: EngineView? = null
+            var observedEngine: BrowserEngineView? = null
             compose.runOnIdle {
                 val actualEngine = engineView()
                 observedEngine = actualEngine
@@ -340,7 +341,7 @@ class BrowserCoreIntegrationTest {
             assertTrue("The requested bottom toolbar must actually be below the web content", initial.top > engineBounds().height() / 2)
             val before = origin.longLoads.get()
             val destinationDocument = (System.nanoTime() and Int.MAX_VALUE.toLong()).toInt().coerceAtLeast(1)
-            var observedEngine: EngineView? = null
+            var observedEngine: BrowserEngineView? = null
             var scrollPosition: Float? = null
             var scrollObservations = 0L
             var scrollObservedAt = 0L
@@ -546,12 +547,8 @@ class BrowserCoreIntegrationTest {
         }
         return result!!
     }
-    private fun engineView(): EngineView {
-        fun find(view: View): EngineView? = if(view is EngineView) view else (view as? ViewGroup)?.let { group ->
-            (0 until group.childCount).firstNotNullOfOrNull { find(group.getChildAt(it)) }
-        }
-        return checkNotNull(find(compose.activity.window.decorView))
-    }
+    private fun engineView(): BrowserEngineView =
+        checkNotNull(BrowserEngineViews.findIn(compose.activity.window.decorView))
     private fun tapCss(x: Float, y: Float) = touchCss(x, y, 60)
     private fun longPressCss(x: Float, y: Float) = touchCss(x, y, 850)
     private fun touchCss(x: Float, y: Float, hold: Long) {

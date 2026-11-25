@@ -4,7 +4,7 @@ package app.miru.browser
 
 import android.util.Base64
 import app.miru.browser.engine.BrowserContextMenu
-import app.miru.browser.engine.BrowserController
+import app.miru.browser.engine.BrowserEngineController
 import app.miru.browser.engine.ContextImagePolicy
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -24,7 +24,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /** No disk cache or cookie jar. The original document owns transient request credentials. */
-internal suspend fun loadContextImage(browser: BrowserController, owner: BrowserContextMenu): ContextImagePayload? {
+internal suspend fun loadContextImage(browser: BrowserEngineController, owner: BrowserContextMenu): ContextImagePayload? {
     if(!browser.contextMenus.isCurrent(owner)) return null
     val source = owner.imageUrl ?: return null
     if(source.startsWith("data:", true)) return withContext(Dispatchers.Default) {

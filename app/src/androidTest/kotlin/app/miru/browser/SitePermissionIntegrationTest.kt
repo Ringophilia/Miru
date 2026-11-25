@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import kotlinx.coroutines.runBlocking
-import mozilla.components.concept.engine.EngineView
+import app.miru.browser.engine.BrowserEngineViews
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -405,10 +405,7 @@ class SitePermissionIntegrationTest {
     private fun bounds(): Rect {
         var bounds: Rect? = null
         compose.runOnIdle {
-            fun find(view: View): EngineView? = if(view is EngineView) view else (view as? ViewGroup)?.let {
-                (0 until it.childCount).firstNotNullOfOrNull { index -> find(it.getChildAt(index)) }
-            }
-            val view = checkNotNull(find(compose.activity.window.decorView)).asView()
+            val view = checkNotNull(BrowserEngineViews.findIn(compose.activity.window.decorView)).asView()
             val xy = IntArray(2); view.getLocationOnScreen(xy)
             bounds = Rect(xy[0], xy[1], xy[0] + view.width, xy[1] + view.height)
         }

@@ -83,7 +83,8 @@ dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:data"))
     implementation(project(":core:design"))
-    implementation(project(":browser:engine"))
+    implementation(project(":browser:engine-api"))
+    implementation(project(":browser:engine-gecko"))
     implementation(project(":browser:toolbar"))
     implementation(project(":feature:ntp"))
     implementation(project(":feature:tabs"))
@@ -97,7 +98,6 @@ dependencies {
     implementation(project(":feature:player"))
     implementation(project(":feature:offline"))
     implementation(libs.androidx.core.ktx)
-    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.2.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.activity.compose)
@@ -111,6 +111,8 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
+    // Only for legacy GeckoView recording-observer instrumentation test (frozen v1.0 baseline).
+    androidTestImplementation("org.mozilla.components:concept-engine:${libs.versions.mozilla.get()}")
     androidTestImplementation("androidx.room:room-runtime:2.8.5")
     // Independent P11 sample-index capability probe; no production mapper/UI change.
     androidTestImplementation("androidx.media3:media3-extractor:1.11.1") {

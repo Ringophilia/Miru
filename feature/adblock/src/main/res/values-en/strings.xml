@@ -20,4 +20,17 @@
     <string name="exceptions">Site exceptions</string>
     <string name="exceptions_detail">View and edit trusted sites in uBlock Origin</string>
     <string name="privacy">Uses officially signed uBlock Origin. The extension manages and updates filter lists. Miru does not upload browsing history or blocking statistics.</string>
+    <string name="native_site_toggle">Block ads on this site</string>
+    <string name="native_site_toggle_detail">Reloads the page automatically after changing</string>
+    <string name="native_element_picker">Block page element</string>
+    <string name="native_filter_lists">Filter lists and custom rules</string>
+    <string name="native_total_blocked">%1$d requests blocked in total</string>
+    <string name="native_engine_summary">Native rule engine (%1$s) · Zero cold-start wait</string>
+    <string name="native_update_lists">Update filter lists</string>
+    <string name="native_rule_count">%1$d rules</string>
+    <string name="native_no_exceptions">No site exceptions yet</string>
+    <string name="native_custom_rules">Custom filter rules</string>
+    <string name="native_custom_rule_hint">e.g. ||ads.example.com^ or example.com##.banner</string>
+    <string name="native_add_rule">Add</string>
+    <string name="native_remove_rule">Remove</string>
 </resources>

@@ -12,7 +12,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
-import app.miru.browser.engine.BrowserFileUploads
+import app.miru.browser.engine.BrowserUploadConstants
 
 /**
  * Non-exported result receiver. Provider URIs never enter ActivityResultRegistry or
@@ -25,7 +25,7 @@ class UploadPickerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        token = intent.getStringExtra(BrowserFileUploads.PICKER_TOKEN_EXTRA).orEmpty()
+        token = intent.getStringExtra(BrowserUploadConstants.PICKER_TOKEN_EXTRA).orEmpty()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() { uploads.cancelPicker(token) }
         })
@@ -51,7 +51,7 @@ class UploadPickerActivity : ComponentActivity() {
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if(BuildConfig.DEBUG && requestCode == BrowserFileUploads.PICKER_REQUEST_CODE) {
+        if(BuildConfig.DEBUG && requestCode == BrowserUploadConstants.PICKER_REQUEST_CODE) {
             android.util.Log.d("MiruUploadResult", "ok=${resultCode == RESULT_OK} " +
                 "dataIntentPresent=${data != null} dataUriPresent=${data?.data != null} " +
                 "clipItems=${data?.clipData?.itemCount ?: 0}")

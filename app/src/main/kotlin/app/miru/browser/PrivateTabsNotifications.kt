@@ -9,14 +9,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
-import app.miru.browser.engine.BrowserController
+import app.miru.browser.engine.BrowserEngineController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /** One process-scoped notification, independent of Activity composition and tab selection. */
-class PrivateTabsNotifications(private val context: Context, private val browser: BrowserController, scope: CoroutineScope) {
+class PrivateTabsNotifications(private val context: Context, private val browser: BrowserEngineController, scope: CoroutineScope) {
     private val manager = context.getSystemService(NotificationManager::class.java)
     init {
         manager.createNotificationChannel(NotificationChannel(CHANNEL, context.getString(R.string.private_notification_channel), NotificationManager.IMPORTANCE_LOW))

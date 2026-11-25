@@ -2,14 +2,6 @@
 // SPDX-License-Identifier: MPL-2.0
 package app.miru.browser
 
-import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Color
-import android.os.Build
-import android.view.HapticFeedbackConstants
-import android.view.MotionEvent
-import android.view.View
-import android.view.ViewGroup
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,26 +36,23 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-import app.miru.browser.engine.BrowserController
+import app.miru.browser.engine.BrowserEngineController
 import kotlinx.coroutines.delay
-import mozilla.components.concept.engine.EngineView
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * The toolbar moves over a stable-size Gecko surface. Gecko's compositor scroll
- * position drives its offset; Gecko's APZ result controls pull-to-refresh through
- * the actual AC SwipeRefreshFeature, including content-handled touch gestures.
+ * Engine-agnostic viewport host. The toolbar moves over a stable-size engine surface;
+ * compositor scroll position and overscroll pull-to-refresh flow strictly through
+ * [app.miru.browser.engine.BrowserSurfaceHost].
  *
  * Keep this composed below route/NTP/editor overlays. [webContent] disables the
- * native surface and gestures without detaching/recreating its EngineView.
+ * native surface and gestures without detaching/recreating the host view.
  * [overlay] receives the visible content rectangle, excluding the current toolbar.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BrowserViewport(
-    controller: BrowserController,
+    controller: BrowserEngineController,
     webContent: Boolean,
     toolbarAtBottom: Boolean,
     toolbarVisible: Boolean,
@@ -84,7 +73,7 @@ internal fun BrowserViewport(
     val motion = remember(controller, scope) { ViewportToolbarMotion(scope) }
     val tabSwipe = remember(controller, scope) { ToolbarTabSwipe(controller, scope) }
     val canSwipe = tabSwipeEnabled && toolbarVisible && snapshot.swipeTabs() != null
-    val indicator = remember { GeckoRefreshIndicatorState() }
+    val indicator = remember { ViewportRefreshIndicatorState() }
     var refreshing by remember { mutableStateOf(false) }
     var toolbarHeight by remember { mutableIntStateOf(0) }
     val forced = forceToolbarVisible || !webContent || tab?.loading == true
@@ -101,51 +90,45 @@ internal fun BrowserViewport(
         }
     }
 
-    // Creation waits for Gecko initialization, then survives NTP, editing and route overlays.
-    val engineView = if (snapshot.ready) remember(controller, context) { controller.createView(context) } else null
-    val refreshView = engineView?.let { engine ->
-        remember(controller, engine, context) {
-            GeckoRefreshLayout(context, engine).apply {
+    // Creation waits for engine initialization, then survives NTP, editing and route overlays.
+    val surfaceHost = if (snapshot.ready) {
+        remember(controller, context) {
+            controller.createSurfaceHost(context).apply {
                 onGestureStart = { controller.contextMenus.beginTouchGesture() }
                 onTouchState = { touching ->
-                    if (engine.canClearSelection()) motion.show()
+                    if (canClearSelection()) motion.show()
                     motion.touch(touching)
                 }
                 onIndicator = { fraction, running -> indicator.fraction = fraction; refreshing = running }
             }
         }
-    }
-    if (engineView != null && refreshView != null) {
+    } else null
+
+    if (surfaceHost != null) {
         val lifecycle = LocalLifecycleOwner.current.lifecycle
-        DisposableEffect(controller, engineView, refreshView, lifecycle) {
-            val binding = controller.bind(engineView)
-            val refresh = controller.swipeRefreshFeature(refreshView)
+        DisposableEffect(controller, surfaceHost, lifecycle) {
             val observer = LifecycleEventObserver { _, event ->
                 when (event) {
-                    Lifecycle.Event.ON_START -> { binding.start(); refresh.start() }
-                    Lifecycle.Event.ON_STOP -> { refresh.stop(); binding.stop() }
+                    Lifecycle.Event.ON_START -> surfaceHost.start()
+                    Lifecycle.Event.ON_STOP -> surfaceHost.stop()
                     else -> Unit
                 }
             }
             lifecycle.addObserver(observer)
-            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) { binding.start(); refresh.start() }
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) surfaceHost.start()
             onDispose {
                 lifecycle.removeObserver(observer)
-                refresh.release()
-                refreshView.clearCallbacks()
-                engineView.setDynamicToolbarMaxHeight(0)
-                engineView.setVerticalClipping(0)
-                binding.release()
+                surfaceHost.release()
             }
         }
-        LaunchedEffect(engineView, tab?.id, tab?.url) {
+        LaunchedEffect(surfaceHost, tab?.id, tab?.url) {
             motion.reset()
-            engineView.verticalScrollPosition.collect { position -> motion.scroll(position) }
+            surfaceHost.verticalScrollPosition.collect { position -> motion.scroll(position) }
         }
-        LaunchedEffect(engineView, tab?.id, tab?.url, tab?.loading, webContent, tabSwipeEnabled) {
+        LaunchedEffect(surfaceHost, tab?.id, tab?.url, tab?.loading, webContent, tabSwipeEnabled) {
             if (tabSwipeEnabled && webContent && tab?.isPrivate == false && !tab.loading) {
                 delay(180) // Let the newly bound document present a frame before warming the preview.
-                controller.captureThumbnail(engineView)
+                surfaceHost.captureThumbnail()
             }
         }
     }
@@ -153,21 +136,16 @@ internal fun BrowserViewport(
     val shownPixels = (activeHeight - motion.hidden).coerceIn(0f, activeHeight.toFloat())
     val shownHeight = with(density) { shownPixels.toDp() }
     Box(modifier.fillMaxSize().clipToBounds().testTag("browser-viewport")) {
-        if (refreshView != null) AndroidView(
-            factory = { refreshView },
+        if (surfaceHost != null) AndroidView(
+            factory = { surfaceHost.containerView },
             modifier = Modifier.fillMaxSize().offset { IntOffset(0, if (toolbarAtBottom) 0 else shownPixels.roundToInt()) },
-            update = { native ->
-                native.configure(
+            update = {
+                surfaceHost.configure(
                     webContent = webContent,
                     canRefresh = refreshEnabled && webContent && !forceToolbarVisible,
                     loading = tab?.loading == true,
                     maximumToolbarHeight = activeHeight,
-                    // Gecko's baseline is the fully visible toolbar, with negative clipping
-                    // as it hides (Firefox 158 EngineViewClippingBehavior). A positive
-                    // visible-height value leaves APZ believing it can still scroll to top.
-                    clippingHeight = (shownPixels - activeHeight).roundToInt().let {
-                        if(abs(activeHeight + it) <= 2) -activeHeight else it
-                    },
+                    shownToolbarPixels = shownPixels,
                 )
             },
         )
@@ -205,101 +183,11 @@ internal fun BrowserViewport(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Stable
-private class GeckoRefreshIndicatorState : PullToRefreshState {
+private class ViewportRefreshIndicatorState : PullToRefreshState {
     var fraction by mutableFloatStateOf(0f)
     override val distanceFraction: Float get() = fraction
     override val isAnimating: Boolean get() = false
     override suspend fun animateToThreshold() { fraction = 1f }
     override suspend fun animateToHidden() { fraction = 0f }
     override suspend fun snapTo(targetValue: Float) { fraction = targetValue.coerceAtLeast(0f) }
-}
-
-/**
- * SwipeRefreshFeature must see EngineView as this layout's direct child. Native
- * APZ decides interception; the transparent native indicator supplies only its
- * real pull distance to the Material 3 indicator above the AndroidView.
- */
-internal class GeckoRefreshLayout(context: Context, private val engine: EngineView) : SwipeRefreshLayout(context) {
-    var onGestureStart: (() -> Unit)? = null
-    var onTouchState: ((Boolean) -> Unit)? = null
-    var onIndicator: ((Float, Boolean) -> Unit)? = null
-    internal var performThresholdFeedback: (Int) -> Unit = { engine.asView().performHapticFeedback(it) }
-    private val startOffset = -(40 * resources.displayMetrics.density).roundToInt()
-    private val endOffset = (72 * resources.displayMetrics.density).roundToInt()
-    private var previousFraction = -1f
-    private var previousRefreshing = false
-    private var thresholdFeedback = false
-    private var movingFinger = false
-    private var maximumHeight = -1
-    private var clipping = -1
-
-    init {
-        addView(engine.asView(), ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        setProgressViewOffset(false, startOffset, endOffset)
-        setDistanceToTriggerSync(endOffset)
-        setColorSchemeColors(Color.TRANSPARENT)
-        setProgressBackgroundColorSchemeColor(Color.TRANSPARENT)
-        // AC emits CONFIRM on refresh. This layout's feedback is disabled so only
-        // the threshold feedback below, performed by the EngineView, is emitted.
-        isHapticFeedbackEnabled = false
-        setWillNotDraw(false)
-    }
-
-    fun configure(webContent: Boolean, canRefresh: Boolean, loading: Boolean, maximumToolbarHeight: Int, clippingHeight: Int) {
-        engine.asView().visibility = if (webContent) View.VISIBLE else View.INVISIBLE
-        isEnabled = canRefresh && (!loading || isRefreshing)
-        if (maximumHeight != maximumToolbarHeight) {
-            engine.setDynamicToolbarMaxHeight(maximumToolbarHeight)
-            maximumHeight = maximumToolbarHeight
-            clipping = -1 // Gecko resets clipping when the maximum changes.
-        }
-        if (clipping != clippingHeight) {
-            engine.setVerticalClipping(clippingHeight)
-            clipping = clippingHeight
-        }
-    }
-
-    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                movingFinger = false
-                thresholdFeedback = false
-                onGestureStart?.invoke()
-                onTouchState?.invoke(true)
-            }
-            MotionEvent.ACTION_MOVE -> movingFinger = true
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> movingFinger = false
-        }
-        val handled = super.dispatchTouchEvent(event)
-        reportIndicator()
-        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) onTouchState?.invoke(false)
-        return handled
-    }
-
-    override fun dispatchDraw(canvas: Canvas) {
-        super.dispatchDraw(canvas)
-        reportIndicator()
-    }
-
-    private fun reportIndicator() {
-        val circle = (0 until childCount).map { getChildAt(it) }.firstOrNull { it !== engine.asView() }
-        val fraction = if (circle?.visibility == View.VISIBLE && isEnabled) {
-            ((circle.top - startOffset).toFloat() / (endOffset - startOffset)).coerceAtLeast(0f)
-        } else 0f
-        // Native spinner settling also reports offsets. Emit feedback only for a
-        // threshold crossing while the finger is still moving the spinner.
-        if (movingFinger && previousFraction < 1f && fraction >= 1f && !thresholdFeedback && !isRefreshing) {
-            thresholdFeedback = true
-            performThresholdFeedback(
-                if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.GESTURE_THRESHOLD_ACTIVATE else HapticFeedbackConstants.CONTEXT_CLICK,
-            )
-        }
-        if (fraction != previousFraction || isRefreshing != previousRefreshing) {
-            previousFraction = fraction
-            previousRefreshing = isRefreshing
-            onIndicator?.invoke(fraction, isRefreshing)
-        }
-    }
-
-    fun clearCallbacks() { movingFinger = false; onGestureStart = null; onTouchState = null; onIndicator = null }
 }

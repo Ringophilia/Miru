@@ -7,8 +7,10 @@ import android.app.Application
 import android.app.ActivityManager
 import android.os.Build
 import android.os.Process
-import app.miru.browser.engine.BrowserController
-import app.miru.browser.engine.LibraryHistoryDelegate
+import app.miru.browser.engine.BrowserEngineController
+import app.miru.browser.engine.BrowserEngineDataTypes
+import app.miru.browser.engine.GeckoBrowserEngineFactory
+import app.miru.browser.engine.SearchSuggestionClient
 import app.miru.data.BrowsingLibrary
 import app.miru.data.SettingsRepository
 import app.miru.data.BrowsingDataType
@@ -40,14 +42,14 @@ class AppContainer(private val application: Application) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val settings = SettingsRepository(application)
     val library = BrowsingLibrary(application)
-    internal var searchSuggestions = app.miru.browser.engine.SearchSuggestionClient()
+    internal var searchSuggestions = SearchSuggestionClient()
     val downloads = DownloadCoordinator.get(application)
-    val browser = BrowserController(
-        application,
-        scope,
-        LibraryHistoryDelegate(library),
-        settings.settings.map { it.security },
-        settings.settings.map { it.webZoomPercent },
+    val browser: BrowserEngineController = GeckoBrowserEngineFactory.create(
+        context = application,
+        applicationScope = scope,
+        library = library,
+        securitySettings = settings.settings.map { it.security },
+        webZoomPercent = settings.settings.map { it.webZoomPercent },
     )
     val privateTabsNotifications = PrivateTabsNotifications(application, browser, scope)
     val playerPreferences = PlayerPreferencesRepository(application)
@@ -59,7 +61,7 @@ class AppContainer(private val application: Application) {
         val engineResult = browser.clearBrowsingData(request)
         val completed = engineResult.completed.toMutableSet()
         val failed = engineResult.failed.toMutableSet()
-        for (type in request.types - app.miru.browser.engine.BrowserDataCleaner.ENGINE_TYPES) {
+        for (type in request.types - BrowserEngineDataTypes.ENGINE_TYPES) {
             try {
                 when (type) {
                     BrowsingDataType.HISTORY -> library.history.clear(request.since)

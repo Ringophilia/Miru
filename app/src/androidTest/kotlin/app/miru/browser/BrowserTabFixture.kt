@@ -2,21 +2,21 @@
 // SPDX-License-Identifier: MPL-2.0
 package app.miru.browser
 
-import app.miru.browser.engine.BrowserController
+import app.miru.browser.engine.BrowserEngineController
 
 /** Per-method tab ownership on a controlled, single-instrumentation device. Call on Main. */
 internal class BrowserTabFixture {
     private var originalIds: Set<String>? = null
     private var originalSelection: String? = null
 
-    fun capture(browser: BrowserController) {
+    fun capture(browser: BrowserEngineController) {
         check(browser.state.value.ready) { "Capture fixture ownership only after session restoration" }
         check(originalIds == null) { "Fixture ownership must be captured once per test method" }
         originalIds = browser.state.value.tabs.mapTo(mutableSetOf()) { it.id }
         originalSelection = browser.state.value.selectedTabId
     }
 
-    fun closeCreatedTabs(browser: BrowserController) {
+    fun closeCreatedTabs(browser: BrowserEngineController) {
         // A failed setup before capture must never turn an empty baseline into permission
         // to remove pre-existing tabs. No global close-all operation belongs in cleanup.
         val preserved = originalIds ?: return

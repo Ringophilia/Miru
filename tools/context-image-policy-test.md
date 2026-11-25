@@ -7,7 +7,7 @@ node G:/Projects/Miru/tools/context-image-policy-test.cjs
 ```
 
 The test loads the actual `media-classifier.js` and `background.js` shipped in
-`browser/engine/src/main/assets/extensions/miru-bridge/`. It replaces only the
+`browser/engine-gecko/src/main/assets/extensions/miru-bridge/`. It replaces only the
 browser event APIs and the receiving content-script IPC peer. There is no copied
 implementation of the production policy selection, document binding or routing.
 All addresses and nonces are synthetic `.test` fixtures; no network, credentials,

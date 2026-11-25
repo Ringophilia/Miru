@@ -20,4 +20,17 @@
     <string name="exceptions">例外网站</string>
     <string name="exceptions_detail">在 uBlock Origin 中查看与编辑信任的网站</string>
     <string name="privacy">使用官方签名的 uBlock Origin。规则列表由扩展管理并更新；Miru 不上传浏览记录或拦截统计。</string>
+    <string name="native_site_toggle">在此网站上拦截广告</string>
+    <string name="native_site_toggle_detail">切换后自动刷新当前页面</string>
+    <string name="native_element_picker">屏蔽页面元素</string>
+    <string name="native_filter_lists">过滤列表与自定义规则</string>
+    <string name="native_total_blocked">累计已拦截 %1$d 项</string>
+    <string name="native_engine_summary">原生规则引擎（%1$s）· 启动即就绪</string>
+    <string name="native_update_lists">更新过滤列表</string>
+    <string name="native_rule_count">%1$d 条规则</string>
+    <string name="native_no_exceptions">暂无例外网站</string>
+    <string name="native_custom_rules">自定义过滤规则</string>
+    <string name="native_custom_rule_hint">例如 ||ads.example.com^ 或 example.com##.banner</string>
+    <string name="native_add_rule">添加</string>
+    <string name="native_remove_rule">移除</string>
 </resources>

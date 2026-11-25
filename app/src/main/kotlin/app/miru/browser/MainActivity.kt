@@ -81,7 +81,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.miru.bookmarks.BookmarkEditDialog
 import app.miru.bookmarks.BookmarksScreen
-import app.miru.browser.engine.BrowserController
+import app.miru.browser.engine.BrowserEngineController
+import app.miru.browser.engine.BrowserPopupSession
 import app.miru.browser.engine.BrowserTab
 import app.miru.browser.engine.NEW_TAB_URL
 import app.miru.adblock.AdblockPhase
@@ -142,7 +143,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import mozilla.components.concept.engine.EngineSession
 
 class MainActivity : ComponentActivity() {
     private val container get() = (application as MiruApplication).container
@@ -1079,7 +1079,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
             )
             adblockPopup?.let { popup ->
                 AdblockPopupSheet(AddressResolver.display(tab?.url.orEmpty()), adblock.blockedCount, { controller.closeAdblockPopup(); controller.reload() }, { openAdblockDashboard() }, pageNeedsReload = adblock.pageNeedsReload) {
-                    AdblockPopupContent(controller, popup)
+                    AdblockPopupContent(popup)
                 }
             }
             pendingDownload?.let { request -> key(System.identityHashCode(request)) {
@@ -1131,10 +1131,10 @@ private fun routeTransition(
     return enter togetherWith exit
 }
 
-@Composable private fun AdblockPopupContent(controller: BrowserController, session: EngineSession) {
+@Composable private fun AdblockPopupContent(popup: BrowserPopupSession) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val view = remember(controller, session) { controller.createView(context).also { it.render(session) } }
+    val view = remember(popup) { popup.createView(context) }
     DisposableEffect(view, lifecycle) {
         var started = false
         fun start() { if(!started) { view.onStart(); view.onResume(); started = true } }
@@ -1282,20 +1282,4 @@ private data class OnlineMatches(val query: String,val engine: SearchEngine,val 
     Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(message); Spacer(Modifier.height(16.dp)); Button(onRetry) { Text(stringResource(R.string.retry)) }
     }
-}
-
-@Composable private fun GeckoContent(controller: BrowserController) {
-    val context = LocalContext.current
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val view = remember(controller) { controller.createView(context) }
-    DisposableEffect(controller, lifecycle, view) {
-        val binding = controller.bind(view)
-        val observer = LifecycleEventObserver { _, event ->
-            when(event) { Lifecycle.Event.ON_START -> binding.start(); Lifecycle.Event.ON_STOP -> binding.stop(); else -> Unit }
-        }
-        lifecycle.addObserver(observer)
-        if(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) binding.start()
-        onDispose { lifecycle.removeObserver(observer); binding.release() }
-    }
-    AndroidView(factory = { view.asView() }, modifier = Modifier.fillMaxSize())
 }

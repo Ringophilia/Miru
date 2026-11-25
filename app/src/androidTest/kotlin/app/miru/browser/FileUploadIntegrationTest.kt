@@ -55,7 +55,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
-import mozilla.components.concept.engine.EngineView
+import app.miru.browser.engine.BrowserEngineView
+import app.miru.browser.engine.BrowserEngineViews
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
@@ -2040,10 +2041,7 @@ class FileUploadIntegrationTest {
     private fun engineBounds(): Rect {
         var bounds: Rect? = null
         compose.runOnIdle {
-            fun find(view: View): EngineView? = if (view is EngineView) view else (view as? ViewGroup)?.let { group ->
-                (0 until group.childCount).firstNotNullOfOrNull { find(group.getChildAt(it)) }
-            }
-            val view = checkNotNull(find(compose.activity.window.decorView)).asView()
+            val view = checkNotNull(BrowserEngineViews.findIn(compose.activity.window.decorView)).asView()
             val xy = IntArray(2)
             view.getLocationOnScreen(xy)
             bounds = Rect(xy[0], xy[1], xy[0] + view.width, xy[1] + view.height)

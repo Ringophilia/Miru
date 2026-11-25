@@ -13,3 +13,4 @@ tools/local-*/
 keystore.properties
 __pycache__/
 *.py[cod]
+native/**/target/

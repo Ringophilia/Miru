@@ -21,7 +21,8 @@ import java.net.ServerSocket
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
-import mozilla.components.concept.engine.EngineView
+import app.miru.browser.engine.BrowserEngineView
+import app.miru.browser.engine.BrowserEngineViews
 import org.junit.Assert.*
 import org.junit.After
 import org.junit.Before
@@ -289,10 +290,7 @@ class ContextImagePolicyIntegrationTest {
     private fun engineBounds(): Rect {
         var result: Rect? = null
         compose.runOnIdle {
-            fun find(view: View): EngineView? = if(view is EngineView) view else (view as? ViewGroup)?.let { group ->
-                (0 until group.childCount).firstNotNullOfOrNull { find(group.getChildAt(it)) }
-            }
-            val view = checkNotNull(find(compose.activity.window.decorView)).asView()
+            val view = checkNotNull(BrowserEngineViews.findIn(compose.activity.window.decorView)).asView()
             val location = IntArray(2); view.getLocationOnScreen(location)
             result = Rect(location[0], location[1], location[0] + view.width, location[1] + view.height)
         }

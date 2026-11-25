@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import mozilla.components.concept.engine.EngineView
+import app.miru.browser.engine.BrowserEngineViews
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -366,10 +366,7 @@ class PagePromptIntegrationTest {
     private fun engineBounds(): Rect {
         var result: Rect? = null
         compose.runOnIdle {
-            fun find(view: View): EngineView? = if(view is EngineView) view else (view as? ViewGroup)?.let {
-                (0 until it.childCount).firstNotNullOfOrNull { index -> find(it.getChildAt(index)) }
-            }
-            val view = checkNotNull(find(compose.activity.window.decorView)).asView()
+            val view = checkNotNull(BrowserEngineViews.findIn(compose.activity.window.decorView)).asView()
             val xy = IntArray(2)
             view.getLocationOnScreen(xy)
             result = Rect(xy[0], xy[1], xy[0] + view.width, xy[1] + view.height)

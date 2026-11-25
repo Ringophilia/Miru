@@ -127,7 +127,7 @@ class SiteNotificationIntegrationTest {
         val private = page(origin, private = true); request(true); title(private, "Notify granted 1")
         val shown = alert().notification
         assertEquals(Notification.VISIBILITY_SECRET, shown.visibility)
-        assertEquals(context.getString(app.miru.browser.engine.R.string.web_notification_private_title), shown.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+        assertEquals(context.getString(app.miru.browser.engine.api.R.string.web_notification_private_title), shown.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
         assertFalse(shown.extras.toString().contains(origin.url)); assertFalse(shown.extras.toString().contains("Miru body"))
         compose.runOnIdle { browser.closePrivateTabsPermanently() }; noAlerts()
         state(normal)

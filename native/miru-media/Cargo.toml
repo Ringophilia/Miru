@@ -1,0 +1,9 @@
+[package]
+name = "miru-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Zero-GC media URL/MIME/VAST classifier and HLS/MP4/MPEG-TS/AVC-SPS/HEVC-SPS resolution prober"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

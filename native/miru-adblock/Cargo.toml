@@ -1,0 +1,10 @@
+[package]
+name = "miru-adblock"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Native adblock-rust engine wrapper supporting FlatBuffers snapshot cold-start, per-site allowlist, cosmetic hiding, and custom element-picker rules"
+
+[dependencies]
+adblock = { version = "0.13.6", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling"] }
+serde = { version = "1", features = ["derive"] }

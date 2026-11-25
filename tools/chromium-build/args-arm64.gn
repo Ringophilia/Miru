@@ -1,0 +1,45 @@
+# Miru Phase C1 de-Googled Chromium Android GN args template (ARM64 Release)
+# Target host: Linux x86_64 (Ubuntu 22.04/24.04), >= 64 GB RAM (128 GB rec.), >= 250 GB NVMe SSD.
+# See tools/chromium-build/README.md for Cromite patch application & libmiru_core.a linkage.
+
+target_os = "android"
+target_cpu = "arm64"
+
+is_debug = false
+is_official_build = true
+is_component_build = false
+symbol_level = 0
+blink_symbol_level = 0
+v8_symbol_level = 0
+android_default_version_name = "2.0.0-c1"
+
+# Strict de-Googling: disable Google APIs, Sync, UMA/Metrics, Crashpad upload, RLZ, FieldTrials, SafeBrowsing telemetry
+google_api_key = ""
+google_default_client_id = ""
+google_default_client_secret = ""
+use_official_google_api_keys = false
+enable_reporting = false
+enable_rlz = false
+enable_google_now = false
+safe_browsing_mode = 0
+enable_supervised_users = false
+enable_hangout_services_extension = false
+enable_mdns = false
+enable_service_discovery = false
+enable_remoting = false
+enable_vr = false
+enable_arcore = false
+enable_cardboard = false
+enable_openxr = false
+
+# Size optimization towards < 150 MB single-ABI ARM64 APK gate
+enable_pdf = false
+enable_print_preview = false
+enable_basic_printing = false
+enable_nacl = false
+use_thin_lto = true
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"
+android_channel = "stable"
+icu_use_data_file = true
+exclude_unwind_tables = true

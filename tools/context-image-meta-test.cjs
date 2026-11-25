@@ -12,7 +12,7 @@ const vm = require('node:vm');
 const { test } = require('node:test');
 
 const source = fs.readFileSync(path.resolve(__dirname,
-  '../browser/engine/src/main/assets/extensions/miru-bridge/image-policy.js'), 'utf8');
+  '../browser/engine-gecko/src/main/assets/extensions/miru-bridge/image-policy.js'), 'utf8');
 const PAGE = 'https://page.test/document?private=meta-secret';
 const IMAGE = 'https://images.test/image.png';
 

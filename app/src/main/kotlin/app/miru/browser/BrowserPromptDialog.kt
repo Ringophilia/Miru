@@ -21,8 +21,8 @@ import app.miru.browser.engine.BrowserAuthMethod
 import app.miru.browser.engine.BrowserPromptButton
 import app.miru.browser.engine.BrowserPromptKind
 import app.miru.browser.engine.BrowserPromptState
-import app.miru.browser.engine.BrowserPrompts
-import app.miru.browser.engine.BrowserFileUploads
+import app.miru.browser.engine.BrowserPromptsController
+import app.miru.browser.engine.BrowserFileUploadsController
 import app.miru.browser.engine.BrowserUploadPhase
 import app.miru.browser.engine.BrowserUploadSource
 import app.miru.browser.engine.validChoiceSelection
@@ -32,7 +32,7 @@ import app.miru.browser.engine.normalizedFormColor
 /** All drafts remain in this composition; private/form/password state is never saved. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserPrompts, uploads: BrowserFileUploads, onChooseClientCertificate: (Long) -> Unit) {
+internal fun BrowserPromptDialog(state: BrowserPromptState, prompts: BrowserPromptsController, uploads: BrowserFileUploadsController, onChooseClientCertificate: (Long) -> Unit) {
     val upload by uploads.state.collectAsState()
     val uploadBusy = upload.phase != BrowserUploadPhase.IDLE
     var text by remember(state.token) { mutableStateOf(state.inputValue) }

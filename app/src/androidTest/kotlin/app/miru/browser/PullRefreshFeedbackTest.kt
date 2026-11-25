@@ -14,6 +14,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import app.miru.browser.engine.BrowserSurfaceHosts
 import app.miru.data.ToolbarPosition
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicReference
@@ -74,14 +75,15 @@ class PullRefreshFeedbackTest {
     }
 
     private fun verifyGestures(pages: TestPages, id: String) {
-        val layout = compose.runOnIdle { checkNotNull(refreshLayout(compose.activity.window.decorView)) }
+        val host = compose.runOnIdle { checkNotNull(BrowserSurfaceHosts.findIn(compose.activity.window.decorView)) }
+        val layout = host.containerView
         val haptics = CopyOnWriteArrayList<Int>()
         val fraction = AtomicReference(0f)
-        val originalFeedback = compose.runOnIdle { layout.performThresholdFeedback }
-        val originalIndicator = compose.runOnIdle { layout.onIndicator }
+        val originalFeedback = compose.runOnIdle { host.performThresholdFeedback }
+        val originalIndicator = compose.runOnIdle { host.onIndicator }
         compose.runOnIdle {
-            layout.performThresholdFeedback = { type -> haptics += type; originalFeedback(type) }
-            layout.onIndicator = { distance, refreshing ->
+            host.performThresholdFeedback = { type -> haptics += type; originalFeedback(type) }
+            host.onIndicator = { distance, refreshing ->
                 fraction.set(distance)
                 originalIndicator?.invoke(distance, refreshing)
             }
@@ -119,8 +121,8 @@ class PullRefreshFeedbackTest {
             assertEquals(listOf(expected), haptics.toList())
         } finally {
             compose.runOnIdle {
-                layout.performThresholdFeedback = originalFeedback
-                layout.onIndicator = originalIndicator
+                host.performThresholdFeedback = originalFeedback
+                host.onIndicator = originalIndicator
             }
         }
     }
@@ -151,13 +153,5 @@ class PullRefreshFeedbackTest {
         }
         try { assertTrue(InstrumentationRegistry.getInstrumentation().uiAutomation.injectInputEvent(event, true)) }
         finally { event.recycle() }
-    }
-
-    private fun refreshLayout(view: View): GeckoRefreshLayout? {
-        if (view is GeckoRefreshLayout) return view
-        if (view is ViewGroup) for (index in 0 until view.childCount) {
-            refreshLayout(view.getChildAt(index))?.let { return it }
-        }
-        return null
     }
 }
