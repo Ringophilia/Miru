@@ -6,7 +6,12 @@
 
 ### 目标
 
-将 Miru 引擎路线切换为**去 Google 化自编 Chromium（Cromite 思路）+ 原生 `adblock-rust` 广告拦截 + C++ 网络层视频嗅探**，完整复用现有的 Compose 浏览器外壳、本地 SQLite 历史/书签、OkHttp 下载引擎、Media3 播放器、离线缓存与超分辨率模块，做出一个能在真手机上日常主力使用的版本。
+将 Miru 引擎路线切换为**去 Google 化自编 Chromium（Cromite 思路）+ 统一 Rust 原生核心 `libmiru_core`（`adblock-rust` 广告拦截、媒体嗅探分类与清晰度流头解析、URL/Referrer/缓存键策略，以及后续可按实测切入的 SQLite FTS5 检索与分段下载核心）**，完整保留并复用原生 Jetpack Compose 浏览器外壳、系统服务与 Media3 / OpenGL ES 3.0 硬件解码与超分链路，在不牺牲任何原生交互手感的前提下追求性能、内存与功耗最大化，做出能在真手机上日常主力使用的版本。
+
+### 原则：Rust 优先，不牺牲原生交互
+
+- **优先下沉至统一 Rust Workspace（`native/` → 单一 `libmiru_core.a` / `.so`）**：所有计算密集、网络/字节流解析、规则匹配、索引检索与跨端（Android / Chromium C++ / 未来 iOS）通用核心逻辑优先用 Rust 实现，并打包进同一份原生库避免多份 Rust 运行时膨胀体积。
+- **严格保留平台原生层**：UI、手势、弹簧动效与无障碍（Jetpack Compose / Material 3）、Chromium C++ 渲染与合成内核、Media3 `MediaCodec` 硬解与 OpenGL ES 3.0 GLSL 超分（零 FFI 帧拷贝），以及 Android 前台服务 / MediaStore / SAF / 通知 / KeyChain 等系统交互层保持原生，不以牺牲交互体验为代价强迁 Rust。
 
 ### 冻结
 
@@ -16,10 +21,10 @@
 
 ### 优先级（按阶段顺序推进，阶段门见 `docs/CHROMIUM-MIGRATION-PLAN.md`）
 
-1. **Phase C0（Windows 本地即可推进，App 保持可编译运行）**：抽出纯 Kotlin `:browser:engine-api`，将现有 Gecko/AC 收拢至 `:browser:engine-gecko`；解除 `:browser:toolbar` 与 `:feature:*` 对 Gecko/AC/uBO/`miru-bridge` 的直接依赖；完成 `adblock-rust` 规则引擎原型与 JVM 验证。
+1. **Phase C0（Windows 本地即可推进，App 保持可编译运行）**：抽出纯 Kotlin `:browser:engine-api`，将现有 Gecko/AC 收拢至 `:browser:engine-gecko`；解除 `:app`、`:browser:toolbar` 与 `:feature:*` 对 Gecko/AC/uBO/`miru-bridge` 的直接依赖；落地统一 Rust 原生核心 `native/` Workspace（`miru-adblock` + `miru-media` + `miru-url` → 单一 `libmiru_core`）并完成 `cargo test --release`、`aarch64-linux-android` 交叉检查与 Kotlin JNI 验证。
 2. **Phase C1（前提：Linux x86_64 构建机 / CI 就绪，≥ 64 GB 内存、≥ 250 GB SSD）**：搭建去 Google 化 Chromium + Cromite 可复现构建流水线，产出版本化、SHA-256 固定的预构建 `.aar`（ARM64 必选、x86_64 可选）供 Windows Gradle 消费；跑通 `:browser:engine-chromium` 最小浏览壳（多标签、无痕 `OTRProfile`、`BrowserControls` 滚动工具栏、下拉刷新、会话恢复、历史书签对接）。
-3. **Phase C2（核心能力替换）**：在 Chromium C++ 网络层（`URLLoaderThrottle` / `NavigationThrottle`）挂载原生 `adblock-rust`（含外观隐藏、脚本注入、原生盾牌面板与元素拾取），并落地 C++ 网络层视频嗅探 + 轻量页面脚本，直连现有 `:feature:media-detect` 与 `:feature:player`。
-4. **Phase C3（功能对齐与隐私安全闭环）**：对接 Chromium 下载/Cookie 桥、B13 全部权限与网页提示、DoH / 仅 HTTPS / 阻止第三方 Cookie、网页缩放、数据清理与无痕通知；达成对等后归档/移除 `:browser:engine-gecko`。
+3. **Phase C2（核心能力替换）**：在 Chromium C++ 网络层（`URLLoaderThrottle` / `NavigationThrottle`）静态链接 `libmiru_core.a`，实现单次请求零 JNI 往返同时驱动 `miru-adblock`（含外观隐藏、脚本注入、原生盾牌面板与元素拾取）与 `miru-media`（C++ 网络层视频嗅探 + 轻量页面脚本 + Rust 清晰度流头解析），直连现有 `:feature:media-detect` 与 `:feature:player`。
+4. **Phase C3（功能对齐、Rust 热点深化与隐私安全闭环）**：对接 Chromium 下载/Cookie 桥、B13 全部权限与网页提示、DoH / 仅 HTTPS / 阻止第三方 Cookie、网页缩放、数据清理与无痕通知；按实测收益推进 `miru-storage`（SQLite FTS5 地址栏/历史毫秒级检索）与 `miru-download`（Rust 多分段下载核心 + Android SAF/MediaStore 文件描述符桥）；达成对等后归档/移除 `:browser:engine-gecko`。
 5. **Phase C4（真机验收与发布）**：ARM64 真机日常与性能冒烟、单 ABI 发布包体积门（`< 150 MB`）、上游 Chromium 安全更新 rebase 流程、第三方分发许可审查与正式签名。
 
 ### 验证节奏

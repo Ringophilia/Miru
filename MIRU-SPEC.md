@@ -60,8 +60,8 @@ P2  有余力再做
 | 网页引擎 | **去 Google 化自编 Chromium（Cromite 思路）**，通过 Linux 构建机 / CI 产出版本化 SHA-256 预构建 `.aar` 引入 | BSD-3-Clause（Cromite 补丁按对应许可） | 移动端网页兼容、90/120 Hz 滚动跟手度与功耗表现最优；可在 C++ 网络层直接挂载原生广告拦截与视频嗅探，并彻底移除 Google 遥测、GMS 与同步 |
 | 引擎抽象与桥接 | **Miru 自研 `:browser:engine-api` + `:browser:engine-chromium`**（过渡期保留冻结的 `:browser:engine-gecko` 作为参考后端） | MPL-2.0 | 上层 UI 与全部业务模块仅依赖纯 Kotlin 契约；Chromium 侧对接 `WebContents`、`OTRProfile`、`BrowserControls`、站点权限/提示与下载/Cookie 委托 |
 | 内核构建与消费 | **Linux x86_64 构建机 / CI 编核 → Windows 本地 Gradle 消费预构建 `.aar`** | — | 隔离数十 GB 的 Chromium C++ 编译成本；日常 Kotlin / Compose / 播放器迭代在 Windows 保持快速增量构建 |
-| UI | Kotlin 2.x + **Jetpack Compose** + Material 3 | Apache-2.0 | 浏览器 Chrome 外壳与所有原生页面（新标签页、下载、设置、播放器控制层）全部用 Compose |
-| 广告拦截 | **原生 `adblock-rust`（Brave 维护）**，交叉编译为 Rust 静态库挂载在 Chromium C++ `URLLoaderThrottle` / `NavigationThrottle` | MPL-2.0 | 兼容 EasyList / EasyPrivacy / uBO / AdGuard 过滤语法、Cosmetic 隐藏与 Scriptlet；启动即就绪、零冷启动竞态，无需依赖 MV2 WebExtension |
+| 统一 Rust 原生核心（`libmiru_core`） | **`native/` Cargo Workspace**（`miru-adblock` 基于 `adblock-rust` + `miru-media` 嗅探分类与清晰度流头解析 + `miru-url` 安全/URL/缓存键策略；Phase C3 按实测扩展 `miru-storage` FTS5 检索与 `miru-download` 分段下载核心），编译为单一 `.a`/`.so` 共享一份运行时 | MPL-2.0 | 在不牺牲任何原生交互体验的前提下实现性能、内存与跨端（Chromium C++ / Android / 未来 iOS）复用最大化；启动即就绪、零冷启动竞态、零 JVM GC 抖动 |
+| UI | Kotlin 2.x + **Jetpack Compose** + Material 3 | Apache-2.0 | 浏览器 Chrome 外壳、手势、弹簧动效与所有原生页面（新标签页、下载、设置、播放器控制层）严格保留平台原生，确保最佳交互手感与无障碍体验 |
 | 播放器 | **AndroidX Media3 ExoPlayer**（`media3-exoplayer`、`-hls`、`-dash`、`-datasource-okhttp`、`-session`、`-ui` 仅取用 `PlayerView` 的 Surface 部分） | Apache-2.0 | HLS/DASH/MP4/FLV、磁盘缓存（`SimpleCache`）、离线下载（`DownloadManager`）都是官方能力 |
 | 超分辨率 | OpenGL ES 3.0 渲染链 + Anime4K v4 / AMD FSR 1.0 着色器（**从 Ringo-Cove 移植**） | MIT | 已在 Ringo-Cove 验证 |
 | 网络（下载、探测） | OkHttp 4/5 | Apache-2.0 | 多线程分段下载、断点续传 |
@@ -100,8 +100,10 @@ Flutter                         没有成熟的自定义 Chromium 嵌入方案�
 :core:common            工具、Result 类型、日志
 :core:data              本地 SQLite 历史/书签（BrowsingLibrary）、Room 数据库、DataStore、仓库类
 :browser:engine-api     纯 Kotlin 引擎契约（标签/会话状态、导航、权限与提示、下载/Cookie 桥、广告拦截、视频嗅探）
-:browser:engine-chromium 自编去 Google 化 Chromium 嵌入适配（消费预构建 .aar、adblock-rust、C++ 网络嗅探）
+:browser:engine-chromium 自编去 Google 化 Chromium 嵌入适配（消费预构建 .aar、链接 libmiru_core）
 :browser:engine-gecko   v1.0 GeckoView 冻结参考后端（仅过渡期保留，Phase C3 达成对等后归档移除）
+:browser:adblock-rust   纯 Kotlin JVM / Android JNI 桥接层，对接统一 Rust 原生核心 `native/` (`libmiru_core`)
+native/                 统一 Rust Cargo Workspace（`miru-adblock` + `miru-media` + `miru-url` → 单一 `libmiru_core.a`/`.so`，零重复运行时）
 :browser:toolbar        地址栏（Compose 实现，仅依赖 :browser:engine-api 与 :core:*）
 :feature:ntp            新标签页
 :feature:tabs           标签页切换器
@@ -1131,10 +1133,10 @@ iOS 上所有浏览器必须使用 WebKit（欧盟 BrowserEngineKit 例外，不
 > v1.0 阶段（`M0`–`M4` 对应 GeckoView 基线）已于 `0.5.24` 冻结，其历史代码资产（UI 外壳、下载、播放器、离线与超分）全面复用到下方 v2.0 Chromium 路线（详细阶段门见 `docs/CHROMIUM-MIGRATION-PLAN.md`）：
 
 ```text
-Phase C0  引擎解耦（Windows 本地）  抽出 :browser:engine-api，隔离冻结 :browser:engine-gecko，解除 :feature:* 对 Gecko/AC/uBO 依赖，验证 adblock-rust 原型
-Phase C1  Chromium 最小壳（Linux CI） 产出版本化去 Google 化 Chromium 预构建 .aar，跑通 :browser:engine-chromium 多标签/无痕/滚动工具栏/历史书签
-Phase C2  原生拦截与 C++ 嗅探       Chromium C++ 网络层挂载 adblock-rust（零冷启动漏拦、原生盾牌与元素拾取）+ C++ 网络层视频嗅探直连现有播放器
-Phase C3  功能对齐与闭环            下载/Cookie 桥、B13 全部权限与网页提示、DoH/仅 HTTPS/3P Cookie、清理数据；达成对等后归档 GeckoView 后端
+Phase C0  引擎解耦与 Rust 核心（Windows） 抽出 :browser:engine-api，隔离冻结 :browser:engine-gecko，建立统一 Rust Workspace（miru-adblock/miru-media/miru-url → libmiru_core）并完成 JNI 与 ARM64 交叉验证
+Phase C1  Chromium 最小壳（Linux CI）     产出版本化去 Google 化 Chromium 预构建 .aar，跑通 :browser:engine-chromium 多标签/无痕/滚动工具栏/历史书签
+Phase C2  原生拦截与 C++ 嗅探             Chromium C++ 网络层静态链接 libmiru_core.a，单次请求零 JNI 往返驱动 miru-adblock 与 miru-media（含 Rust 清晰度流头解析），直连现有播放器
+Phase C3  功能对齐、Rust 深化与闭环        下载/Cookie 桥、B13 全部权限与网页提示、安全设置与数据清理；按实测切入 miru-storage（FTS5）与 miru-download 核心；达成对等后归档 GeckoView 后端
 Phase C4  真机验收与发布            ARM64 真机日常/高刷/超分验收、单 ABI < 150 MB 体积门、安全 rebase SOP、第三方许可审查与正式签名
 M5        iOS                      见第 14 节（Android Phase C4 后启动）
 ```

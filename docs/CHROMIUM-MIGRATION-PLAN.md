@@ -10,9 +10,12 @@
 在完成 GeckoView 基线第四组打磨检查点（`0.5.24`）后，综合评估移动网页兼容、高刷新率滑动流畅度、功耗、冷启动广告拦截竞态、视频嗅探能力与长期产品体验，维护者决定自 **2026-11-25** 起将 Miru 的引擎路线切换为：
 
 - **网页内核**：**去 Google 化自编 Chromium（Cromite 思路）**，移除 Google 服务、遥测、云同步与账号上报。
-- **广告拦截**：**原生 `adblock-rust` 规则引擎**直接挂载在 Chromium C++ 网络请求层（`URLLoaderThrottle` / `NavigationThrottle`）并配套渲染层外观隐藏、脚本注入与原生元素拾取。
-- **视频嗅探**：**Chromium C++ 网络层抓流**（覆盖主框架、子 iframe、重定向、Service Worker 与 MSE 原始清单，内存读取完整请求头）+ 轻量页面注入脚本（暂停网页视频、读取播放进度、网页内长按倍速）。
-- **上层复利**：**完整保留并复用** Miru 已经建成并打磨好的 Jetpack Compose 浏览器外壳、下载引擎、Media3 原生播放器、HLS/DASH 离线缓存与 OpenGL ES 3.0 超分辨率模块。
+- **统一 Rust 原生核心（`native/` → 单一 `libmiru_core`）**：在不牺牲原生交互体验的前提下，将所有规则匹配、字节流/清单解析、URL/隐私策略、高吞吐网络与本地检索核心下沉至统一 Rust Cargo Workspace，编译为单一静态库/动态库（共享一份分配器与标准库，避免多份 `.so` 重复膨胀体积），同时供 Chromium C++（零拷贝 `extern "C"`）、Android Kotlin（JNI）与未来 iOS Swift 复用：
+  - `miru-adblock`：原生 `adblock-rust` 规则引擎直接挂载在 Chromium C++ `URLLoaderThrottle` / `NavigationThrottle`，配套渲染层外观隐藏、脚本注入与原生元素拾取。
+  - `miru-media`：媒体 URL / MIME / VAST 分类与去重 + HLS/DASH 清单与 MPEG-TS / H.264-H.265 SPS / MP4 `stsd` 流头清晰度解析，C++ 网络层一次调用即可完成抓流过滤，零 JNI 往返与零 JVM GC 抖动。
+  - `miru-url`：基于公共后缀列表（PSL）的域名解析、`siteOrigin`、Referrer 策略、缓存键签名参数剥离与请求头白名单净化。
+  - `miru-storage` / `miru-download`（Phase C3 按实测推进）：SQLite FTS5 地址栏/历史毫秒级检索打分，以及 `tokio` + `rustls` 多分段零拷贝下载核心（保留 Android 原生 `DownloadService` 通知与 SAF/MediaStore `ParcelFileDescriptor` 写入）。
+- **原生平台层严格保留（绝不牺牲交互手感）**：**完整保留并复用** Miru 已经建成并打磨好的 Jetpack Compose 浏览器外壳与弹簧动效、Media3 + `MediaCodec` 硬件解码、OpenGL ES 3.0 GLSL 超分（视频帧全程停留在 GPU 纹理，不经 FFI 拷贝），以及 Android 系统服务/权限/画中画/无障碍集成。
 
 ### 为什么选这条路、并明确接受哪些代价
 
@@ -90,6 +93,19 @@
 - **轻量页面脚本**：仅负责三件事——监听 `<video>` 开始播放与进入全屏、响应原生“暂停网页视频并读取当前播放时间”、以及网页内长按倍速（尊重页面自身 `preventDefault`）。
 - **iOS 复用保持不变**：媒体 URL / Content-Type / 去重 / 短视频 / VAST 判定规则继续维护为独立可共享规格与测试夹具，供未来 iOS `WKUserScript` 复用。
 
+### 3.4 Rust 优先边界矩阵（性能最大化且不牺牲交互）
+
+| 能力域 | 实现语言 / 载体 | 选择理由 |
+|---|---|---|
+| 广告拦截引擎（`miru-adblock`） | **Rust（`libmiru_core`）** | FlatBuffers 亚毫秒冷启动（实测 5k 规则 `0.31 ms`）、微秒级请求匹配（`2.00 µs`），直挂 Chromium C++ IO 线程零 JNI 开销 |
+| 媒体嗅探分类 & 清晰度流头解析（`miru-media`） | **Rust（`libmiru_core`）** | 零 GC 字节流解析（HLS/DASH、TS/H.264/H.265 SPS、MP4 `stsd`、VAST），与 Chromium C++ 网络层和未来 iOS 共享一套实现 |
+| URL / Origin / Referrer / 缓存键策略（`miru-url`） | **Rust（`libmiru_core`）** | 统一 PSL 域名与安全边界判定，消除 Kotlin / JS / C++ / Swift 多份重复逻辑与语义漂移 |
+| 历史/书签 FTS5 检索与地址栏补全打分（`miru-storage`，Phase C3） | **Rust（`libmiru_core`）** | 毫秒级中文/域名模糊与前缀匹配，无主线程 GC 抖动，输入跟手度更高 |
+| 多分段下载与校验核心（`miru-download`，Phase C3） | **Rust 核心 + Android 原生服务壳** | `tokio` + `rustls` 高吞吐零拷贝分块写入 Android SAF/MediaStore `fd`；通知、网络监听与系统生命周期仍归 Kotlin |
+| 浏览器外壳、手势、弹簧动效与无障碍 | **Kotlin + Jetpack Compose（iOS 用 SwiftUI/UIKit）** | 保持系统级帧同步、IME 键盘协调、TalkBack 无障碍与原生手势物理手感，绝不降级为自绘跨端壳 |
+| 网页内核渲染与合成 | **Chromium C++（去 Google 化）** | 复用 Blink / V8 / Skia / Viz 成熟移动能力，通过极薄 `extern "C"` 静态链接 `libmiru_core.a` |
+| 视频硬解、音频焦点、PiP 与 GPU 超分 | **Media3 `MediaCodec` + OpenGL ES 3.0 GLSL（iOS 用 AVPlayer + Metal）** | 零拷贝 GPU Surface 渲染链路，视频帧严禁经过 JNI/FFI 内存拷贝 |
+
 ---
 
 ## 4. 分阶段实施路线与阶段门
@@ -108,12 +124,16 @@
   - 广告拦截控制器接口（总开关、本页/累计计数、本站白名单、规则列表、元素拾取）
   - 媒体嗅探与页面视频控制接口
 - 将现有 GeckoView / AC 实现封装进 `:browser:engine-gecko`（冻结基线适配器）。
-- 清理 `:browser:toolbar`、`:feature:*`（特别是 `:feature:adblock`、`:feature:media-detect`、`:feature:tabs`、`:feature:settings`）中的全部 `mozilla.components.*` / `geckoview.*` 直接导入。
-- 落地 `adblock-rust` 规则引擎原型（Rust/JNI 或独立 JVM 验证工程）：验证规则加载速度、内存占用、EasyList + 中文列表网络匹配、Cosmetic 选择器查询与单页例外开关。
+- 清理 `:app`、`:browser:toolbar`、`:feature:*` 中的全部 `mozilla.components.*` / `geckoview.*` 直接生产导入。
+- 建立统一 Rust 原生核心 Workspace（`native/` → 单一 `libmiru_core`），首批落地并验证三个核心 crate：
+  - `miru-adblock`（基于 `adblock-rust` 0.13.6，含 FlatBuffers 快照、Cosmetic、本站白名单、自定义规则、C FFI 与 JNI 桥）；
+  - `miru-media`（媒体 URL/MIME/VAST 分类与去重 + HLS M3U8 `RESOLUTION` / MPEG-TS H.264-H.265 SPS / MP4 `stsd` 流头清晰度解析）；
+  - `miru-url`（`siteOrigin`、Referrer 策略、URL/Scheme 安全校验、缓存键签名参数去除）。
 - **阶段门（C0 Exit Gate）**：
-  - `:feature:*` 与 `:browser:toolbar` 对 Gecko/AC 零直接编译依赖；
-  - Windows 上 `:app:assembleDebug`、Lint 与全模块 JVM 单元测试通过；
-  - 冻结的 Gecko 后端通过核心烟雾检查，证明解耦过程未破坏现有可用基线。
+  - `:app/src/main`、`:browser:engine-api`、`:browser:toolbar` 与全部 `:feature:*` 对 Gecko/AC 零直接编译依赖；
+  - `native/` Rust Workspace 通过 `cargo test --release`、`cargo build --release` 与 `aarch64-linux-android` 目标编译检查，且 Kotlin JNI 单测在 JVM 实测通过；
+  - Windows 上 `:app:assembleDebug`、Debug/Release Lint（0 错误）与全模块 JVM 单元测试全绿；
+  - 冻结的 Gecko 后端在模拟器上通过核心烟雾检查，证明解耦过程未破坏现有可用基线。
 
 ### Phase C1 · Linux 构建机 / CI 最小 Chromium `.aar` 与内核壳（外部前提：Linux 构建机 / CI）
 
@@ -134,9 +154,9 @@
 
 **目标**：让 Miru 两个核心差异化能力（开箱即用广告拦截 + 网页视频一键原生播放）在 Chromium 上达到甚至超过 v1.0 体验。
 
-- 将 `adblock-rust` 挂载进 Chromium C++ `URLLoaderThrottle` / `NavigationThrottle` 与渲染层注入管线；接入默认过滤列表内置快照与后台定时更新。
+- 将统一 Rust 核心 `libmiru_core.a` 静态链接进 Chromium C++ `URLLoaderThrottle` / `NavigationThrottle`，在单次网络回调中零 JNI 往返同时执行 `miru-adblock` 拦截判定与 `miru-media` 视频嗅探分类；接入默认过滤列表内置快照与后台定时更新。
 - 对接原生 Compose 盾牌面板（本页计数、累计统计、本站开关与自动刷新、例外管理、过滤列表开关、原生元素拾取）。
-- 将 Chromium C++ 网络层视频嗅探与轻量页面脚本接入 `:feature:media-detect`，直连现有 `:feature:player`（暂停网页视频、续接时间点、内存请求头传递、401/403 刷新 Cookie 重试、网页内长按倍速）。
+- 将 Chromium C++ 网络层视频嗅探、Rust 流头清晰度解析（`miru-media`）与轻量页面脚本接入 `:feature:media-detect`，直连现有 `:feature:player`（暂停网页视频、续接时间点、内存请求头传递、401/403 刷新 Cookie 重试、网页内长按倍速）。
 - **阶段门（C2 Exit Gate）**：
   - 冷启动恢复含广告测试页实现首屏零漏拦，无任何启动等待超时；
   - 本地 MockWebServer 与真实站点验证 `d3ward` 拦截率、本站白名单切换与元素拾取；
@@ -146,7 +166,7 @@
 
 **目标**：补齐所有日常浏览必需的引擎能力，达到可完全替代冻结 GeckoView 基线的状态。
 
-- 对接 Chromium `DownloadDelegate` 与 `CookieManager` 到现有 OkHttp `:feature:downloads` 引擎（普通/无痕 Cookie 严格隔离、认证头不落盘、`blob:`/`data:` 回退处理）。
+- 对接 Chromium `DownloadDelegate` 与 `CookieManager` 到下载引擎（普通/无痕 Cookie 严格隔离、认证头不落盘、`blob:`/`data:` 回退处理）；按实测基准推进 `miru-storage`（SQLite FTS5 地址栏/历史毫秒级检索）与 `miru-download`（`tokio` + `rustls` 多分段零拷贝下载核心 + Android `DownloadService` / SAF 文件描述符桥），在不牺牲系统后台通知与交互可靠性的前提下消除 JVM GC 压力。
 - 完整实现 B13 站点权限与网页提示：摄像头/麦克风/定位、通知、自动播放、受保护内容（Widevine）、文件与目录上传、表单单选/多选/日期时间/颜色、弹窗阻止与允许列表、外部 App 确认面板、客户端证书选择与证书查看。
 - 接入隐私与安全设置：阻止第三方 Cookie、仅 HTTPS 模式、安全 DNS（DoH 自动/关/自定义）、清除浏览数据（含按站点清理与退出时清理）、长按上下文菜单（链接/图片/视频）、无痕常驻通知。
 - 验证通过后将 Chromium 设为默认主线，归档或移除 `:browser:engine-gecko` 与残留 Gecko/uBO 资产。

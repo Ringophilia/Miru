@@ -193,8 +193,11 @@ Miru
 │   ├── data               DataStore 设置，本地历史与书签（SQLite）
 │   └── design             主题、设计与动效 token、矢量字标
 ├── browser
-│   ├── engine             GeckoRuntime / BrowserStore / SessionStorage / 权限与提示协调
+│   ├── engine-api         纯 Kotlin 引擎抽象契约（标签/视图/权限/提示/下载/拦截/嗅探）
+│   ├── engine-gecko       v1.0 GeckoView 冻结参考后端（仅过渡期保留）
+│   ├── adblock-rust       Kotlin JVM / Android JNI 桥接层（对接 libmiru_core）
 │   └── toolbar            Compose 地址栏
+├── native                 统一 Rust 原生核心 Workspace（miru-adblock / miru-media / miru-url → libmiru_core）
 ├── feature
 │   ├── ntp                原生新标签页与快捷方式
 │   ├── tabs               普通 / 无痕标签切换器
