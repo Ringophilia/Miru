@@ -530,8 +530,6 @@ private fun TracksSidePanel(
     onImportSubtitle: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val tracks by controller.trackOptions.collectAsState()
-    val preferences by controller.preferences.collectAsState()
     PlayerSidePanel(
         visible = visible,
         title = stringResource(R.string.player_tracks),
@@ -539,6 +537,8 @@ private fun TracksSidePanel(
         reducedMotion = reducedMotion,
         footer = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.player_options_done)) } },
     ) {
+        val tracks by controller.trackOptions.collectAsState()
+        val preferences by controller.preferences.collectAsState()
         Text(
             stringResource(R.string.player_audio_tracks),
             style = MaterialTheme.typography.titleSmall,
@@ -615,20 +615,6 @@ private fun PlaybackOptionsSidePanel(
     onDismiss: () -> Unit,
     onEditSkips: () -> Unit,
 ) {
-    val state by controller.state.collectAsState()
-    val audio = remember(activity) { activity.getSystemService(AudioManager::class.java) }
-    fun readBrightness() = activity.window.attributes.screenBrightness.takeIf { it >= 0 }
-        ?: runCatching { Settings.System.getInt(activity.contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128) / 255f }.getOrDefault(0.5f)
-    fun readVolume(): Float = runCatching {
-        (audio?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0).toFloat() / (audio?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 1).coerceAtLeast(1)
-    }.getOrDefault(0.5f)
-    var brightness by remember(activity, visible) { mutableFloatStateOf(readBrightness().coerceIn(0f, 1f)) }
-    var volume by remember(activity, visible) { mutableFloatStateOf(readVolume().coerceIn(0f, 1f)) }
-    var volumeFailureShown by remember { mutableStateOf(false) }
-    val brightnessLabel = stringResource(R.string.player_brightness_control)
-    val volumeLabel = stringResource(R.string.player_volume_control)
-    val volumeUnavailable = stringResource(R.string.player_volume_unavailable)
-
     PlayerSidePanel(
         visible = visible,
         title = stringResource(R.string.player_playback_options),
@@ -636,6 +622,19 @@ private fun PlaybackOptionsSidePanel(
         reducedMotion = reducedMotion,
         footer = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.player_options_done)) } },
     ) {
+        val state by controller.state.collectAsState()
+        val audio = remember(activity) { activity.getSystemService(AudioManager::class.java) }
+        fun readBrightness() = activity.window.attributes.screenBrightness.takeIf { it >= 0 }
+            ?: runCatching { Settings.System.getInt(activity.contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128) / 255f }.getOrDefault(0.5f)
+        fun readVolume(): Float = runCatching {
+            (audio?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0).toFloat() / (audio?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 1).coerceAtLeast(1)
+        }.getOrDefault(0.5f)
+        var brightness by remember(activity) { mutableFloatStateOf(readBrightness().coerceIn(0f, 1f)) }
+        var volume by remember(activity) { mutableFloatStateOf(readVolume().coerceIn(0f, 1f)) }
+        var volumeFailureShown by remember { mutableStateOf(false) }
+        val brightnessLabel = stringResource(R.string.player_brightness_control)
+        val volumeLabel = stringResource(R.string.player_volume_control)
+        val volumeUnavailable = stringResource(R.string.player_volume_unavailable)
         Text(
             stringResource(R.string.player_decoder),
             style = MaterialTheme.typography.titleSmall,

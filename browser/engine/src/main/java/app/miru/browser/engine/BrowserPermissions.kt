@@ -57,8 +57,8 @@ class BrowserPermissions internal constructor(
     private val autoplay = AutoplayPermissions(
         { autoplayPreferences.getString(it, null) },
         { key, value -> autoplayPreferences.edit().apply { if (value == null) remove(key) else putString(key, value) }.apply() },
-        { autoplayPreferences.all.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }.toMap() },
         { autoplayPreferences.edit().clear().apply() },
+        { autoplayPreferences.all.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }.toMap() },
     )
     private val decisions = Mutex()
     private var policyGeneration = 0L

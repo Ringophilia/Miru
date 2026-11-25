@@ -43,8 +43,8 @@ class BrowserPrompts internal constructor(private val context: Context, private 
     private val popupPermissions = PopupPermissions(
         { popupPreferences.getBoolean(it, false) },
         { key, allowed -> popupPreferences.edit().apply { if (allowed) putBoolean(key, true) else remove(key) }.apply() },
-        { popupPreferences.all.filterValues { it == true }.keys.toSet() },
         { popupPreferences.edit().clear().apply() },
+        { popupPreferences.all.filterValues { it == true }.keys.toSet() },
     )
     private val mutablePopup = MutableStateFlow<BlockedPopup?>(null)
     val blockedPopup = mutablePopup.asStateFlow()

@@ -229,10 +229,10 @@ internal class PlayerTouch(
                             controls()
                         } else {
                             val now = event.eventTime
+                            val tapStart = if (event.downTime > 0L) minOf(event.downTime, now) else now
                             val side = if (event.x < width * 0.38f) -1 else if (event.x > width * 0.62f) 1 else 0
-                            val continuous = side != 0 && side == streak && now - streakAt <= PlayerGestures.SEEK_STREAK_MS
-                            val double = now - lastTap < PlayerGestures.DOUBLE_TAP_MS &&
-                                hypot(event.x - lastX, event.y - lastY) < PlayerGestures.DOUBLE_TAP_DISTANCE_DP * density
+                            val continuous = side != 0 && side == streak && PlayerGestures.isSeekStreak(streakAt, tapStart)
+                            val double = PlayerGestures.isDoubleTap(lastTap, tapStart, hypot(event.x - lastX, event.y - lastY), density)
                             if (continuous || double) {
                                 handler.removeCallbacks(single)
                                 lastTap = 0

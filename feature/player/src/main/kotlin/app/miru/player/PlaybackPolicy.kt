@@ -42,4 +42,12 @@ object PlayerGestures {
             else holdSpeedSteps.indexOfFirst { it >= initial }.let { if (it < 0) holdSpeedSteps.size else it }
         return holdSpeedSteps[(start + steps).coerceIn(holdSpeedSteps.indices)]
     }
+
+    internal fun isDoubleTap(previousUpMs: Long, nextDownMs: Long, distancePx: Float, density: Float): Boolean =
+        previousUpMs > 0L &&
+            nextDownMs - previousUpMs in 0L until DOUBLE_TAP_MS &&
+            distancePx < DOUBLE_TAP_DISTANCE_DP * density
+
+    internal fun isSeekStreak(previousUpMs: Long, nextDownMs: Long): Boolean =
+        previousUpMs > 0L && nextDownMs - previousUpMs in 0L..SEEK_STREAK_MS
 }

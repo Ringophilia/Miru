@@ -24,6 +24,16 @@ class PlaybackPolicyTest {
         assertEquals(2.5f, PlayerGestures.holdSpeedAt(3f, -40f))
     }
 
+    @Test fun doubleTapAndSeekStreakMeasureGapFromPreviousUpToNextDown() {
+        assertTrue(PlayerGestures.isDoubleTap(1_000L, 1_180L, 10f, 2f))
+        assertFalse(PlayerGestures.isDoubleTap(1_000L, 1_280L, 10f, 2f))
+        assertFalse(PlayerGestures.isDoubleTap(1_000L, 1_100L, 160f, 2f))
+        assertFalse(PlayerGestures.isDoubleTap(0L, 100L, 0f, 2f))
+        assertTrue(PlayerGestures.isSeekStreak(1_000L, 1_750L))
+        assertFalse(PlayerGestures.isSeekStreak(1_000L, 1_751L))
+        assertFalse(PlayerGestures.isSeekStreak(0L, 100L))
+    }
+
     @Test fun playbackOptionsBoundInvalidValuesAndDataSaverKeepsValidBuffers() {
         val invalid = PlayerPreferences(cacheMb = -1, bufferSeconds = -1, doubleTapSeconds = 999, holdSpeed = Float.NaN, dragRangeSeconds = -1).bounded()
         assertEquals(128, invalid.cacheMb)

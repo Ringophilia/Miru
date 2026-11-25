@@ -14,8 +14,10 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
@@ -34,9 +36,12 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import mozilla.components.concept.engine.EngineView
 import org.junit.After
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -46,8 +51,21 @@ import org.junit.runner.RunWith
 class PagePromptIntegrationTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
-    private val browser get() = (compose.activity.application as MiruApplication).container.browser
+    private val container get() = (compose.activity.application as MiruApplication).container
+    private val browser get() = container.browser
     private val tabs = mutableListOf<String>()
+
+    @Before fun dismissIntroIfPresent() {
+        val skip = compose.activity.getString(R.string.intro_skip)
+        compose.waitUntil(15_000) {
+            runBlocking { container.settings.settings.first().introCompleted } ||
+                compose.onAllNodesWithText(skip).fetchSemanticsNodes().isNotEmpty()
+        }
+        if (compose.onAllNodesWithText(skip).fetchSemanticsNodes().isNotEmpty()) {
+            compose.onNodeWithText(skip).performClick()
+        }
+        compose.waitUntil(30_000) { browser.state.value.ready }
+    }
 
     @After fun closeFixtureTabs() {
         compose.runOnIdle {
@@ -132,7 +150,7 @@ class PagePromptIntegrationTest {
             touchWebButton()
             val first = awaitPrompt(origin, owner, BrowserPromptKind.ALERT)
             confirm()
-            val second = awaitPrompt(origin, owner, BrowserPromptKind.ALERT)
+            val second = awaitPrompt(origin, owner, BrowserPromptKind.ALERT, afterToken = first.token)
             assertNotEquals("New document must allow its second native request too", first.token, second.token)
             confirm()
             title(owner, "Prompt repeated alerts completed")
@@ -230,6 +248,7 @@ class PagePromptIntegrationTest {
             awaitPrompt(origin, owner, BrowserPromptKind.BEFORE_UNLOAD)
             assertEquals("A pending navigation must not replace the committed address", originalUrl, url(owner))
             cancel() // Stay.
+            awaitNoPrompt()
             title(owner, "Prompt armed 1")
             assertEquals(originalUrl, url(owner))
             assertEquals(1, origin.requests("/before-unload"))
@@ -257,6 +276,7 @@ class PagePromptIntegrationTest {
             awaitPrompt(origin, owner, BrowserPromptKind.REPOST)
             assertEquals(1, origin.postCount.get())
             cancel()
+            awaitNoPrompt()
             title(owner, "Prompt posted 1")
             assertEquals("Cancel must not resend the POST", 1, origin.postCount.get())
 
@@ -315,8 +335,17 @@ class PagePromptIntegrationTest {
         }
     }
 
-    private fun awaitPrompt(origin: PagePromptOrigin, tabId: String, kind: BrowserPromptKind): BrowserPromptState {
-        compose.waitUntil(20_000) { browser.prompts.prompt.value?.let { it.tabId == tabId && it.kind == kind } == true }
+    private fun awaitPrompt(
+        origin: PagePromptOrigin,
+        tabId: String,
+        kind: BrowserPromptKind,
+        afterToken: Long? = null,
+    ): BrowserPromptState {
+        compose.waitUntil(20_000) {
+            browser.prompts.prompt.value?.let {
+                it.tabId == tabId && it.kind == kind && (afterToken == null || it.token != afterToken)
+            } == true
+        }
         return checkNotNull(browser.prompts.prompt.value).also {
             assertEquals(origin.url, it.topOrigin)
             if(kind == BrowserPromptKind.AUTHENTICATION) assertEquals(origin.url, it.origin)

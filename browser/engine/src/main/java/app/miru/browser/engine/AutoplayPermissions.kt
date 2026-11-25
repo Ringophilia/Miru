@@ -12,8 +12,8 @@ enum class SiteAutoplayChoice {
 internal class AutoplayPermissions(
     private val read: (String) -> String?,
     private val write: (String, String?) -> Unit,
-    private val readAll: () -> Map<String, String> = { emptyMap() },
     private val clearSaved: () -> Unit,
+    private val readAll: () -> Map<String, String> = { emptyMap() },
 ) {
     private val privateChoices = mutableMapOf<String, SiteAutoplayChoice>()
     private fun key(url: String, contextId: String?) = siteOrigin(url)?.let {

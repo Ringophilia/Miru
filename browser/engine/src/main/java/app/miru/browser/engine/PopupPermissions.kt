@@ -6,8 +6,8 @@ package app.miru.browser.engine
 internal class PopupPermissions(
     private val read: (String) -> Boolean,
     private val write: (String, Boolean) -> Unit,
-    private val readAllAllowed: () -> Set<String> = { emptySet() },
     private val clearSaved: () -> Unit,
+    private val readAllAllowed: () -> Set<String> = { emptySet() },
 ) {
     private val privateAllowed = mutableSetOf<String>()
     private fun key(url: String, contextId: String?): String? = siteOrigin(url)?.let { "$it|${contextId.orEmpty()}" }
