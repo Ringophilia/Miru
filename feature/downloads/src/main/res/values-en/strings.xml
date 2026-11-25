@@ -34,6 +34,11 @@
     <string name="download_clear_completed">Clear completed records</string>
     <string name="download_settings">Download settings</string>
     <string name="download_search">Search downloads</string>
+    <string name="download_clear_search">Clear search</string>
+    <string name="download_today">Today</string>
+    <string name="download_yesterday">Yesterday</string>
+    <string name="download_this_week">This week</string>
+    <string name="download_earlier">Earlier</string>
     <string name="download_empty">No downloads yet</string>
     <string name="download_no_results">No matching downloads</string>
     <string name="download_open">Open</string>

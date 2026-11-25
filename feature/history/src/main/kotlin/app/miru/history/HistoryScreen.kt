@@ -26,11 +26,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import app.miru.data.BrowsingLibrary
 import app.miru.data.HistoryEntry
+import app.miru.design.MiruMotion
 import app.miru.design.MiruSearchField
 import app.miru.design.SiteIcon
+import app.miru.design.animationsReduced
 import app.miru.design.showUndo
 import app.miru.design.siteHost
 import java.time.Instant
@@ -58,6 +62,9 @@ fun HistoryScreen(
     LaunchedEffect(query) { library.history.observe(query).collect { entries = it } }
     var clearing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val reducedMotion = animationsReduced()
+    val fadeSpec = tween<Float>(if (reducedMotion) MiruMotion.short2 else MiruMotion.medium1, easing = MiruMotion.standard)
+    val placeSpec = if (reducedMotion) null else tween<IntOffset>(MiruMotion.medium1, easing = MiruMotion.standard)
     val deletedMessage = stringResource(R.string.history_deleted)
     val clearedMessage = stringResource(R.string.history_cleared)
     val undo = stringResource(R.string.history_undo)
@@ -92,7 +99,10 @@ fun HistoryScreen(
                     groupByDay(list).forEach { (day, items) ->
                         item(key = "day-$day") { DayHeader(day) }
                         items(items, key = { it.url }) { entry ->
-                            HistoryRow(entry, { onOpen(entry.url) }, onOpenInNewTab, { delete(entry) }, Modifier.animateItem())
+                            HistoryRow(
+                                entry, { onOpen(entry.url) }, onOpenInNewTab, { delete(entry) },
+                                Modifier.animateItem(fadeInSpec = fadeSpec, placementSpec = placeSpec, fadeOutSpec = fadeSpec),
+                            )
                         }
                     }
                 }

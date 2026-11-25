@@ -120,10 +120,18 @@ class TabTrayMotionIntegrationTest {
         val setting = Settings.Global.ANIMATOR_DURATION_SCALE
         val context = compose.activity.applicationContext
         val prior = Settings.Global.getString(context.contentResolver, setting)?.toFloatOrNull()
+        val oldPrompted = runBlocking { container.settings.settings.first().privateNotificationPrompted }
         try {
+            runBlocking { container.settings.setPrivateNotificationPrompted(true) }
             shell("settings put global $setting 0")
+            compose.waitUntil(5_000) { !android.animation.ValueAnimator.areAnimatorsEnabled() }
+            compose.waitForIdle()
             val id = compose.runOnIdle { browser.newTab(isPrivate = true) }
             compose.waitUntil(8_000) { browser.state.value.selectedTabId == id }
+            compose.waitUntilAtLeastOneExists(hasTestTag("new-tab-search"), 8_000)
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(300)
+            compose.waitForIdle()
             compose.mainClock.autoAdvance = false
             trayButton().performClick()
             compose.mainClock.advanceTimeBy(75)
@@ -153,6 +161,7 @@ class TabTrayMotionIntegrationTest {
             compose.onNodeWithTag("new-tab-search").assertIsDisplayed()
         } finally {
             compose.mainClock.autoAdvance = true
+            runBlocking { container.settings.setPrivateNotificationPrompted(oldPrompted) }
             shell(if (prior == null) "settings delete global $setting" else "settings put global $setting $prior")
         }
     }

@@ -35,7 +35,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import android.os.Build
+import android.view.HapticFeedbackConstants
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -43,6 +46,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.miru.design.AnchoredMenu
+import app.miru.design.MiruFilterChip
 import app.miru.design.MiruMotion
 import app.miru.design.SiteIcon
 import app.miru.design.withReducedMotionFade
@@ -89,17 +93,19 @@ fun TabsTray(
                     },
                 ) { Icon(Icons.Outlined.Add, stringResource(R.string.tabs_new)) }
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Center) {
-                    FilterChip(
+                    MiruFilterChip(
                         selected = !incognito,
                         onClick = { onIncognitoChanged(false) },
                         label = { Text(stringResource(R.string.tabs_regular)) },
+                        reducedMotion = reducedMotion,
                     )
                     Spacer(Modifier.width(8.dp))
-                    FilterChip(
+                    MiruFilterChip(
                         selected = incognito,
                         onClick = { onIncognitoChanged(true) },
                         label = { Text(stringResource(R.string.tabs_incognito)) },
-                        leadingIcon = { Icon(Icons.Outlined.VisibilityOff, null, Modifier.size(18.dp)) },
+                        reducedMotion = reducedMotion,
+                        unselectedLeadingIcon = { Icon(Icons.Outlined.VisibilityOff, null, Modifier.size(18.dp)) },
                     )
                 }
                 Box(Modifier.testTag("tabs-overflow-anchor")) {
@@ -177,11 +183,13 @@ private fun TabCard(tab: TabItem, selected: Boolean, onSelect: () -> Unit, onClo
     var settle by remember { mutableStateOf<Job?>(null) }
     var closed by remember { mutableStateOf(false) }
     val closeTab by rememberUpdatedState(onClose)
+    val view = LocalView.current
     val velocityThreshold = with(LocalDensity.current) { 1000.dp.toPx() }
     val newTab = stringResource(R.string.tabs_new)
     val closeLabel = stringResource(R.string.tabs_close_named, tab.title.ifBlank { newTab })
     val shape = RoundedCornerShape(12.dp)
     val latestBounds by rememberUpdatedState(onBounds)
+    var crossedThreshold by remember(tab.id) { mutableStateOf(false) }
     DisposableEffect(tab.id) { onDispose { latestBounds(null) } }
 
     fun closeOnce() {
@@ -192,6 +200,7 @@ private fun TabCard(tab: TabItem, selected: Boolean, onSelect: () -> Unit, onClo
     }
 
     fun finishSwipe(velocity: Float, cancelled: Boolean) {
+        crossedThreshold = false
         if (closed) return
         val direction = if (cancelled) 0 else tabDismissDirection(offset, cardWidth.toFloat(), velocity, velocityThreshold)
         settle?.cancel()
@@ -214,14 +223,25 @@ private fun TabCard(tab: TabItem, selected: Boolean, onSelect: () -> Unit, onClo
             .onSizeChanged { cardWidth = it.width }
             .pointerInput(tab.id, cardWidth, reducedMotion) {
                 val tracker = VelocityTracker()
+                val hapticType = if (Build.VERSION.SDK_INT >= 34) {
+                    HapticFeedbackConstants.GESTURE_THRESHOLD_ACTIVATE
+                } else {
+                    HapticFeedbackConstants.CONTEXT_CLICK
+                }
                 detectHorizontalDragGestures(
                     onDragStart = {
                         tracker.resetTracking()
                         settle?.cancel()
+                        crossedThreshold = false
                     },
                     onHorizontalDrag = { change, drag ->
                         tracker.addPosition(change.uptimeMillis, change.position)
-                        if (!closed) offset = (offset + drag).coerceIn(-cardWidth.toFloat(), cardWidth.toFloat())
+                        if (!closed) {
+                            offset = (offset + drag).coerceIn(-cardWidth.toFloat(), cardWidth.toFloat())
+                            val pastThreshold = abs(offset) > cardWidth * 0.4f
+                            if (pastThreshold && !crossedThreshold) view.performHapticFeedback(hapticType)
+                            crossedThreshold = pastThreshold
+                        }
                     },
                     onDragCancel = { finishSwipe(0f, cancelled = true) },
                     onDragEnd = { finishSwipe(tracker.calculateVelocity().x, cancelled = false) },

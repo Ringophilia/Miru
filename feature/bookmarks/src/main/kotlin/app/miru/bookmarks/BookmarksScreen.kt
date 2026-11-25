@@ -27,6 +27,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import app.miru.common.AddressResolver
 import app.miru.common.AddressTarget
@@ -34,8 +36,10 @@ import app.miru.data.Bookmark
 import app.miru.data.BookmarkFolder
 import app.miru.data.BrowsingLibrary
 import app.miru.data.MOBILE_BOOKMARKS_FOLDER_ID
+import app.miru.design.MiruMotion
 import app.miru.design.MiruSearchField
 import app.miru.design.SiteIcon
+import app.miru.design.animationsReduced
 import app.miru.design.showUndo
 import app.miru.design.siteHost
 import kotlinx.coroutines.launch
@@ -69,6 +73,9 @@ fun BookmarksScreen(
     var moving by remember { mutableStateOf<BookmarkFolder?>(null) }
     var removing by remember { mutableStateOf<BookmarkFolder?>(null) }
     val scope = rememberCoroutineScope()
+    val reducedMotion = animationsReduced()
+    val fadeSpec = tween<Float>(if (reducedMotion) MiruMotion.short2 else MiruMotion.medium1, easing = MiruMotion.standard)
+    val placeSpec = if (reducedMotion) null else tween<IntOffset>(MiruMotion.medium1, easing = MiruMotion.standard)
     val focus = LocalFocusManager.current
     val deletedMessage = stringResource(R.string.bookmarks_deleted)
     val undo = stringResource(R.string.bookmarks_undo)
@@ -137,7 +144,7 @@ fun BookmarksScreen(
                             onRename = { renaming = folder; namingFolder = true },
                             onMove = { moving = folder },
                             onRemove = { removing = folder },
-                            modifier = Modifier.animateItem(),
+                            modifier = Modifier.animateItem(fadeInSpec = fadeSpec, placementSpec = placeSpec, fadeOutSpec = fadeSpec),
                         )
                     }
                     items(list, key = { "bookmark-${it.id}" }) { bookmark ->
@@ -153,7 +160,7 @@ fun BookmarksScreen(
                                     if (snackbar.showUndo(deletedMessage, undo)) library.bookmarks.restore(bookmark)
                                 }
                             },
-                            modifier = Modifier.animateItem(),
+                            modifier = Modifier.animateItem(fadeInSpec = fadeSpec, placementSpec = placeSpec, fadeOutSpec = fadeSpec),
                         )
                     }
                 }

@@ -4,6 +4,13 @@ package app.miru.downloads
 
 import java.net.URI
 import java.net.URLDecoder
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.temporal.WeekFields
+import java.util.Locale
+
+internal enum class DownloadDateGroup { TODAY, YESTERDAY, THIS_WEEK, EARLIER }
 
 internal data class ByteRange(val start: Long, val end: Long)
 internal object DownloadLogic {
@@ -45,6 +52,23 @@ internal object DownloadLogic {
             ext in setOf("zip","rar","7z","tar","gz","bz2","xz") -> DownloadCategory.ARCHIVE
             ext in setOf("apk","xapk","apks") -> DownloadCategory.PACKAGE
             else -> DownloadCategory.OTHER
+        }
+    }
+    fun dateGroup(
+        createdAt: Long,
+        zone: ZoneId = ZoneId.systemDefault(),
+        today: LocalDate = LocalDate.now(zone),
+    ): DownloadDateGroup {
+        val date = Instant.ofEpochMilli(createdAt).atZone(zone).toLocalDate()
+        return when {
+            !date.isBefore(today) -> DownloadDateGroup.TODAY
+            date == today.minusDays(1) -> DownloadDateGroup.YESTERDAY
+            else -> {
+                val weekFields = WeekFields.of(Locale.getDefault())
+                val sameWeek = date.get(weekFields.weekOfWeekBasedYear()) == today.get(weekFields.weekOfWeekBasedYear()) &&
+                    date.get(weekFields.weekBasedYear()) == today.get(weekFields.weekBasedYear())
+                if (sameWeek) DownloadDateGroup.THIS_WEEK else DownloadDateGroup.EARLIER
+            }
         }
     }
     private fun decode(value: String) = runCatching { URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)

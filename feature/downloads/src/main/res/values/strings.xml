@@ -34,6 +34,11 @@
     <string name="download_clear_completed">清除已完成记录</string>
     <string name="download_settings">下载设置</string>
     <string name="download_search">搜索下载内容</string>
+    <string name="download_clear_search">清空搜索</string>
+    <string name="download_today">今天</string>
+    <string name="download_yesterday">昨天</string>
+    <string name="download_this_week">本周</string>
+    <string name="download_earlier">更早</string>
     <string name="download_empty">还没有下载内容</string>
     <string name="download_no_results">没有匹配的下载内容</string>
     <string name="download_open">打开</string>

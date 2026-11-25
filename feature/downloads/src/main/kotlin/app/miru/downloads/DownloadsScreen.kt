@@ -32,13 +32,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.miru.design.MiruBottomSheet
+import app.miru.design.MiruFilterChip
+import app.miru.design.MiruSearchField
 import app.miru.design.MiruSnackbarHost
 import app.miru.design.MiruMotion
 import app.miru.design.animationsReduced
 import app.miru.design.withReducedMotionFade
 import app.miru.offline.OfflineCoordinator
-import java.text.DateFormat
-import java.util.Date
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
@@ -170,18 +170,34 @@ fun DownloadsScreen(
         )
     }, snackbarHost = { if(snackbarHostState == null) MiruSnackbarHost(snackbar, Modifier.padding(8.dp)) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp), singleLine = true,
-                placeholder = { Text(stringResource(R.string.download_search)) }, leadingIcon = { Icon(Icons.Outlined.Search, null) })
+            MiruSearchField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = stringResource(R.string.download_search),
+                clearLabel = stringResource(R.string.download_clear_search),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DownloadCategory.entries.forEach { value -> FilterChip(selected = category == value, onClick = { category = value }, label = { Text(categoryLabel(value)) }) }
+                DownloadCategory.entries.forEach { value ->
+                    MiruFilterChip(
+                        selected = category == value,
+                        onClick = { category = value },
+                        label = { Text(categoryLabel(value)) },
+                        reducedMotion = reducedMotion,
+                    )
+                }
             }
             DownloadStorageBar(coordinator, offline)
             if(filtered.isEmpty()) Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Outlined.Download, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(16.dp)); Text(stringResource(if(query.isEmpty() && category == DownloadCategory.ALL) R.string.download_empty else R.string.download_no_results))
             } else LazyColumn(Modifier.weight(1f)) {
-                filtered.groupBy { DateFormat.getDateInstance().format(Date(it.item.createdAt)) }.forEach { (date, grouped) ->
-                    item(key = "date-$date") { Text(date, Modifier.padding(horizontal = 16.dp, vertical = 12.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }
+                val fadeSpec = tween<Float>(if (reducedMotion) MiruMotion.short2 else MiruMotion.medium1, easing = MiruMotion.standard)
+                val placeSpec = if (reducedMotion) null else tween<androidx.compose.ui.unit.IntOffset>(MiruMotion.medium1, easing = MiruMotion.standard)
+                filtered.groupBy { DownloadLogic.dateGroup(it.item.createdAt) }.forEach { (group, grouped) ->
+                    item(key = "date-${group.name}") {
+                        Text(dateGroupLabel(group), Modifier.padding(horizontal = 16.dp, vertical = 12.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    }
                     items(grouped, key = { it.key }) { row ->
                         val item = row.item
                         val hasProgress = item.status in setOf("running", "paused", "waiting_network", "queued")
@@ -199,7 +215,11 @@ fun DownloadsScreen(
                             if(value == SwipeToDismissBoxValue.EndToStart) requestDelete(listOf(row))
                             false
                         })
-                        SwipeToDismissBox(state = swipe, enableDismissFromStartToEnd = false, backgroundContent = {
+                        SwipeToDismissBox(
+                            state = swipe,
+                            enableDismissFromStartToEnd = false,
+                            modifier = Modifier.animateItem(fadeInSpec = fadeSpec, placementSpec = placeSpec, fadeOutSpec = fadeSpec),
+                            backgroundContent = {
                             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.errorContainer).padding(24.dp), contentAlignment = Alignment.CenterEnd) {
                                 Icon(Icons.Outlined.Delete, stringResource(R.string.download_delete), tint = MaterialTheme.colorScheme.onErrorContainer)
                             }
@@ -345,3 +365,10 @@ fun DownloadSettingsScreen(coordinator:DownloadCoordinator,onBack:()->Unit) {
 }
 
 @Composable private fun categoryLabel(category:DownloadCategory):String=stringResource(when(category){DownloadCategory.ALL->R.string.download_all;DownloadCategory.VIDEO->R.string.download_video;DownloadCategory.AUDIO->R.string.download_audio;DownloadCategory.IMAGE->R.string.download_image;DownloadCategory.DOCUMENT->R.string.download_document;DownloadCategory.ARCHIVE->R.string.download_archive;DownloadCategory.PACKAGE->R.string.download_package;DownloadCategory.OTHER->R.string.download_other})
+
+@Composable private fun dateGroupLabel(group: DownloadDateGroup): String = stringResource(when (group) {
+    DownloadDateGroup.TODAY -> R.string.download_today
+    DownloadDateGroup.YESTERDAY -> R.string.download_yesterday
+    DownloadDateGroup.THIS_WEEK -> R.string.download_this_week
+    DownloadDateGroup.EARLIER -> R.string.download_earlier
+})

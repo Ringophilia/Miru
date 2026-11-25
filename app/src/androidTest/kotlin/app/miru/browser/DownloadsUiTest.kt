@@ -10,6 +10,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -24,7 +25,10 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,9 +38,20 @@ import org.junit.runner.RunWith
 class DownloadsUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private val context get() = compose.activity.applicationContext
-    private val browser get() = (compose.activity.application as MiruApplication).container.browser
+    private val container get() = (compose.activity.application as MiruApplication).container
+    private val browser get() = container.browser
     private val coordinator get() = DownloadCoordinator.get(context)
     private fun label(id: Int): String = context.getString(id)
+
+    @Before fun skipIntroIfShown() {
+        val skip = label(R.string.intro_skip)
+        compose.waitUntil(15_000) {
+            runBlocking { container.settings.settings.first().introCompleted } ||
+                compose.onAllNodesWithText(skip).fetchSemanticsNodes().isNotEmpty()
+        }
+        if (compose.onAllNodesWithText(skip).fetchSemanticsNodes().isNotEmpty()) compose.onNodeWithText(skip).performClick()
+        compose.waitUntil(30_000) { browser.state.value.ready }
+    }
 
     @Test fun completedDownloadCanBeSelectedDeletedAndUndone() {
         DownloadUiOrigin().use { origin ->
