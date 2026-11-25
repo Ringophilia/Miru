@@ -118,6 +118,7 @@ import app.miru.design.MiruSnackbarHost
 import app.miru.design.MiruTheme
 import app.miru.design.animationsReduced
 import app.miru.design.withReducedMotionFade
+import app.miru.design.rememberBrowserChromeColors
 import app.miru.design.showMessage
 import app.miru.design.showUndo
 import app.miru.design.showWithAction
@@ -674,6 +675,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     }
 
     MiruTheme(themeMode = if(webFullScreen) app.miru.design.ThemeMode.DARK else app.miru.design.ThemeMode.valueOf(settings.theme.name), dynamicColor = settings.dynamicColor, incognito = isPrivate, accent = settings.accent) {
+        val chromeColors = rememberBrowserChromeColors(isPrivate, reducedMotion)
         val bottomToolbar = settings.toolbarPosition == ToolbarPosition.BOTTOM
         // Like Chrome, a bottom toolbar steps aside while the keyboard edits a web form; find-in-page keeps it.
         val imeVisible = WindowInsets.isImeVisible
@@ -752,7 +754,8 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         tabSwipeEnabled = route == Route.BROWSER && !webFullScreen && !editing && !finding && !imeVisible &&
                             !tabsVisible && !menuVisible && !siteInfo && !adblockPanel && !mediaPanel &&
                             contextMenu == null && pagePrompt == null && sitePermissionPrompt == null && externalLink == null,
-                        reducedMotion = reducedMotion, toolbar = toolbar,
+                        reducedMotion = reducedMotion,
+                        toolbar = { MaterialTheme(colorScheme = chromeColors.value, content = toolbar) },
                         foreground = {
                             if (editing) editorBounds?.let { target ->
                                 AddressFocusLayout(addressSource, target, reducedMotion, focusProgress) {
@@ -766,11 +769,13 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                         },
                     ) {
                         when {
-                            tab == null || tab.url == NEW_TAB_URL -> NewTabPage(
-                                incognito = tab?.isPrivate == true, onSearch = { editAddress(fromHome = true) },
-                                onOpenUrl = { navigate(it) }, snackbar = snackbars, editing = editing,
-                                reducedMotion = reducedMotion, motionProgress = focusProgress, onSearchBounds = { homeSearchBounds = it },
-                            )
+                            tab == null || tab.url == NEW_TAB_URL -> MaterialTheme(colorScheme = chromeColors.value) {
+                                NewTabPage(
+                                    incognito = tab?.isPrivate == true, onSearch = { editAddress(fromHome = true) },
+                                    onOpenUrl = { navigate(it) }, snackbar = snackbars, editing = editing,
+                                    reducedMotion = reducedMotion, motionProgress = focusProgress, onSearchBounds = { homeSearchBounds = it },
+                                )
+                            }
                             snapshot.error != null -> ErrorContent(stringResource(R.string.engine_error), { controller.initialize() })
                             !snapshot.ready -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                             tab.crashed -> ErrorContent(stringResource(R.string.page_crashed), controller::reload)

@@ -44,7 +44,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import app.miru.design.MiruTheme
 import app.miru.design.MiruMotion
 import app.miru.design.withReducedMotionFade
 
@@ -100,7 +99,7 @@ fun MiruToolbar(
                     .testTag("address-rest-capsule")
                     .graphicsLayer { alpha = if (!state.editing) 1f else if (reducedMotion) 1f - focusProgress() else 0f },
                 shape = RoundedCornerShape(50),
-                color = if (state.incognito) MiruTheme.colors.incognitoContainer else MaterialTheme.colorScheme.surfaceContainer,
+                color = MaterialTheme.colorScheme.surfaceContainer,
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (state.url != "about:newtab") {
