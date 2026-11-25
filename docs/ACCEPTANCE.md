@@ -405,14 +405,17 @@ E3 常规设备套件明确排除 `AdblockIntegrationTest`（首装偶发 240 �
 
 ## 下一阶段顺序与外部条件
 
-以下服从AGENTS.md维护者2026-11-03的当前阶段方向。P11与P2冻结，待验收清单不代表现在允许扩展。
+以下服从 `AGENTS.md` 维护者 **2026-11-25** 的新方向（详见 [CHROMIUM-MIGRATION-PLAN.md](CHROMIUM-MIGRATION-PLAN.md)）。**既有 GeckoView 主线冻结于 `0.5.24`**，P11 磁盘缓存区段与 P2 项继续冻结。
 
-1. 第一组 E40 常规 160/163 的失败保留。第二组 B13 专项、uBlock 首装调查和常规 171/194 见 E41。内置桥接启动重试随后修复，在 E42 的常规复跑里，登录态下载、图片复制和视频识别相关用例通过。
-2. 第三组 0.5.23 检查点见 E42。第四组 0.5.24/code32 的 §7 动效、播放器交互重做、§5.11 设置补全与 §15.2 无障碍审计已记录于 E43；真机接入时优先做冒烟并修复实机问题，无真机时可继续补齐常规全绿稳定性、正式签名、第三方分发许可与 M4 剩余门。P11 与 P2 继续冻结。
-3. 继续保留真机/公网/网络切换/手机重启、性能、隐私取证、正式签名/分发许可与阶段录屏门；它们不因第一组功能实现而通过，也不以局部证据提升整个阶段。
-4. Android M4有逐门证据后再进入M5。iOS不是当前Windows能完成编译验收的平台，但仍在本规范范围中；可在可用Mac工具链到位前准备可共享JS、token、纯逻辑和原生源码，不能把未编译 / 未运行写成验收通过。
+> **历史证据边界（硬约束）**：上文表格与证据索引中的 `E0`–`E43` 全部属于已冻结的 **v1.0 GeckoView `0.5.24` 基线**。这些历史记录完整保留，但**绝不计作未来 Chromium 内核的验收通过**。凡依赖网页引擎、广告拦截、视频嗅探、下载 Cookie 桥接、站点权限/提示与单 ABI 体积的验收项，在切换至 Chromium 后必须按新内核重新取得实测证据并新增独立证据编号。
 
-本次环境只确认Windows、Android SDK / JDK与可启动的API35模拟器能力；审计时ADB没有已连接物理手机，未发现`xcodebuild` / `swift`命令，没有iOS工程和正式签名配置。真实Android设备、90/120Hz / 指定SoC超分性能、登录验证所需账户、macOS / Apple SDK / iOS设备、维护者签名与分发许可人工确认是外部验收条件。它们不妨碍继续实现和验证其他可执行工作，也不能凭缺少外部条件就将完整目标标记完成。
+1. **Phase C0（Windows 本地先行）**：抽出纯 Kotlin `:browser:engine-api`，隔离 `:browser:engine-gecko` 冻结基线，解除 `:browser:toolbar` 与 `:feature:*` 对 Gecko/AC/uBO/`miru-bridge` 的直接依赖，并完成 `adblock-rust` 规则引擎原型 JVM 验证。期间保持 `0.5.24` 参考基线可编译、不退化。
+2. **Phase C1（Linux 构建机 / CI 门）**：搭建去 Google 化 Chromium（Cromite 思路）可复现构建流水线，产出版本化 SHA-256 预构建 `.aar`（ARM64 必选、x86_64 可选），落地 `:browser:engine-chromium` 最小可用浏览外壳并重新验证冷启动、多标签、无痕隔离、滚动工具栏与零 Google 遥测。
+3. **Phase C2（核心能力替换）**：在 Chromium C++ 网络层接入原生 `adblock-rust`（零冷启动漏拦、原生盾牌/规则/元素拾取）与 C++ 网络层视频嗅探 + 轻量页面脚本，接入现有 `:feature:media-detect` 与 `:feature:player` 并重新验证 `A1`–`A6`、`V1`–`V7`。
+4. **Phase C3–C4（对等收口与正式发布）**：补齐下载/Cookie 桥、B13 权限/提示、安全设置与数据清理，归档 GeckoView 后端；随后完成 ARM64 真机日常/高刷/超分验收、单 ABI `< 150 MB` 体积门、上游安全 rebase 流程、第三方分发许可复核与正式签名。
+5. **M5 iOS**：待 Android Chromium 路线完成 Phase C4 逐门证据后再启动。iOS 不是当前 Windows 能完成编译验收的平台，但仍在规范范围中；不得把未编译/未运行写成验收通过。
+
+本次环境只确认 Windows、Android SDK / JDK 与可启动的 API 35 模拟器能力；审计时 ADB 没有已连接物理手机，未发现 `xcodebuild` / `swift` 命令，没有 iOS 工程和正式签名配置。**新增外部条件**：Phase C1 起需要可用的 **Linux x86_64 构建机或 CI 环境**（Ubuntu 22.04/24.04，≥ 64 GB 内存、推荐 128 GB，≥ 250 GB NVMe 固态硬盘）用于编译 Chromium 内核并产出预构建 `.aar`。连同真实 Android ARM64 设备、90/120 Hz 与指定 SoC 超分性能、登录验证账户、macOS / Apple SDK / iOS 设备、维护者正式签名与分发许可人工确认，均属于外部验收条件：不妨碍在 Windows 本地推进 Phase C0 引擎解耦与纯逻辑验证，也不能凭缺少外部条件就将完整目标标记完成。
 
 ## 更新规则
 

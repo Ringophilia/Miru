@@ -1,5 +1,7 @@
 # 实现进度
 
+> **2026-11-25 架构方向更新**：v1.0 GeckoView 主线已于第四组检查点 **`0.5.24`** 冻结（作为过渡期可运行参考基线，收口记录见 [STATUS.md](STATUS.md) 与 [ACCEPTANCE.md](ACCEPTANCE.md) `E43`）。维护者已决定将后续路线切换为**去 Google 化自编 Chromium + 原生 `adblock-rust` + C++ 网络层视频嗅探**，完整复用上层 UI、下载、播放器、离线与超分模块；当前执行优先级以 [AGENTS.md](../AGENTS.md) 与 [CHROMIUM-MIGRATION-PLAN.md](CHROMIUM-MIGRATION-PLAN.md) 为准。以下保留 v1.0 GeckoView 阶段的历史开发记录，不做删改。
+
 开始日期：2026-10-22。当前按AGENTS.md维护者方向推进：P11未完成工作保存于wip/p11-cache-ranges，P11/P2冻结。第一组地址栏建议/内联域名、网站图标、六主题色、无痕通知、首次引导已实现，0.5.21/code29已执行统一检查点，但整套回归未通过。同源659项冻结无漂移，JVM263通过/1因Windows符号链接权限跳过；Debug/Release Lint均0错误/29警告。ARM64开发包108,468,497字节，内容/签名/对齐/ABI/Gecko资源通过；163项常规回归160通过/3失败（两项超分超时、历史图标显示超时），整套不通过；同包无痕通知权限专项1/1、图标隔离2/2通过，均不抵消整套失败。本版ARM64或完整R8运行、正式签名/真机/完整M0–M5验收未完。证据见[第一组检查点](DAILY-BROWSER-CHECKPOINT.md)和[验收矩阵](ACCEPTANCE.md)。旧播放器边界/AV区段证据保留在E35–E39，不再扩展。
 
 ## 已实现的 M0 代码

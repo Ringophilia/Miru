@@ -1,7 +1,8 @@
-# Miru 浏览器 · 产品与实现规范 v1.0
+# Miru 浏览器 · 产品与实现规范 v2.0（Chromium 路线）
 
 > 读者：负责实现的工程师 / AI。本文是唯一需求来源，未写明的细节按「Chrome for Android 的做法」处理。
-> 平台：**Android 先行**，iOS 在 Android 达到 M4 后启动（见第 14 节）。
+> 路线演进：**2026-11-25 起由维护者确认切换为 v2.0 去 Google 化自编 Chromium + 原生 `adblock-rust` + C++ 网络层视频嗅探路线**，完整复用上层 Compose UI、下载、播放器、离线与超分模块（分阶段迁移方案见 `docs/CHROMIUM-MIGRATION-PLAN.md`）。原 v1.0 GeckoView + uBlock Origin 主线已于 `0.5.24` 冻结，留作 Phase C0 过渡期参考基线。
+> 平台：**Android 先行**，iOS 在 Android 完成 Phase C4 后启动（见第 14 节）。
 > 名称：Miru（見る，"看"）。包名 `app.miru.browser`。
 > 参考项目：`G:\Projects\Ringo-Cove`（Flutter 影视客户端），其播放器手势、超分辨率、清晰度探测可直接移植，见第 13 节。
 
@@ -56,36 +57,36 @@ P2  有余力再做
 
 | 层 | 选择 | 许可 | 理由 |
 |---|---|---|---|
-| 网页引擎 | **GeckoView**（Firefox 内核，Maven 包 `org.mozilla.geckoview:geckoview`） | MPL-2.0 | Android 上唯一能**完整运行 uBlock Origin**（MV2，含 webRequest 阻断、脚本注入、元素拾取）的可嵌入内核 |
-| 浏览器基础组件 | **Mozilla Android Components**（`browser-engine-gecko`、`browser-state`、`browser-session-storage`、`feature-tabs`、`feature-session`、`feature-downloads`、`feature-prompts`、`feature-sitepermissions`、`feature-webextensions`、`feature-findinpage`、`feature-contextmenu`、`feature-media`、`feature-pwa`、`browser-storage-sync`（历史/书签）、`feature-search`） | MPL-2.0 | Firefox for Android 本身就建在这上面，标签、会话恢复、权限、下载、弹窗、右键菜单都是现成的 |
-| 骨架参考 | `mozilla-mobile/reference-browser`（Android Components 的官方最小浏览器样例） | MPL-2.0 | **以它为起点 fork**，替换全部 UI；不要 fork Fenix（Firefox 正式版），体量太大、UI 改造成本高 |
+| 网页引擎 | **去 Google 化自编 Chromium（Cromite 思路）**，通过 Linux 构建机 / CI 产出版本化 SHA-256 预构建 `.aar` 引入 | BSD-3-Clause（Cromite 补丁按对应许可） | 移动端网页兼容、90/120 Hz 滚动跟手度与功耗表现最优；可在 C++ 网络层直接挂载原生广告拦截与视频嗅探，并彻底移除 Google 遥测、GMS 与同步 |
+| 引擎抽象与桥接 | **Miru 自研 `:browser:engine-api` + `:browser:engine-chromium`**（过渡期保留冻结的 `:browser:engine-gecko` 作为参考后端） | MPL-2.0 | 上层 UI 与全部业务模块仅依赖纯 Kotlin 契约；Chromium 侧对接 `WebContents`、`OTRProfile`、`BrowserControls`、站点权限/提示与下载/Cookie 委托 |
+| 内核构建与消费 | **Linux x86_64 构建机 / CI 编核 → Windows 本地 Gradle 消费预构建 `.aar`** | — | 隔离数十 GB 的 Chromium C++ 编译成本；日常 Kotlin / Compose / 播放器迭代在 Windows 保持快速增量构建 |
 | UI | Kotlin 2.x + **Jetpack Compose** + Material 3 | Apache-2.0 | 浏览器 Chrome 外壳与所有原生页面（新标签页、下载、设置、播放器控制层）全部用 Compose |
-| 广告拦截 | **uBlock Origin**（AMO 签名版 `.xpi`，随 APK 内置，首启静默安装） | GPL-3.0 | 用户指定；GeckoView 上与 Firefox 桌面版同等能力 |
+| 广告拦截 | **原生 `adblock-rust`（Brave 维护）**，交叉编译为 Rust 静态库挂载在 Chromium C++ `URLLoaderThrottle` / `NavigationThrottle` | MPL-2.0 | 兼容 EasyList / EasyPrivacy / uBO / AdGuard 过滤语法、Cosmetic 隐藏与 Scriptlet；启动即就绪、零冷启动竞态，无需依赖 MV2 WebExtension |
 | 播放器 | **AndroidX Media3 ExoPlayer**（`media3-exoplayer`、`-hls`、`-dash`、`-datasource-okhttp`、`-session`、`-ui` 仅取用 `PlayerView` 的 Surface 部分） | Apache-2.0 | HLS/DASH/MP4/FLV、磁盘缓存（`SimpleCache`）、离线下载（`DownloadManager`）都是官方能力 |
 | 超分辨率 | OpenGL ES 3.0 渲染链 + Anime4K v4 / AMD FSR 1.0 着色器（**从 Ringo-Cove 移植**） | MIT | 已在 Ringo-Cove 验证 |
 | 网络（下载、探测） | OkHttp 4/5 | Apache-2.0 | 多线程分段下载、断点续传 |
-| 本地存储 | Room（下载记录、播放进度）、DataStore（设置） | Apache-2.0 | |
-| 依赖注入 | Hilt 或手写 `AppContainer`（二选一，推荐手写，体量小） | | |
+| 本地存储 | 本地 SQLite `BrowsingLibrary`（历史与书签文件夹）、Room（下载记录、播放进度）、DataStore（设置） | Apache-2.0 | 零云同步、零遥测，排除云备份 |
+| 依赖注入 | 手写 `AppContainer` | MPL-2.0 | 体量小、初始化顺序可控（严格限定仅主进程初始化） |
 | 图片 | Coil 3 | Apache-2.0 | 网站图标、缩略图 |
 
-最低版本：`minSdk 26`（Android 8.0），`targetSdk` / `compileSdk` 取当前最新稳定版。ABI：`arm64-v8a` 必须，`armeabi-v7a`、`x86_64`（模拟器）可选。GeckoView 每个 ABI 约 +40–60 MB，**发布用 AAB / 按 ABI 拆分 APK**。
+最低版本：`minSdk 26`（Android 8.0），`targetSdk` / `compileSdk` 取当前最新稳定版。ABI：`arm64-v8a` 必须，`x86_64`（模拟器）可选。自编 Chromium 原生库与 V8 / ICU 体量较大，**发布必须按 ABI 拆分（仅打包 `arm64-v8a`）**，单 ABI 发布包体积目标控制在 **`< 150 MB`**。
 
-### 2.2 为什么不用其他方案（实现者不要再回头讨论）
+### 2.2 为什么不用其他方案（2026-11-25 维护者拍板定案，实现者不要回头反复讨论）
 
 ```text
-系统 WebView / Chromium 内核   不能装扩展，uBO 无法运行；只能用规则库自己实现，达不到 uBO 的效果
-Fork Chromium（Kiwi/Bromite 路线） 编译一次几十 GB、几小时；Chromium 已移除 MV2，uBO 完整版不可用
-Fork Fenix                      模块数百个，UI 与"像 Chrome 一样简洁"相去甚远，改造成本高于从 reference-browser 起步
-Flutter                         没有成熟的 GeckoView 嵌入方案；浏览器外壳对平台交互（键盘、系统返回、画中画）要求高，原生更稳
+系统 WebView                    无法挂载 C++ 网络层拦截与全框架视频抓流，版本受系统碎片化制约，难以提供严格去 Google 化与无痕控制
+GeckoView + uBO（v1.0 已冻结）  虽能运行官方 uBO，但移动端网页兼容、高刷滚动、功耗以及 WebExtension 首装/冷启动竞态存在结构性短板；代码基线冻结于 0.5.24 留作参考
+强行在 Chromium 恢复 MV2 扩展    随 Chromium 上游演进维护成本极高且易破裂；在 C++ 网络层直挂原生 adblock-rust 更轻量、稳定且零启动延迟
+Flutter                         没有成熟的自定义 Chromium 嵌入方案；浏览器外壳对键盘、系统返回、画中画与 Surface 合成要求高，原生 Compose 更稳
 ```
 
-### 2.3 uBlock Origin 的集成方式
+### 2.3 原生 `adblock-rust` 与过滤列表的集成方式
 
-- 从 addons.mozilla.org 下载**官方签名**的 uBO `.xpi`（固定版本，记录 SHA-256），放入 `app/src/main/assets/extensions/ublock_origin.xpi`。
-- 首次启动：复制到 `filesDir/extensions/` 后调用 `WebExtensionController.install("file://...")`，安装完成后设置 `allowedInPrivateBrowsing = true`。
-- **不要用 `ensureBuiltIn()` 安装 uBO**：社区报告该方式对 uBO 的权限声明有兼容问题（见第 16 节）。`ensureBuiltIn()` 只用于我们自己的 `miru-bridge` 扩展（第 3.3 节）。
-- 升级：由 Android Components 的 `AddonUpdater` 走 AMO 自动更新；同时每次发布 Miru 新版本时更新内置 xpi，安装时若内置版本更高则覆盖安装。
-- 许可：未来若随应用分发 uBO，须核实实际采用版本的 GPL 条款、对应源码与构建信息、过滤列表等素材的许可，并保留原始声明。独立聚合还是组成单一程序取决于实际集成方式，不能仅凭“扩展”或“未修改”就断言 Miru 不受 GPL 义务影响。当前 M0 未打包 uBO。**分发含 uBO 的版本前须另行完成合规审查**。
+- 将 `adblock-rust` 交叉编译为 Android Rust 静态库（`aarch64-linux-android` / `x86_64-linux-android`），链接进自编 Chromium 原生层，通过薄 C++ FFI 接入 `URLLoaderThrottle`（子资源、XHR/Fetch、脚本、图片、媒体）与 `NavigationThrottle`（顶层与 iframe 导航）。
+- **零冷启动延迟**：规则引擎在浏览器进程初始化阶段从本地序列化快照（预编译二进制缓存）毫秒级加载，不依赖扩展进程或异步安装；冷启动恢复标签首屏即受保护。
+- **默认过滤列表**：随 APK 内置首启可用的默认规则快照（EasyList、EasyPrivacy、uBO 内置列表、Peter Lowe、按系统语言自动启用区域列表——中文环境即 AdGuard Chinese / EasyList China，以及 Cookie 提示等 Annoyances 列表）；后台按周期（默认每 4–5 天）静默拉取更新并校验完整性，后台重新序列化后原子切换。
+- **外观隐藏与脚本注入**：页面文档提交时按域名向 `adblock-rust` 查询命中的 Cosmetic CSS 选择器与 Scriptlet 资源，注入到目标框架；元素拾取通过原生盾牌面板触发轻量 DOM 高亮脚本，选中后写入用户自定义规则并立即生效。
+- **许可合规**：正式分发前须完成 Chromium（BSD-3-Clause）、Cromite 补丁许可、`adblock-rust`（MPL-2.0）以及随包内置过滤列表（如 GPL / CC-BY-SA 等条款）的完整合规审查，并在「关于」与 `third_party/` 中保留全部原始声明与来源信息。
 
 ---
 
@@ -94,26 +95,29 @@ Flutter                         没有成熟的 GeckoView 嵌入方案；浏览�
 ### 3.1 Gradle 模块
 
 ```text
-:app                    Application、MainActivity、导航、AppContainer
+:app                    Application、MainActivity、导航、AppContainer（按构建配置装配引擎后端）
 :core:design            设计 token、主题、通用 Compose 组件（第 6 节全部在这里）
 :core:common            工具、Result 类型、日志
-:core:data              Room 数据库、DataStore、仓库类
-:browser:engine         GeckoRuntime 初始化、Engine 配置、扩展安装（uBO + miru-bridge）
-:browser:toolbar        地址栏（Compose 实现，不用 AC 自带的 BrowserToolbar View）
+:core:data              本地 SQLite 历史/书签（BrowsingLibrary）、Room 数据库、DataStore、仓库类
+:browser:engine-api     纯 Kotlin 引擎契约（标签/会话状态、导航、权限与提示、下载/Cookie 桥、广告拦截、视频嗅探）
+:browser:engine-chromium 自编去 Google 化 Chromium 嵌入适配（消费预构建 .aar、adblock-rust、C++ 网络嗅探）
+:browser:engine-gecko   v1.0 GeckoView 冻结参考后端（仅过渡期保留，Phase C3 达成对等后归档移除）
+:browser:toolbar        地址栏（Compose 实现，仅依赖 :browser:engine-api 与 :core:*）
 :feature:ntp            新标签页
 :feature:tabs           标签页切换器
 :feature:menu           主菜单
 :feature:history        历史
-:feature:bookmarks      书签
+:feature:bookmarks      书签（含文件夹）
 :feature:downloads      下载页 + 下载引擎
-:feature:adblock        拦截计数、盾牌面板、站点白名单
-:feature:media-detect   视频嗅探（与 miru-bridge 扩展通信）
-:feature:player         原生播放器（ExoPlayer、手势、控制层、缓存、离线）
+:feature:offline        HLS / DASH 视频离线与独立缓存
+:feature:adblock        原生拦截统计、盾牌面板、例外站点、过滤列表管理与元素拾取 UI
+:feature:media-detect   视频嗅探索引、清晰度探测与「本页视频」面板
+:feature:player         原生播放器（ExoPlayer、手势、控制层、缓存）
 :feature:superres       GL 超分渲染链 + 着色器 + 性能测试
 :feature:settings       设置
 ```
 
-依赖方向：`feature:* → core:*`，`feature` 之间不互相依赖，跨模块跳转统一走 `:app` 里的 `Navigator` 接口。
+依赖方向：`feature:*` / `:browser:toolbar` → `:browser:engine-api` + `:core:*`，`feature` 之间不互相依赖，跨模块跳转统一走 `:app` 里的 `Navigator` 接口；严禁业务模块直接导入底层浏览器引擎 SDK 类型。
 
 ### 3.2 运行时结构
 
@@ -121,42 +125,42 @@ Flutter                         没有成熟的 GeckoView 嵌入方案；浏览�
 MainActivity (单 Activity)
  ├─ BrowserScreen (Compose)
  │   ├─ Toolbar (地址栏/盾牌/视频胶囊/标签数/菜单)
- │   ├─ EngineView (GeckoView, AndroidView 包裹)  ← 当前标签
- │   └─ NTP (当前标签 URL == about:newtab 时显示 Compose 页面，不加载 Gecko)
+ │   ├─ EngineView (Chromium 嵌入视图, AndroidView 包裹)  ← 当前标签
+ │   └─ NTP (当前标签 URL == about:newtab 时显示 Compose 页面，不等待内核就绪)
  ├─ TabsTray / Menu / Sheets (Compose overlay)
  ├─ Downloads / History / Bookmarks / Settings (Compose 全屏路由)
  └─ PlayerActivity (独立 Activity，横屏、画中画、沉浸式)
 
-BrowserStore (Android Components 的 Redux 风格状态)  ← 唯一的标签/会话状态源
-PlayerService (Media3 MediaSessionService)            ← 后台播放、通知栏控制
-DownloadService (前台服务)                             ← 普通文件下载
-Media3 DownloadService                                 ← 视频离线缓存
+EngineStateStore (:browser:engine-api 契约)  ← 唯一的标签/会话状态源
+PlayerService (Media3 MediaSessionService)   ← 后台播放、通知栏控制
+DownloadService (前台服务)                    ← 普通文件下载
+Media3 DownloadService                       ← 视频离线缓存
 ```
 
 **播放器用独立 Activity**：方便单独声明 `supportsPictureInPicture`、`configChanges`、沉浸模式和屏幕方向，不影响浏览器主界面状态。
 
-### 3.3 miru-bridge 内置扩展
+### 3.3 Chromium C++ 网络层视频嗅探与轻量页面脚本
 
-我们自己写一个 WebExtension，用 `ensureBuiltIn("resource://android/assets/extensions/miru-bridge/", "bridge@miru.app")` 安装，通过 Native Messaging（`browser.runtime.connectNative("miru")` ↔ `WebExtension.MessageDelegate` / `PortDelegate`）与原生层通信。职责：
+替代原 v1.0 的 `miru-bridge` WebExtension，将抓流下沉到 Chromium C++ 网络层，同时保留轻量注入脚本负责页面播放状态交互：
 
 ```text
-background.js
-  · webRequest.onHeadersReceived 观察所有请求，按 Content-Type / 扩展名识别媒体：
+C++ URLLoaderThrottle（网络层只读观察）
+  · 覆盖主框架、子 iframe、重定向链、Service Worker 与 MSE 原始清单请求，按 Content-Type / 扩展名识别媒体：
       application/vnd.apple.mpegurl, application/x-mpegurl, .m3u8  → HLS
       application/dash+xml, .mpd                                  → DASH
       video/*, .mp4 .webm .mkv .flv .mov                           → 直链
       audio/* （仅当 size > 1MB）                                  → 音频
-    忽略：< 200KB 的 video/*（预览片段）、分片（.ts .m4s .aac 不单独上报）、已知广告域（交给 uBO 已拦截的不会到这里）
-  · webRequest.onBeforeSendHeaders 记录该媒体请求的 Referer / Origin / User-Agent / Cookie，随检测结果上报
+    忽略：< 200KB 的 video/*（预览片段）、分片（.ts .m4s .aac 不单独上报）、已被 adblock-rust 拦截的广告请求及 VAST/VMAP
+  · 直接从网络请求与按 Profile（普通/无痕）隔离的 CookieManager 读取 Referer / Origin / User-Agent / Cookie / Authorization，仅存于进程内存，随检测结果上报
   · 按 tabId 去重（URL 去掉 query 后相同视为同一资源，保留最新的完整 URL）
-content.js（所有 frame，document_idle）
+轻量页面注入脚本（按需注入所有 frame）
   · 扫描 <video>/<audio>，上报 currentSrc、duration、videoWidth/Height、是否在播放、是否 MSE(blob:)
   · 监听 play / fullscreenchange，上报「页面开始播放视频」「进入全屏」事件
   · 网页内长按倍速（第 5.8 节），设置项关闭时不注入
   · 接收原生指令：暂停页面视频（交给 Miru 播放器时调用）、读取当前播放时间
 ```
 
-`blob:` 地址（MSE）本身不可交给原生播放器，必须依赖 background.js 抓到的 m3u8 / mpd / mp4 原始请求。
+`blob:` 地址（MSE）本身不可交给原生播放器，必须依赖 C++ 网络层抓到的 m3u8 / mpd / mp4 原始请求。媒体分类规则继续以纯逻辑/纯 JS 规格与测试夹具维护，方便 iOS 阶段复用（第 14 节）。
 
 ---
 
@@ -165,14 +169,14 @@ content.js（所有 frame，document_idle）
 | 路由 | 页面 | 说明 |
 |---|---|---|
 | `about:newtab` | 新标签页 | Compose 原生页面 |
-| （网页） | 浏览页 | GeckoView |
+| （网页） | 浏览页 | 自编 Chromium 嵌入视图（过渡期可切冻结 GeckoView 参考基线） |
 | `miru://tabs` | 标签页切换器 | 全屏覆盖层 |
 | `miru://downloads` | 下载内容 | 也可在地址栏输入 `miru://downloads` 打开 |
 | `miru://history` | 历史记录 | |
 | `miru://bookmarks` | 书签 | |
 | `miru://settings` | 设置 | 二级页面按第 5.11 节 |
 | `miru://player?src=…` | 播放器 | 也处理外部 App 分享来的视频 Intent、本地文件 |
-| `miru://adblock` | 广告拦截详情 | 统计 + 白名单 + 进入 uBO 控制面板 |
+| `miru://adblock` | 广告拦截详情 | 统计 + 例外网站 + 过滤列表与自定义规则 |
 
 Intent 处理：
 
@@ -194,7 +198,7 @@ ACTION_WEB_SEARCH                  → 搜索
 
 - 冷启动直接进入**上次的标签**（会话恢复）；没有标签时进入新标签页。
 - **不显示启动页/广告页**。使用 Android 12 SplashScreen API，图标停留不超过系统默认时长。
-- GeckoRuntime 在 `Application.onCreate` 中**异步**创建；新标签页是 Compose 原生页面，不需要等待 Gecko 就绪，保证冷启动到可交互 < 800 ms。
+- 浏览内核在主进程原生首帧后**异步**预热（严格限定仅主进程初始化应用容器，避免渲染子进程重复装配）；新标签页是 Compose 原生页面，不需要等待内核就绪，保证冷启动到可交互 < 800 ms。
 - 首次启动：一屏引导（可跳过）：「Miru 已为你开启广告拦截」+「设为默认浏览器」按钮（调 `RoleManager.ROLE_BROWSER`）。不要求登录，不弹隐私协议以外的任何东西（若上架需要隐私政策，用底部小字链接）。
 
 ### 5.2 新标签页（NTP）
@@ -239,11 +243,11 @@ ACTION_WEB_SEARCH                  → 搜索
 
 - 域名显示：只显示可注册域名（eTLD+1）加子域，例如 `m.bilibili.com`；搜索结果页显示搜索词（Chrome 的「查询保持」）。
 - 🔒/ⓘ：点开站点信息底部面板：连接安全性、证书、权限（摄像头/位置/通知…）、Cookie 与站点数据、本站广告拦截开关。
-- 🛡 盾牌 + 数字：当前页面被 uBO 拦截的请求数（取 uBO browserAction 的 badge 文字）。0 时只显示灰色盾牌。点击 → 广告拦截面板（第 5.7 节）。
+- 🛡 盾牌 + 数字：当前页面被原生 `adblock-rust` 引擎拦截的请求数。0 时只显示灰色盾牌。点击 → 广告拦截面板（第 5.7 节）。
 - ▶ 视频胶囊：仅当页面检测到可播放视频时出现（第 5.8 节），数字为视频数量。
 - 标签数：圆角方框内数字，> 99 显示 `:D`（Chrome 彩蛋，可选）。点击 → 标签页切换器。
 - 页面加载中：地址栏底边出现 2 dp 进度条（第 7 节）。
-- **滚动隐藏**：网页向下滚动时工具栏跟手隐藏，向上滚动跟手出现（Android Components `DynamicToolbar` 机制，配合 `EngineView.setDynamicToolbarMaxHeight`）；页面加载、到达页面顶部、地址栏获焦时强制显示。
+- **滚动隐藏**：网页向下滚动时工具栏跟手隐藏，向上滚动跟手出现（Chromium 原生 `BrowserControls` 动态工具栏机制，经 `:browser:engine-api` 与顶/底工具栏联动）；页面加载、到达页面顶部、地址栏获焦时强制显示。
 - **横滑工具栏切换标签**（Chrome 手势）：在工具栏上左右滑动，切换到相邻标签，页面截图跟手平移。
 - 长按地址栏 → 复制链接 / 粘贴并前往 / 分享。
 
@@ -268,19 +272,19 @@ ACTION_WEB_SEARCH                  → 搜索
 
 ### 5.4 网页浏览
 
-- **下拉刷新**：页面在顶部时下拉出现圆形刷新指示器（Material 3 `PullToRefresh`），由 GeckoView overscroll 事件驱动（`feature-session` 的 `SwipeRefreshFeature`）。
+- **下拉刷新**：页面在顶部时下拉出现圆形刷新指示器（Material 3 `PullToRefresh`），由 Chromium 嵌入视图 overscroll 事件驱动。
 - **边缘返回**：使用系统返回手势；可后退时后退，不能后退时关闭当前标签（若此标签由其他 App 打开则返回那个 App，Chrome 行为）。
 - **长按链接/图片** → 底部面板上下文菜单：
   - 链接：在新标签中打开、在无痕标签中打开、复制链接地址、复制链接文字、下载链接、分享链接
   - 图片：在新标签中打开图片、下载图片、复制图片、分享图片、用此图搜索（P2）
   - 视频：**用 Miru 播放器播放**、下载视频、复制视频地址
-- **全屏网页视频**：GeckoView 进入全屏时隐藏系统栏和工具栏；同时在右上角显示 3 秒的悬浮胶囊「在 Miru 播放器中打开」（第 5.8 节）。
+- **全屏网页视频**：网页引擎进入全屏时隐藏系统栏和工具栏；同时在右上角显示 3 秒的悬浮胶囊「在 Miru 播放器中打开」（第 5.8 节）。
 - **页内查找**：菜单 → 在网页中查找 → 工具栏替换为查找栏（输入框 + 「2/15」+ ↑ ↓ + ✕）。
 - **桌面版网站**：菜单中复选框，切换 UA 并重新加载。
 - **文字缩放**：设置 → 外观 → 网页缩放（50%–200%）。
 - **外部 App 链接**（intent://、market://、weixin:// 等）：底部提示「在 X 中打开？」+ 打开/取消，不自动跳转。
-- **弹窗/新窗口**：uBO 已拦截大部分；剩余的弹窗被阻止时底部 Snackbar「已阻止弹出窗口 · 始终允许」。
-- **权限请求**：底部面板（Android Components `feature-sitepermissions` + `feature-prompts`），样式按第 6 节重绘。
+- **弹窗/新窗口**：原生广告拦截已阻断大部分；剩余的弹窗被阻止时底部 Snackbar「已阻止弹出窗口 · 始终允许」。
+- **权限请求**：底部面板（经 `:browser:engine-api` 统一承接站点权限与网页提示），样式按第 6 节重绘。
 
 ### 5.5 标签页切换器
 
@@ -326,27 +330,26 @@ ACTION_WEB_SEARCH                  → 搜索
 │ 🛡  example.com                 │
 │     本页已拦截 12 项              │
 │                                 │
-│ [ 在此网站上拦截广告     ⬤ ]    │ ← 开关；关闭后自动刷新页面
+│ [ 在此网站上拦截广告     ⬤ ]    │ ← 原生开关；关闭后自动刷新页面
 │                                 │
-│ [ ✂ 屏蔽页面元素 ]               │ ← 调起 uBO 元素拾取器，面板收起
-│ [ 📊 查看详细记录 ]              │ ← 在新标签打开 uBO logger（P1）
-│ [ ⚙ 高级设置 ]                   │ ← 新标签打开 uBO dashboard
+│ [ ✂ 屏蔽页面元素 ]               │ ← 调起原生 DOM 元素拾取器，面板收起
+│ [ 📊 查看拦截记录 ]              │ ← 展开当前页已拦截请求列表（P1）
+│ [ ⚙ 过滤列表与规则 ]             │ ← 打开原生广告拦截设置页
 │                                 │
 │ 累计已拦截 3,481 项 · 节省约 120 MB（P1） │
 └─────────────────────────────────┘
 ```
 
-- 「在此网站上拦截广告」开关的实现：调用 uBO 的站点白名单。uBO 没有对外 API，做法二选一（实现者验证后选定）：
-  - A（推荐）：在面板中直接嵌入 uBO 自带的移动端弹出页 `popup-fenix.html`（GeckoView 的 `WebExtension.Action` popup，Android Components 已支持），我们的 Compose 外框只负责标题与底部按钮；
-  - B：通过 miru-bridge 向 uBO 页面注入脚本修改 `netWhitelist`（脆弱，不推荐）。
-- 拦截数来自 uBO 的 `browserAction` badge（`WebExtension.ActionDelegate.onBrowserAction` → `Action.badgeText`）。累计数由我们自己按页面累加存储。
-- 默认规则列表：保持 uBO 默认（uBO 内置列表 + EasyList + EasyPrivacy + Peter Lowe + 按系统语言自动启用区域列表，中文环境即 AdGuard Chinese / EasyList China）。**额外默认开启**：uBO Annoyances 中的「Cookie 提示」列表（减少 Cookie 横幅打扰）。
+- 全部由 Miru 原生 Material 3 Compose 实现，界面与文档统一称为「广告拦截」（不宣称运行 uBlock Origin 扩展）。
+- 「在此网站上拦截广告」开关直接读写 `:feature:adblock` 的本站例外规则并同步给 Chromium C++ `adblock-rust` 引擎，切换后自动刷新当前页面。
+- 本页拦截数由 Chromium 网络拦截钩子按标签实时回报；累计数持久化存储在本地 DataStore。
+- 默认规则列表：随包内置首启快照并后台定时更新（uBO 内置列表 + EasyList + EasyPrivacy + Peter Lowe + 按系统语言自动启用区域列表，中文环境即 AdGuard Chinese / EasyList China），**额外默认开启** Cookie 提示等 Annoyances 列表。
 
 ### 5.8 视频嗅探与接管
 
 **入口一：地址栏视频胶囊 ▶N**
 
-- miru-bridge 检测到媒体后，地址栏出现 ▶ 胶囊（缩放 + 淡入，第 7 节）。同一页面后续新增视频时数字滚动更新。
+- Chromium 网络层嗅探检测到媒体后，地址栏出现 ▶ 胶囊（缩放 + 淡入，第 7 节）。同一页面后续新增视频时数字滚动更新。
 - 点击 → 底部面板「本页视频」：
 
 ```text
@@ -363,7 +366,7 @@ ACTION_WEB_SEARCH                  → 搜索
 - 标题：优先页面 `<title>` / `og:title`；同页多个视频时附加「视频 1/2/3」。
 - 清晰度 / 时长：后台探测（第 8.9 节），探测中显示「···」。
 - 排序：正在播放的 > 时长最长的 > 其他；时长 < 30 秒的（多为广告/预告）折叠到底部「其他 2 个短视频」。
-- 「播放」→ 暂停网页里的视频（通过 miru-bridge），进入 PlayerActivity，**从网页视频当前的播放位置继续**。
+- 「播放」→ 暂停网页里的视频（通过轻量页面脚本），进入 PlayerActivity，**从网页视频当前的播放位置继续**。
 - 「缓存」→ 加入下载队列（视频离线，第 10 节），Snackbar「已加入下载 · 查看」。
 
 **入口二：网页视频开始播放 / 进入全屏时的提示胶囊**
@@ -376,7 +379,7 @@ ACTION_WEB_SEARCH                  → 搜索
 
 **不可接管的情况**：DRM（EME 已激活）、`blob:` 且未抓到原始清单、站点验证 Referer/Cookie 失败。处理：播放器起播失败时提示「该视频无法在 Miru 播放器中播放，已返回网页」，自动关闭播放器并恢复网页播放。
 
-**网页内长按倍速（P1）**：不接管也能用。content.js 在 `<video>` 元素上监听 pointer 事件：按住 500 ms → `playbackRate = 设置的长按倍速`，在视频上方中间显示胶囊「2.0x ▶▶」；松手恢复原速度。只在视频正在播放时生效；设置项「网页视频长按倍速」默认开。若站点自己有长按行为（如 B 站移动版），以站点为准（检测到 `contextmenu`/`touchstart` 被 `preventDefault` 时不介入）。
+**网页内长按倍速（P1）**：不接管也能用。轻量页面脚本在 `<video>` 元素上监听 pointer 事件：按住 500 ms → `playbackRate = 设置的长按倍速`，在视频上方中间显示胶囊「2.0x ▶▶」；松手恢复原速度。只在视频正在播放时生效；设置项「网页视频长按倍速」默认开。若站点自己有长按行为（如 B 站移动版），以站点为准（检测到 `contextmenu`/`touchstart` 被 `preventDefault` 时不介入）。
 
 ### 5.9 下载内容页
 
@@ -416,7 +419,7 @@ ACTION_WEB_SEARCH                  → 搜索
 
 - 历史：按日期分组，顶部搜索；每项：网站图标、标题、域名、时间；左滑删除；顶部「清除浏览数据…」入口。
 - 书签：文件夹结构（P1），默认一个「移动设备书签」文件夹；星标按钮点亮动画（第 7 节）。
-- 两者都使用 Android Components 的 `places` 存储（`browser-storage-sync`）。
+- 两者均使用 `:core:data` 本地 SQLite（`BrowsingLibrary`，无同步、无遥测，排除云备份）。
 
 ### 5.11 设置
 
@@ -441,7 +444,7 @@ ACTION_WEB_SEARCH                  → 搜索
 广告拦截
   广告拦截                          开（总开关）
   例外网站                          列表，可删除
-  过滤规则与高级设置                → 打开 uBO 控制面板
+  过滤列表与自定义规则              → 打开原生过滤列表、更新与自定义规则管理
 视频与播放器
   自动用 Miru 播放器打开网页视频     关
   网页视频长按倍速                  开
@@ -477,7 +480,7 @@ ACTION_WEB_SEARCH                  → 搜索
   视频仅在 Wi-Fi 下下载             关
   删除记录时同时删除文件            开
 站点设置                            权限、通知、自动播放、弹出窗口
-关于 Miru                           版本、开源许可、uBO 版本
+关于 Miru                           版本、内核与规则引擎版本、开源许可
 ```
 
 子页面使用「共享轴 X」过渡（第 7 节）。所有开关即时生效，无「保存」按钮。
@@ -642,7 +645,7 @@ ACTION_WEB_SEARCH                  → 搜索
 - **跟手的动画（滑动关闭标签、工具栏隐藏、播放器拖动）在手指离开后一律用 spring 接续当前速度**，不要用固定时长补间。
 - 读取 `Settings.Global.ANIMATOR_DURATION_SCALE`：为 0 时，所有位移/缩放动画降级为 short2 交叉淡入淡出；循环动画（倍速胶囊箭头流动、加载指示）改为静态。
 - 动画期间不得阻塞输入：用户可以在任何动画过程中发起新操作，新动画从当前值开始（Compose `Animatable` 天然支持）。
-- 60/90/120 Hz 均需流畅；任何动画不得在主线程做 I/O、解码图片或布局整个 GeckoView。
+- 60/90/120 Hz 均需流畅；任何动画不得在主线程做 I/O、解码图片或布局整个网页引擎视图。
 
 ### 7.3 浏览器外壳动效清单
 
@@ -872,7 +875,7 @@ DefaultLoadControl
 
 ```text
 起播超时 20 秒 → 提示「加载超时」+ [重试] [返回网页]
-HTTP 403/401   → 用最新的请求头重试一次（让 miru-bridge 重新抓取该页面的最新 Cookie）→ 仍失败则提示「该视频需要在网页中播放」并返回网页
+HTTP 403/401   → 用最新的请求头重试一次（向 Chromium Cookie 桥重新读取当前 Profile 的最新 Cookie）→ 仍失败则提示「该视频需要在网页中播放」并返回网页
 清单解析失败    → 尝试按直链播放 → 失败则返回网页
 网络断开        → 暂停在缓冲状态，网络恢复后自动继续（ConnectivityManager 回调）
 ```
@@ -883,16 +886,16 @@ HTTP 403/401   → 用最新的请求头重试一次（让 miru-bridge 重新抓
 
 | 项 | 规格 |
 |---|---|
-| 引擎 | uBlock Origin（GeckoView WebExtension），见第 2.3 节 |
-| 默认状态 | 首次启动即开启，无需任何用户操作 |
-| 总开关 | 设置 → 广告拦截。关闭时调用 `WebExtensionController.disable(uBO)`，重新开启时 `enable` |
-| 本站开关 | 第 5.7 节盾牌面板 |
-| 计数 | 页面级：uBO badge；全局累计：本地 DataStore 计数，按页面加载结束时的 badge 值累加 |
-| 规则更新 | uBO 自行管理（默认每 4–5 天自动更新）；不额外干预 |
-| 无痕模式 | uBO 在无痕标签中同样启用 |
-| 视频广告 | 由 uBO 规则处理；**嗅探层额外忽略**：被识别为 VAST/VMAP（`application/xml` 且内容含 `<VAST`）的地址、常见广告 CDN 域名列表（内置一份小黑名单，可随版本更新） |
-| 元素拾取 | 盾牌面板 →「屏蔽页面元素」→ 触发 uBO 的 element picker（通过 uBO popup 中的对应按钮或 `browser.tabs` 消息；实现者验证可行路径） |
-| 首屏性能 | uBO 启动前的请求不得漏拦：GeckoView 冷启动恢复标签时，**等待扩展就绪事件后再加载页面**（最多等 1.5 秒，超时直接加载） |
+| 引擎 | 原生 `adblock-rust`（挂载于 Chromium C++ `URLLoaderThrottle` / `NavigationThrottle` + 渲染层 Cosmetic / Scriptlet 注入），见第 2.3 节 |
+| 默认状态 | 首次启动即开启，随包内置首启规则快照，无需任何用户操作 |
+| 总开关 | 设置 → 广告拦截。切换后立即更新引擎拦截开关，无需重启 |
+| 本站开关 | 第 5.7 节原生盾牌面板；关闭本站拦截后自动刷新当前页 |
+| 计数 | 页面级：由 Chromium 网络层拦截钩子按标签实时累加；全局累计：本地 DataStore 持久化统计 |
+| 规则更新 | 后台按周期（默认每 4–5 天）静默更新默认过滤列表，校验通过后后台重编译快照并原子切换；支持手动检查更新 |
+| 无痕模式 | 普通与无痕 `OTRProfile` 均一致启用广告拦截；无痕访问记录不落盘 |
+| 视频广告 | 由 `adblock-rust` 规则在网络层直接阻断；**嗅探层额外忽略**：被识别为 VAST/VMAP（`application/xml` 且内容含 `<VAST`）的地址、常见广告 CDN 域名黑名单 |
+| 元素拾取 | 盾牌面板 →「屏蔽页面元素」→ 注入轻量 DOM 高亮拾取脚本，点击元素预览并生成 CSS 规则写入用户自定义过滤列表，立即生效 |
+| 首屏性能 | **零冷启动竞态**：规则快照在浏览器进程初始化时同步/毫秒级就绪，无需等待 WebExtension 启动，冷启动恢复标签首屏直接受保护 |
 
 ---
 
@@ -903,7 +906,7 @@ HTTP 403/401   → 用最新的请求头重试一次（让 miru-bridge 重新抓
 两套引擎，统一展示在一个下载页：
 
 ```text
-普通文件   自研 DownloadEngine（OkHttp），由 Android Components 的 DownloadMiddleware 截获 Gecko 的下载请求后转交
+普通文件   自研 DownloadEngine（OkHttp），由 Chromium `DownloadDelegate` 截获下载请求后经 `:browser:engine-api` 转交
 视频离线   Media3 DownloadManager（HLS/DASH），见 8.5.3
 ```
 
@@ -916,8 +919,8 @@ HTTP 403/401   → 用最新的请求头重试一次（让 miru-bridge 重新抓
 - 前台服务通知：每个下载一条进度通知（合并为分组通知），可在通知中暂停/取消；完成通知点击打开文件。
 - 保存位置：默认 `Download/Miru/`（通过 MediaStore，无需存储权限）；用户可通过 SAF 选择其他目录。
 - 文件名：`Content-Disposition` → URL 路径 → 根据 MIME 推断扩展名；重名自动加 ` (1)`。
-- 携带页面上下文：下载请求带上 Gecko 提供的 Cookie、Referer、User-Agent（`DownloadState` 中已有）。
-- 下载 `blob:` / `data:` URL：交给 Gecko 自带下载流程处理后保存。
+- 携带页面上下文：下载请求带上 Chromium 提供的 Cookie（按普通/无痕 Profile 严格隔离）、Referer、User-Agent。
+- 下载 `blob:` / `data:` URL：经引擎响应流接口读取后保存，失效时明确提示。
 
 ### 10.2 数据结构（Room）
 
@@ -962,7 +965,7 @@ download_segments
 
 | # | 功能 | 优先级 | 验收标准 |
 |---|---|---|---|
-| B1 | 网页浏览（GeckoView） | P0 | 能正常打开 Google、YouTube、Bilibili、知乎、GitHub、淘宝移动版并登录 |
+| B1 | 网页浏览（去 Google 化 Chromium） | P0 | 能正常打开 Google、YouTube、Bilibili、知乎、GitHub、淘宝移动版并登录 |
 | B2 | 多标签、后台标签、会话恢复 | P0 | 杀进程后重开，所有标签（含历史栈）恢复 |
 | B3 | 地址栏：搜索/网址判断、建议、内联补全 | P0 | 输入「github」出现 github.com 补全；输入中文直接搜索 |
 | B4 | 新标签页（Logo + 搜索框 + 快捷方式） | P0 | 冷启动到 NTP 可交互 < 800 ms（中端机） |
@@ -984,16 +987,16 @@ download_segments
 | B20 | 清除浏览数据 | P0 | |
 | B21 | 安全 DNS、仅 HTTPS、阻止第三方 Cookie | P1 | |
 | B22 | 标签分组、最近关闭的标签 | P2 | |
-| B23 | 阅读模式 | P2 | 使用 Android Components `feature-readerview` |
+| B23 | 阅读模式 | P2 | 客户端正文提取（Readability 算法） |
 | B24 | 翻译 | P2 | |
 
 ### 11.2 广告拦截
 
 | # | 功能 | 优先级 | 验收标准 |
 |---|---|---|---|
-| A1 | 内置 uBO，首启自动安装启用 | P0 | 首启后打开 `https://d3ward.github.io/toolz/adblock.html` 得分与桌面 Firefox + uBO 基本一致 |
+| A1 | 内置原生 `adblock-rust` 广告拦截，首启即生效 | P0 | 首启后打开 `https://d3ward.github.io/toolz/adblock.html` 及主流网站拦截率达标，无首装等待超时 |
 | A2 | 地址栏盾牌 + 本页拦截数 | P0 | |
-| A3 | 盾牌面板：本站开关、元素拾取、高级设置 | P0（元素拾取 P1） | 关闭本站拦截后刷新，广告恢复显示 |
+| A3 | 盾牌面板：本站开关、元素拾取、过滤列表与自定义规则 | P0（元素拾取 P1） | 关闭本站拦截后刷新，广告恢复显示 |
 | A4 | 全局开关、例外列表 | P0 | |
 | A5 | 累计拦截统计 | P1 | |
 | A6 | 冷启动不漏拦 | P0 | 恢复的标签首屏无广告 |
@@ -1002,7 +1005,7 @@ download_segments
 
 | # | 功能 | 优先级 | 验收标准 |
 |---|---|---|---|
-| V1 | miru-bridge 扩展：HLS/DASH/直链识别，带请求头 | P0 | 用本地测试页（MockWebServer 提供 m3u8 + mp4）识别率 100%，不上报分片 |
+| V1 | C++ 网络层视频嗅探 + 轻量页面脚本：HLS/DASH/直链识别，带请求头 | P0 | 用本地测试页（MockWebServer 提供 m3u8 + mp4，含 iframe / 鉴权）识别率 100%，不上报分片 |
 | V2 | 地址栏视频胶囊 + 视频列表面板 | P0 | |
 | V3 | 页面开始播放/全屏时提示「用 Miru 播放器」 | P0 | 同一页面只提示一次 |
 | V4 | 接管播放：暂停网页视频，从当前时间继续 | P0 | 误差 < 2 秒 |
@@ -1056,8 +1059,8 @@ download_segments
 
 ### 12.1 数据与隐私
 
-- **无账号、无遥测、无云同步**（Android Components 的 Glean、Sync、FxA 相关模块全部移除，`GeckoRuntimeSettings` 关闭 Telemetry/Crash Reporter 上传）。崩溃日志只保存在本机，「设置 → 关于」可导出。
-- Cookie / 授权头**不写入磁盘**：下载记录中的请求头只在进程内存中保存；进程重启后续传若需要 Cookie，从 Gecko 的 Cookie 存储重新取（通过 miru-bridge 的 `cookies` API）。
+- **无账号、无遥测、无云同步**（自编 Chromium 编译期与运行期移除 GMS、Chrome Sync、UMA、Crashpad 自动上传、RLZ、Variations 与 Google SafeBrowsing 远端上报）。崩溃日志只保存在本机，「设置 → 关于」可导出。
+- Cookie / 授权头**不写入磁盘**：下载记录中的请求头只在进程内存中保存；进程重启后续传若需要 Cookie，从 Chromium 的 `CookieManager`（按普通/无痕 Profile 严格隔离）重新读取。
 - 播放记录、下载记录、设置保存在应用私有目录；「清除浏览数据」提供「播放进度」「播放缓存」两个额外选项。
 - 默认搜索引擎的搜索建议请求可在设置中关闭。
 
@@ -1070,8 +1073,8 @@ NTP 滚动/动画                   无掉帧（90 Hz）
 标签切换器打开                  < 100 ms 开始动画（缩略图预先生成）
 视频起播（网络良好，HLS）        < 1.5 s
 长按倍速生效延迟                 < 100 ms（手势判定后）
-内存：10 个标签                 Gecko 自动回收后台标签内容进程；我们不额外限制
-APK（arm64 单 ABI）             < 110 MB（GeckoView 占大头）
+内存：10 个标签                 Chromium 自动回收/冻结后台标签渲染进程；我们不额外限制
+APK（arm64 单 ABI）             < 150 MB（Chromium 原生库与 V8 占大头，持续按需裁剪）
 ```
 
 ---
@@ -1100,22 +1103,22 @@ APK（arm64 单 ABI）             < 110 MB（GeckoView 占大头）
 
 ---
 
-## 14. iOS 规划（Android M4 之后启动）
+## 14. iOS 规划（Android Phase C4 之后启动）
 
-iOS 上所有浏览器必须使用 WebKit（欧盟 BrowserEngineKit 例外，不考虑），因此 **GeckoView 与 uBlock Origin 扩展都无法使用**。iOS 版是独立的原生工程，共享本文档的交互、主题、动效、功能定义。
+iOS 上所有浏览器必须使用 WebKit（欧盟 BrowserEngineKit 例外，不考虑），因此无法直接嵌入自编 Chromium，但可与 Android v2.0 共享同一批过滤列表、媒体分类规则与产品交互。iOS 版是独立的原生工程，共享本文档的交互、主题、动效、功能定义。
 
 | 层 | iOS 方案 |
 |---|---|
 | UI | SwiftUI（外壳）+ UIKit（WKWebView 容器、播放器手势） |
 | 网页 | `WKWebView`，每个标签一个实例，`WKWebsiteDataStore.nonPersistent()` 用于无痕 |
-| 广告拦截 | 把 uBO 使用的同一批过滤列表（uBO filters、EasyList、EasyPrivacy、AdGuard Chinese 等）转换为 `WKContentRuleList`（推荐 AdGuard `SafariConverterLib`，GPL-3.0，注意许可），每个 RuleList 不超过 15 万条规则；元素隐藏和脚本类规则用 `WKUserScript` 注入。效果弱于 uBO，文档和界面上称为「广告拦截」而非「uBlock Origin」 |
+| 广告拦截 | 把 Android 端使用的同一批过滤列表（uBO filters、EasyList、EasyPrivacy、AdGuard Chinese 等）转换为 `WKContentRuleList`（推荐 AdGuard `SafariConverterLib`，GPL-3.0，注意许可），每个 RuleList 不超过 15 万条规则；元素隐藏和脚本类规则用 `WKUserScript` 注入。文档和界面统一称为「广告拦截」 |
 | 视频嗅探 | `WKUserScript` 在 `document_start` 注入：hook `XMLHttpRequest`/`fetch`/`HTMLMediaElement.src`/`MediaSource`，识别 m3u8/mp4，经 `WKScriptMessageHandler` 回传；Cookie 用 `WKHTTPCookieStore` 获取 |
 | 播放器 | `AVPlayer` + 自绘控制层，手势与 Android 完全一致；超分复用 Ringo-Cove 的 Metal 实现 |
 | 缓存 | `AVAssetResourceLoaderDelegate` + 本地分片缓存，或本地 HTTP 代理（参考 Ringo-Cove `lib/core/media_proxy.dart` 的回环代理思路）；离线用 `AVAssetDownloadURLSession` |
 | 下载 | `URLSession` 后台下载 + 自建下载页 |
 
 为了 iOS 复用，Android 实现时请：
-- 把 miru-bridge 的媒体识别逻辑（URL/Content-Type 判定、去重、短视频过滤、广告 VAST 识别）写成**纯 JS 模块**，iOS 的 user script 可直接复用；
+- 把媒体识别分类逻辑（URL/Content-Type 判定、去重、短视频过滤、广告 VAST 识别）维护为可共享的**纯 JS 规格模块与测试夹具**，iOS 的 user script 可直接复用；
 - 把设计 token 同时导出为 JSON（`design/tokens.json`），iOS 端生成 Swift 常量；
 - 播放器手势参数集中在一个常量文件中，iOS 照抄数值。
 
@@ -1125,37 +1128,41 @@ iOS 上所有浏览器必须使用 WebKit（欧盟 BrowserEngineKit 例外，不
 
 ### 15.1 里程碑
 
+> v1.0 阶段（`M0`–`M4` 对应 GeckoView 基线）已于 `0.5.24` 冻结，其历史代码资产（UI 外壳、下载、播放器、离线与超分）全面复用到下方 v2.0 Chromium 路线（详细阶段门见 `docs/CHROMIUM-MIGRATION-PLAN.md`）：
+
 ```text
-M0  骨架        fork reference-browser → 移除 Glean/Sync/FxA → Compose 外壳（地址栏、NTP、标签切换器、菜单）→ 会话恢复
-M1  拦截与下载   uBO 内置安装、盾牌与面板、下载引擎与下载页、下载动画
-M2  播放器核心   miru-bridge 嗅探、视频面板、PlayerActivity、全部 P0 手势、边播边存缓存、断点续播、画中画
-M3  画质与离线   超分移植、性能测试、清晰度探测、离线视频下载、缩略图预览、字幕
-M4  打磨        全部动效按第 7 节核对、设置页补齐、无障碍、性能指标达标、发布构建
-M5  iOS         见第 14 节
+Phase C0  引擎解耦（Windows 本地）  抽出 :browser:engine-api，隔离冻结 :browser:engine-gecko，解除 :feature:* 对 Gecko/AC/uBO 依赖，验证 adblock-rust 原型
+Phase C1  Chromium 最小壳（Linux CI） 产出版本化去 Google 化 Chromium 预构建 .aar，跑通 :browser:engine-chromium 多标签/无痕/滚动工具栏/历史书签
+Phase C2  原生拦截与 C++ 嗅探       Chromium C++ 网络层挂载 adblock-rust（零冷启动漏拦、原生盾牌与元素拾取）+ C++ 网络层视频嗅探直连现有播放器
+Phase C3  功能对齐与闭环            下载/Cookie 桥、B13 全部权限与网页提示、DoH/仅 HTTPS/3P Cookie、清理数据；达成对等后归档 GeckoView 后端
+Phase C4  真机验收与发布            ARM64 真机日常/高刷/超分验收、单 ABI < 150 MB 体积门、安全 rebase SOP、第三方许可审查与正式签名
+M5        iOS                      见第 14 节（Android Phase C4 后启动）
 ```
 
-每个里程碑结束时：所有该阶段 P0 项通过第 11 节验收标准，录制一段操作视频（`adb shell screenrecord`）。
+每个阶段结束时：对应阶段门须有实测证据（不得复用已冻结 GeckoView `0.5.24` 的 `E0`–`E43` 证据代替 Chromium 引擎验收），关键流程留存操作录屏或截图证据。
 
 ### 15.2 测试
 
 ```text
 单元测试（JVM）
+  · 引擎契约：:browser:engine-api 状态模型、路由、权限与提示决策逻辑
+  · 广告拦截：adblock-rust 规则加载、网络匹配、Cosmetic 选择器查询、本站白名单切换与基准耗时
   · 媒体识别：URL / Content-Type 判定、去重、短视频与 VAST 过滤（同一份用例供 JS 模块测试）
   · 缓存键：签名参数去除规则
   · 下载引擎：分段计算、Range 拼接、断点恢复、ETag 变化、重名
   · 清晰度探测：SPS 解析、HLS 主清单、MP4 stsd（复用 Ringo-Cove 的测试样本思路）
   · 手势状态机：单击/双击/连击/长按/拖动的判定时序（用虚拟时钟）
   · 超分：着色器链选择、输出尺寸、降档逻辑
-仪器测试（模拟器 + 真机）
-  · Compose UI 测试：地址栏、NTP、标签切换器、下载页、设置
-  · Gecko 集成：MockWebServer 提供测试站点（含广告请求、m3u8、mp4、带 Referer 校验的媒体）
-      - uBO 拦截了测试广告域名
-      - 嗅探面板出现预期的视频
-      - 接管播放成功且时间衔接
+仪器测试（真机 + 模拟器）
+  · Compose UI 测试：地址栏、NTP、标签切换器、下载页、设置、原生盾牌与规则页
+  · Chromium 集成：MockWebServer 提供测试站点（含广告请求、m3u8、mp4、带 Referer/Cookie 校验的媒体）
+      - adblock-rust 在 C++ 网络层零漏拦阻断测试广告域名（含冷启动恢复标签）
+      - C++ 网络层嗅探捕获预期视频（含子 iframe）且面板正确展示
+      - 接管播放成功且时间衔接，无痕与普通 Profile Cookie 严格隔离
   · 播放器：本地 HLS 夹具起播、长按倍速、拖动、缓存命中（第二次播放无网络请求）、离线播放
   · 超分：三档运行、对比分割、出错回退不断播
 手动验收（真机）
-  · 第 11 节每条验收标准
+  · 第 11 节每条验收标准（在 Chromium 引擎上重新验证）
   · 深浅色 × 地址栏顶/底 × 系统字体 1.3x 截图核对
   · 「移除动画」开启后全流程可用
 无障碍
@@ -1167,24 +1174,25 @@ M5  iOS         见第 14 节
 
 ## 16. 风险与待验证项
 
-实现者在对应里程碑开始前先做最小验证，结论写回本文档。
+实现者在对应阶段开始前先做最小验证，结论写回本文档与 `docs/CHROMIUM-MIGRATION-PLAN.md`。
 
 | # | 风险 | 验证方法 / 备选 |
 |---|---|---|
-| R1 | `reference-browser` 仓库可能已不活跃，或 Android Components 已并入 mozilla-central | 若仓库过时，直接依赖 `maven.mozilla.org` 上与 GeckoView 同版本的 Android Components 包，参照 mozilla-central 中 `mobile/android/android-components/samples/browser` 搭骨架 |
-| R2 | uBO 用 `install(file://...)` 安装是否需要网络/签名校验通过；社区报告过用 `ensureBuiltIn` 安装 uBO 的权限报错 | M1 第一天验证；备选：首启从 AMO 在线安装（`https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/`），失败时提示重试 |
-| R3 | 盾牌面板嵌入 uBO popup、元素拾取器的调用路径 | 参考 Fenix 中 uBO 的 popup 展示方式；不行则降级为「在新标签打开 uBO 面板」 |
-| R4 | `webRequest` 是否能拿到全部媒体请求（Service Worker 发起的请求、跨域 iframe） | 测试 YouTube（预期拿不到可直接播放的地址，属正常，YouTube 不支持接管）、B 站、常见 HLS 站点；拿不到时只提供网页内长按倍速 |
-| R5 | 接管后服务端校验 Cookie / Referer / 时效签名导致 403 | 8.10 的重试策略；失败则回网页 |
+| C-R1 | 自编 Chromium 跟随上游安全版本更新的 rebase 与维护成本 | 将 Miru 的 C++ 补丁收敛在极薄的 3 个钩子点；紧跟 Cromite 发布节奏做定期 rebase，并通过 Linux CI 自动化产出 SHA-256 固定的预构建 `.aar` |
+| C-R2 | 原生 `adblock-rust` 在极端反广告拦截站点与桌面版 uBO 存在规则或 scriptlet 差异 | 持续同步 `adblock-rust` 版本及 uBO / AdGuard 过滤列表与 scriptlet 资源；产品内诚实标示为原生「广告拦截」，不冒称运行 uBO |
+| C-R3 | Jetpack Compose 叠层、输入法键盘与 Chromium SurfaceView / `BrowserControls` 的互操作问题 | 在 Phase C1 真机尽早验证顶/底工具栏滚动隐藏、底部面板覆盖、表单输入法避让与旋转重建 |
+| C-R4 | Chromium 原生库 + V8 + ICU 导致单 ABI 发布包体积超标 | 仅打 `arm64-v8a` 单 ABI，编译期裁剪不需要的 Chromium 特性与语言资源，叠加 R8 与原生符号剥离，紧盯 `< 150 MB` 目标 |
+| C-R5 | Linux 构建机 / CI 硬件门槛（≥ 64 GB 内存、≥ 250 GB NVMe SSD）对开发节奏的影响 | Phase C0 先在 Windows 本地完成引擎解耦与 `adblock-rust` 原型；Phase C1 起用版本化预构建 `.aar` 隔绝日常编译成本 |
+| C-R6 | 去 Google 化 Chromium、Cromite 补丁、`adblock-rust` 与内置过滤列表的组合分发许可合规 | Phase C4 发布前做逐件产物人工合规核查，并在「关于」与 `third_party/` 保留完整源码指针与原始许可声明 |
+| R4 | 网页加密流（DRM/EME）或强混淆媒体源无法被外部播放器接管 | 明确 YouTube 等站点预期不接管；C++ 网络层覆盖多 frame / 重定向 / Service Worker，无法接管时优雅回退网页播放并保留网页内长按倍速 |
+| R5 | 接管后服务端校验 Cookie / Referer / 时效签名导致 403 | 8.10 的重试策略（从 Chromium CookieManager 刷新一次最新 Cookie）；仍失败则回网页 |
 | R6 | Media3 Transformer 对 HLS 离线源导出 MP4 的支持 | P2 前验证 |
-| R7 | SuperResRenderer 从 Flutter Texture 改为 SurfaceView 输出后的帧同步与 HDR 处理 | M3 初期用 Ringo-Cove 的测试片段对比截图 |
-| R8 | GeckoView 每个 ABI 体积大，APK 超标 | 必须按 ABI 拆分；考虑 `geckoview-omni` vs `geckoview` 包的差异，选最小可用包 |
-| R9 | uBO（GPL-3.0）与 GeckoView（MPL-2.0）随 APK 分发的许可合规 | 发布前人工确认；在「关于」中提供全部开源许可与源码链接 |
+| R7 | SuperResRenderer 在多品牌 ARM64 手机 GPU 驱动下的帧同步与 HDR 处理 | 真机回归中按 SoC 复测 HDR 直通、过热降档与异常回退 |
 | R10 | Google Play 政策对「下载网页视频」功能的审核风险 | 若上架 Play，视频下载功能可能需要对特定站点（如 YouTube）禁用；侧载/其他商店分发不受影响 |
 
 ---
 
-### 实现验证记录（2026-10-22）
+### 历史实现验证记录（v1.0 GeckoView 基线，已冻结于 0.5.24）
 
 - **2026-10-23 / 0.3.1 M2 补齐**：网页视频长按倍速、可选自动接管、网页全屏 / 返回、原生播放器竖屏 16:9 详情与亮度 / 音量滑块；新增真实 DASH 解码、401 / 403 刷新 / 回退和释放期间不重建专项。详细范围与最终验证见 `docs/M2-031-VALIDATION.md`，uBO 首装稳定性及公网 / 真机矩阵继续保留未完成状态。
 

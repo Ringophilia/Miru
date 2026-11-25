@@ -89,7 +89,7 @@ Miru 的取舍遵循产品规范 [MIRU-SPEC.md](MIRU-SPEC.md)（唯一需求来�
 ## ✦ 当前进展
 
 > [!IMPORTANT]
-> Miru 仍在开发中，**尚无正式发行版**。下表中的「已接入」表示代码已合入并有专项证据，**不等于该里程碑完成验收**。逐条需求与证据边界见 [全量验收矩阵](docs/ACCEPTANCE.md)。
+> Miru 仍在开发中，**尚无正式发行版**。当前仓库中的可运行代码为已于 `0.5.24` 冻结的 **v1.0 GeckoView 参考基线**；自 2026-11-25 起，v2.0 架构与规划文档已切换为**去 Google 化自编 Chromium + 原生 `adblock-rust` + C++ 网络层视频嗅探**（复用全部上层 UI、下载、播放器、离线与超分模块），详见 [Chromium 迁移计划](docs/CHROMIUM-MIGRATION-PLAN.md) 与 [现状大白话说明](docs/STATUS.md)。下表中的「已接入」表示代码已合入并有专项证据，**不等于该里程碑完成验收**；逐条需求与证据边界见 [全量验收矩阵](docs/ACCEPTANCE.md)。
 
 | 里程碑 | 内容 | 状态 |
 | :-- | :-- | :-- |
@@ -226,6 +226,7 @@ Miru
 | 主题 | 文档 |
 | :-- | :-- |
 | 产品与实现规范 | [MIRU-SPEC.md](MIRU-SPEC.md) |
+| Chromium 路线迁移计划 · 现状说明 | [CHROMIUM-MIGRATION-PLAN.md](docs/CHROMIUM-MIGRATION-PLAN.md) · [STATUS.md](docs/STATUS.md) |
 | 实现进度 · 全量验收矩阵 | [PROGRESS.md](docs/PROGRESS.md) · [ACCEPTANCE.md](docs/ACCEPTANCE.md) |
 | 上游版本与工具链 | [UPSTREAM.md](docs/UPSTREAM.md) |
 | 浏览器外壳 | [M0](docs/M0-VALIDATION.md) · [浏览器核心](docs/BROWSER-CORE-VALIDATION.md) |
