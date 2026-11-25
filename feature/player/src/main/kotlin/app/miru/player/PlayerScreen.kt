@@ -5,68 +5,85 @@ package app.miru.player
 
 import android.app.Activity
 import android.content.res.Configuration
-import android.graphics.Bitmap
 import android.graphics.Rect
 import android.media.AudioManager
 import android.net.Uri
 import android.provider.Settings
-import android.widget.Toast
 import android.util.TypedValue
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.interaction.DragInteraction
-import androidx.compose.foundation.interaction.Interaction
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInteropFilter
-import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.media3.ui.SubtitleView
 import androidx.media3.ui.CaptionStyleCompat
-import androidx.media3.common.text.Cue
-import kotlinx.coroutines.delay
-import app.miru.superres.SuperResViewState
+import androidx.media3.ui.SubtitleView
+import app.miru.design.MiruMotion
+import app.miru.design.animationsReduced
 import app.miru.superres.SuperResFit
 import app.miru.superres.SuperResPolicy
+import app.miru.superres.SuperResViewState
 import app.miru.superres.VideoZoom
+import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalComposeUiApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun PlayerScreen(
     controller: PlayerController,
@@ -83,18 +100,20 @@ fun PlayerScreen(
     val state by controller.state.collectAsState()
     val diskRanges by controller.diskRanges.collectAsState()
     val seekPreview by controller.seekPreview.state.collectAsState()
-    val tracks by controller.trackOptions.collectAsState()
     val cues by controller.subtitleCues.collectAsState()
     val preferences by controller.preferences.collectAsState()
     val activity = LocalContext.current as Activity
+    val view = LocalView.current
     val configuration = LocalConfiguration.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val reducedMotion = animationsReduced()
     val portraitVideo = state.width > 0 && state.height > state.width
     val embedded = !pip && configuration.orientation != Configuration.ORIENTATION_LANDSCAPE && !portraitVideo
     var visible by remember { mutableStateOf(true) }
     var locked by remember { mutableStateOf(false) }
-    var overlay by remember { mutableStateOf<String?>(null) }
+    var feedback by remember { mutableStateOf<PlayerFeedback?>(null) }
     var holdSpeed by remember { mutableStateOf<Float?>(null) }
+    var toastMessage by remember { mutableStateOf<String?>(null) }
     var speedPanel by remember { mutableStateOf(false) }
     var decoderPanel by remember { mutableStateOf(false) }
     var skipPanel by remember { mutableStateOf(false) }
@@ -105,7 +124,7 @@ fun PlayerScreen(
     var output by remember { mutableStateOf(SuperResViewState()) }
     var fit by remember(controller) { mutableStateOf(SuperResFit.CONTAIN) }
     var zoom by remember(controller) { mutableStateOf<VideoZoom?>(null) }
-    val fitLabel = when(fit) {
+    val fitLabel = when (fit) {
         SuperResFit.CONTAIN -> R.string.player_fit
         SuperResFit.COVER -> R.string.player_crop
         SuperResFit.FILL -> R.string.player_stretch
@@ -133,7 +152,7 @@ fun PlayerScreen(
     val seekEnabled = canSeekNow()
     val seekOwner = remember(controller, state.sourceRevision, embedded, configuration.orientation) { Any() }
     val seekInteractions = remember(seekOwner) {
-        SeekSliderInteractionSource(onCancel = { if(dragOwner === seekOwner) cancelSeek() })
+        SeekSliderInteractionSource(onCancel = { if (dragOwner === seekOwner) cancelSeek() })
     }
     var buffering by remember { mutableStateOf(false) }
     val touch = remember(controller) {
@@ -141,16 +160,29 @@ fun PlayerScreen(
             val size = controller.videoLayoutSize
             if (size.width <= 0 || size.height <= 0) return null
             val baseFit = if (fit == SuperResFit.FILL) SuperResFit.FILL else SuperResFit.CONTAIN
-            return PlayerZoom(SuperResPolicy.imageRect(
-                size.width, size.height, width, height, baseFit, size.pixelWidthHeightRatio,
-            ), width, height)
+            return PlayerZoom(
+                SuperResPolicy.imageRect(size.width, size.height, width, height, baseFit, size.pixelWidthHeightRatio),
+                width,
+                height,
+            )
         }
-        PlayerTouch(activity, controller, { visible = !visible }, { overlay = it }, { holdSpeed = it },
+        PlayerTouch(
+            activity,
+            controller,
+            controls = { visible = !visible },
+            feedback = { feedback = it },
+            holdFeedback = { holdSpeed = it },
             transform = { previous, next, width, height ->
                 zoomFor(width, height)?.let { geometry ->
                     val initialScale = if (fit == SuperResFit.COVER) geometry.coverScale.coerceIn(1f, 3f) else 1f
-                    zoom = geometry.next(zoom ?: VideoZoom(initialScale), next.distance / previous.distance,
-                        previous.x, previous.y, next.x, next.y)
+                    zoom = geometry.next(
+                        zoom ?: VideoZoom(initialScale),
+                        next.distance / previous.distance,
+                        previous.x,
+                        previous.y,
+                        next.x,
+                        next.y,
+                    )
                 }
             },
             finishZoom = { width, height ->
@@ -158,6 +190,7 @@ fun PlayerScreen(
                     zoomFor(width, height)?.snap(current.scale)?.let { snapped ->
                         if (fit != SuperResFit.FILL) fit = snapped
                         zoom = null
+                        view.performConfirmHaptic(controller.preferences.value.haptics)
                     }
                 }
             },
@@ -165,12 +198,15 @@ fun PlayerScreen(
     }
     SideEffect { touch.locked = locked }
     SideEffect {
-        if((!seekEnabled || dragSourceRevision?.let { it != state.sourceRevision } == true) &&
-            (drag != null || controller.seekPreview.state.value.targetMs != null)) cancelSeek()
+        if ((!seekEnabled || dragSourceRevision?.let { it != state.sourceRevision } == true) &&
+            (drag != null || controller.seekPreview.state.value.targetMs != null)
+        ) {
+            cancelSeek()
+        }
     }
     DisposableEffect(controller, lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
-            when(event) {
+            when (event) {
                 Lifecycle.Event.ON_RESUME -> lifecycleActive = true
                 Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_DESTROY -> {
                     lifecycleActive = false
@@ -191,209 +227,247 @@ fun PlayerScreen(
     DisposableEffect(touch) { onDispose { touch.cancel() } }
     LaunchedEffect(controller) {
         controller.skipNotices.collect { section ->
-            val message = when (section) {
+            val msgRes = when (section) {
                 PlaybackSkipSection.INTRO -> R.string.player_skipped_intro
                 PlaybackSkipSection.OUTRO -> R.string.player_skipped_outro
             }
-            Toast.makeText(activity, message, Toast.LENGTH_SHORT).show()
+            toastMessage = activity.getString(msgRes)
         }
     }
-    LaunchedEffect(state.buffering) { buffering = false; if(state.buffering) { delay(300); buffering = true } }
-    LaunchedEffect(visible, state.playing, locked, speedPanel, decoderPanel, tracksPanel, qualityPanel, drag != null) { if(visible && state.playing && drag == null && !speedPanel && !decoderPanel && !tracksPanel && !qualityPanel) { delay(3_000); if(drag == null) visible = false } }
-    BackHandler { if(locked) { locked = false; visible = true } else onBack() }
+    LaunchedEffect(toastMessage) {
+        if (toastMessage != null) {
+            delay(2_500)
+            toastMessage = null
+        }
+    }
+    LaunchedEffect(state.buffering) { buffering = false; if (state.buffering) { delay(300); buffering = true } }
+    LaunchedEffect(visible, state.playing, locked, speedPanel, decoderPanel, skipPanel, tracksPanel, qualityPanel, drag != null) {
+        if (visible && (state.playing || locked) && drag == null &&
+            !speedPanel && !decoderPanel && !skipPanel && !tracksPanel && !qualityPanel
+        ) {
+            delay(if (locked) 2_000 else 4_000)
+            if (drag == null) visible = false
+        }
+    }
+    val entryProgress = remember(controller) { Animatable(if (reducedMotion) 1f else 0f) }
+    LaunchedEffect(controller, reducedMotion) {
+        if (reducedMotion) {
+            entryProgress.snapTo(1f)
+        } else if (entryProgress.value < 1f) {
+            entryProgress.animateTo(1f, tween(MiruMotion.medium1, easing = MiruMotion.standardDecelerate))
+        }
+    }
+    BackHandler { if (locked) { locked = false; visible = true } else onBack() }
     MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFFFB4AB), background = Color.Black, surface = Color(0xFF1C1B1F))) {
-        Column(Modifier.fillMaxSize().background(Color.Black).then(if(embedded) Modifier.safeDrawingPadding() else Modifier)) {
-        val videoModifier = if(embedded) Modifier.fillMaxWidth().aspectRatio(16f / 9f) else Modifier.weight(1f).fillMaxWidth()
-        Box(videoModifier.onGloballyPositioned { coordinates ->
-            val bounds = coordinates.boundsInWindow()
-            onVideoBounds(Rect(bounds.left.toInt(), bounds.top.toInt(), bounds.right.toInt(), bounds.bottom.toInt()))
-        }) {
-            val shownFit = if (!pip && zoom != null && fit != SuperResFit.FILL) SuperResFit.CONTAIN else fit
-            PlayerVideoOutput(controller, state, preferences, pip, shownFit,
-                (if (pip) null else zoom) ?: VideoZoom(), if(compare) split else 0f, { output = it }, Modifier.fillMaxSize())
-            if(cues.isNotEmpty()) AndroidView(factory = { SubtitleView(it) }, modifier = Modifier.fillMaxSize().testTag("player_subtitle_text"), update = {
-                applySubtitleStyle(it, preferences)
-                it.setCues(cues)
-            })
-            if(!pip) Box(Modifier.fillMaxSize().onSizeChanged { touch.resize(it.width, it.height) }.pointerInteropFilter(onTouchEvent = touch::event))
-            if(buffering && !pip && !state.error && !state.timedOut) CircularProgressIndicator(Modifier.align(Alignment.Center).size(40.dp), color = Color.White, strokeWidth = 2.5.dp)
-            overlay?.takeIf { !pip }?.let { Text(it, Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = 0.7f)).padding(20.dp), color = Color.White, style = MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = "tnum")) }
-            androidx.compose.animation.AnimatedVisibility(visible = visible && !pip, enter = fadeIn(), exit = fadeOut()) {
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent, Color.Black.copy(alpha = 0.7f)))).safeDrawingPadding()) {
-                    if(!locked) {
-                        Row(Modifier.fillMaxWidth().align(Alignment.TopCenter), verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.player_back), tint = Color.White) }
-                            Text(controller.request.title, Modifier.weight(1f), color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            if(state.height > 0) Text(playerResolutionLabel(state.width, state.height), color = Color.White, style = MaterialTheme.typography.labelMedium)
-                            TextButton(onClick = { qualityPanel = true }, modifier = Modifier.testTag("player_quality")) { Text(stringResource(R.string.player_quality), color = if(output.rendering.active) MaterialTheme.colorScheme.primary else Color.White) }
-                            if(!embedded) IconButton(onClick = { tracksPanel = true }, modifier = Modifier.testTag("player_tracks")) { Icon(Icons.Outlined.Subtitles, stringResource(R.string.player_tracks), tint = Color.White) }
-                            IconButton(onClick = { decoderPanel = true }) { Icon(Icons.Outlined.Settings, stringResource(R.string.player_playback_options), tint = Color.White) }
-                        }
-                        if(overlay == null && holdSpeed == null) Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-                            IconButton(onClick = { controller.seekBy(-10_000) }) { Icon(Icons.Outlined.Replay10, stringResource(R.string.player_rewind), tint = Color.White) }
-                            IconButton(onClick = controller::toggle, modifier = Modifier.size(64.dp)) { Icon(if(state.playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, stringResource(if(state.playing) R.string.player_pause else R.string.player_play), Modifier.size(56.dp), tint = Color.White) }
-                            IconButton(onClick = { controller.seekBy(10_000) }) { Icon(Icons.Outlined.Forward10, stringResource(R.string.player_forward), tint = Color.White) }
-                        }
-                        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 16.dp)) {
-                            if(state.live) Row(verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.player_live), color = Color.Red); TextButton(onClick = controller::live) { Text(stringResource(R.string.player_live_edge)) } }
-                            else {
-                                val seekLabel = stringResource(R.string.player_seek)
-                                val primary = MaterialTheme.colorScheme.primary
-                                // Recreating only the slider cancels an old source/layout's pointer
-                                // gesture without touching the main video's output surface.
-                                key(state.sourceRevision, embedded, configuration.orientation) {
-                                    val sliderSourceRevision = state.sourceRevision
-                                    BoxWithConstraints(Modifier.fillMaxWidth().height(48.dp)) {
-                                        val sliderRange = 0f..maxOf(1f, state.duration.toFloat())
-                                        val sliderState = remember(sliderRange) { SliderState(trackRange = sliderRange) }
-                                        sliderState.value = drag ?: state.position.toFloat().coerceIn(sliderRange)
-                                        Slider(state = sliderState, onValueChange = { position ->
-                                            val current = controller.state.value
-                                            if(canSeekNow() && current.sourceRevision == sliderSourceRevision) {
-                                                dragSourceRevision = sliderSourceRevision
-                                                dragOwner = seekOwner
-                                                val target = position.coerceIn(0f, current.duration.toFloat())
-                                                drag = target
-                                                controller.seekPreview.request(target.toLong())
-                                            }
-                                        }, onValueChangeFinished = {
-                                            if(dragOwner === seekOwner) {
-                                                val target = drag?.toLong()
-                                                val commit = target != null && canSeekNow() &&
-                                                    dragSourceRevision == controller.state.value.sourceRevision &&
-                                                    sliderSourceRevision == controller.state.value.sourceRevision
-                                                // Clear first: Material3 can finish both Stop and Cancel and
-                                                // repeated callbacks must never issue another seek.
-                                                cancelSeek()
-                                                if(commit) controller.seek(target!!)
-                                            }
-                                        }, enabled = seekEnabled, interactionSource = seekInteractions,
-                                            modifier = Modifier.align(Alignment.Center).testTag("player_seek_slider").semantics { contentDescription = seekLabel },
-                                            thumb = { Box(Modifier.size(16.dp).background(Color.White, CircleShape)) },
-                                            track = { Canvas(Modifier.fillMaxWidth().height(if(drag == null) 4.dp else 8.dp).testTag("player_seek_track")) {
-                                                val y = size.height / 2
-                                                val total = maxOf(1f, state.duration.toFloat())
-                                                fun line(color: Color, fraction: Float) { drawLine(color, Offset(0f, y), Offset(size.width * fraction.coerceIn(0f, 1f), y), size.height, StrokeCap.Round) }
-                                                line(Color.White.copy(alpha = 0.2f), 1f)
-                                                if(state.ready && state.duration > 0) diskRanges.forEach { range ->
-                                                    val durationUs = state.duration.toDouble() * 1000.0
-                                                    val start = (range.startUs / durationUs).coerceIn(0.0, 1.0).toFloat() * size.width
-                                                    val end = (range.endUs / durationUs).coerceIn(0.0, 1.0).toFloat() * size.width
-                                                    if(start < end) drawLine(Color.White.copy(alpha = 0.32f), Offset(start, y), Offset(end, y), size.height, StrokeCap.Butt)
-                                                }
-                                                line(Color.White.copy(alpha = 0.45f), state.buffered / total)
-                                                line(primary, (drag ?: state.position.toFloat()) / total)
-                                            } },
-                                        )
-                                        drag?.takeIf { seekEnabled && dragSourceRevision == state.sourceRevision }?.let { position ->
-                                            val frame = seekPreview.frame?.takeIf { seekPreview.targetMs == position.toLong() && !it.image.isRecycled }
-                                            val bubbleWidth = minOf(maxWidth, if(frame == null) 80.dp else 176.dp)
-                                            val fraction = (position / maxOf(1f, state.duration.toFloat())).coerceIn(0f, 1f)
-                                            val bubbleLeft = (maxWidth * fraction - bubbleWidth / 2f).coerceIn(0.dp, maxWidth - bubbleWidth)
-                                            SeekPreviewBubble(position.toLong(), frame,
-                                                Modifier.align(Alignment.BottomStart).offset(x = bubbleLeft, y = (-48).dp)
-                                                    .wrapContentHeight(Alignment.Bottom, unbounded = true).width(bubbleWidth))
-                                        }
+        Box(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().background(Color.Black).then(if (embedded) Modifier.safeDrawingPadding() else Modifier)) {
+                val videoModifier = if (embedded) Modifier.fillMaxWidth().aspectRatio(16f / 9f) else Modifier.weight(1f).fillMaxWidth()
+                val entryModifier = if (entryProgress.value < 0.999f) {
+                    Modifier.graphicsLayer {
+                        val s = 0.92f + 0.08f * entryProgress.value
+                        scaleX = s
+                        scaleY = s
+                        alpha = entryProgress.value
+                    }
+                } else {
+                    Modifier
+                }
+                Box(
+                    videoModifier.then(entryModifier).onGloballyPositioned { coordinates ->
+                        val bounds = coordinates.boundsInWindow()
+                        onVideoBounds(Rect(bounds.left.toInt(), bounds.top.toInt(), bounds.right.toInt(), bounds.bottom.toInt()))
+                    },
+                ) {
+                    val shownFit = if (!pip && zoom != null && fit != SuperResFit.FILL) SuperResFit.CONTAIN else fit
+                    PlayerVideoOutput(
+                        controller,
+                        state,
+                        preferences,
+                        pip,
+                        shownFit,
+                        (if (pip) null else zoom) ?: VideoZoom(),
+                        if (compare) split else 0f,
+                        { output = it },
+                        Modifier.fillMaxSize(),
+                    )
+                    if (cues.isNotEmpty()) {
+                        AndroidView(
+                            factory = { SubtitleView(it) },
+                            modifier = Modifier.fillMaxSize().testTag("player_subtitle_text"),
+                            update = {
+                                applySubtitleStyle(it, preferences)
+                                it.setCues(cues)
+                            },
+                        )
+                    }
+                    if (!pip) {
+                        Box(Modifier.fillMaxSize().onSizeChanged { touch.resize(it.width, it.height) }.pointerInteropFilter(onTouchEvent = touch::event))
+                    }
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = buffering && !pip && !state.error && !state.timedOut,
+                        enter = fadeIn(tween(MiruMotion.short3)),
+                        exit = fadeOut(tween(MiruMotion.short2)),
+                        modifier = Modifier.align(Alignment.Center),
+                    ) {
+                        CircularProgressIndicator(Modifier.size(40.dp), color = Color.White, strokeWidth = 2.5.dp)
+                    }
+                    if (!pip) {
+                        PlayerFeedbackLayer(
+                            feedback = feedback,
+                            holdSpeed = holdSpeed,
+                            seekPreview = seekPreview,
+                            reducedMotion = reducedMotion,
+                        )
+                        PlayerControlsOverlay(
+                            visible = visible,
+                            locked = locked,
+                            embedded = embedded,
+                            portraitVideo = portraitVideo,
+                            orientationKey = configuration.orientation,
+                            title = controller.request.title,
+                            state = state,
+                            diskRanges = diskRanges,
+                            seekPreview = seekPreview,
+                            superResActive = output.rendering.active,
+                            feedbackActive = feedback != null || holdSpeed != null,
+                            fitLabel = fitLabel,
+                            drag = drag,
+                            dragSourceRevision = dragSourceRevision,
+                            seekEnabled = seekEnabled,
+                            seekInteractions = seekInteractions,
+                            reducedMotion = reducedMotion,
+                            onBack = onBack,
+                            onQuality = { qualityPanel = true },
+                            onTracks = { tracksPanel = true },
+                            onOptions = { decoderPanel = true },
+                            onSeekBy = controller::seekBy,
+                            onToggle = controller::toggle,
+                            onLive = controller::live,
+                            onSpeed = { speedPanel = true },
+                            onCycleFit = cycleFit,
+                            onPip = onPip,
+                            onOrientation = onOrientation,
+                            onToggleLock = {
+                                locked = !locked
+                                view.performConfirmHaptic(preferences.haptics)
+                            },
+                            onSeekValueChange = { sliderRevision, pos ->
+                                val current = controller.state.value
+                                if (canSeekNow() && current.sourceRevision == sliderRevision) {
+                                    dragSourceRevision = sliderRevision
+                                    dragOwner = seekOwner
+                                    val target = pos.coerceIn(0f, current.duration.toFloat())
+                                    drag = target
+                                    controller.seekPreview.request(target.toLong())
+                                }
+                            },
+                            onSeekValueChangeFinished = { sliderRevision ->
+                                if (dragOwner === seekOwner) {
+                                    val target = drag?.toLong()
+                                    val commit = target != null && canSeekNow() &&
+                                        dragSourceRevision == controller.state.value.sourceRevision &&
+                                        sliderRevision == controller.state.value.sourceRevision
+                                    // Clear first: Material3 can finish both Stop and Cancel and
+                                    // repeated callbacks must never issue another seek.
+                                    cancelSeek()
+                                    if (commit) controller.seek(target!!)
+                                }
+                            },
+                        )
+                    }
+                    if ((state.error || state.timedOut) && !pip) {
+                        Surface(Modifier.align(Alignment.Center).padding(24.dp), shape = MaterialTheme.shapes.large) {
+                            Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(stringResource(if (state.timedOut) R.string.player_timeout else R.string.player_error))
+                                Row {
+                                    TextButton(onClick = controller::retry) { Text(stringResource(R.string.player_retry)) }
+                                    TextButton(onClick = if (controller.request.fromWeb) onReturnToWeb else onBack) {
+                                        Text(stringResource(if (controller.request.fromWeb) R.string.player_return_web else R.string.player_back))
                                     }
-                                }
-                            }
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("${playerTime(state.position)} / ${playerTime(state.duration)}", Modifier.weight(1f), color = Color.White, style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"))
-                                if(!embedded) {
-                                    TextButton(onClick = { speedPanel = true }) { Text("${state.speed}x") }
-                                    TextButton(onClick = cycleFit) { Text(stringResource(fitLabel)) }
-                                }
-                                IconButton(onClick = onPip) { Icon(Icons.Outlined.PictureInPictureAlt, stringResource(R.string.player_pip), tint = Color.White) }
-                                IconButton(onClick = onOrientation) {
-                                    Icon(if(embedded) Icons.Outlined.Fullscreen else Icons.Outlined.FullscreenExit,
-                                        stringResource(if(portraitVideo) R.string.player_rotate else if(embedded) R.string.player_enter_fullscreen else R.string.player_exit_fullscreen), tint = Color.White)
                                 }
                             }
                         }
                     }
-                    IconButton(onClick = { locked = !locked }, modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp)) { Icon(if(locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen, stringResource(if(locked) R.string.player_unlock else R.string.player_lock), tint = Color.White) }
+                    if (state.resumed && visible && !pip && !state.error) {
+                        TextButton(
+                            onClick = controller::restart,
+                            modifier = Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(top = 56.dp),
+                        ) { Text(stringResource(R.string.player_resumed)) }
+                    }
+                    if (compare && output.rendering.active && output.decision.enabled && !pip && !locked) {
+                        SuperResComparison(output, split) { split = it }
+                    }
+                    PlayerGlassToast(
+                        message = toastMessage.takeUnless { pip },
+                        reducedMotion = reducedMotion,
+                        modifier = Modifier.align(Alignment.BottomStart).safeDrawingPadding().padding(16.dp),
+                    )
+                }
+                if (embedded) {
+                    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(controller.request.title.ifBlank { stringResource(R.string.player_title) }, color = Color.White, style = MaterialTheme.typography.titleLarge)
+                        val source = remember(controller.request.pageUrl, controller.request.url) {
+                            runCatching { Uri.parse(controller.request.pageUrl.ifBlank { controller.request.url }).host }.getOrNull().orEmpty()
+                        }
+                        if (source.isNotBlank()) Text(stringResource(R.string.player_source_site, source), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                        if (state.width > 0 && state.height > 0) {
+                            Text(stringResource(R.string.player_source_resolution, playerResolutionLabel(state.width, state.height), state.width, state.height), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { speedPanel = true }) { Text(stringResource(R.string.player_speed_value, state.speed.toString())) }
+                            OutlinedButton(onClick = cycleFit) { Text(stringResource(fitLabel)) }
+                        }
+                        TextButton(onClick = { decoderPanel = true }) { Text(stringResource(R.string.player_playback_options)) }
+                        TextButton(onClick = { tracksPanel = true }, modifier = Modifier.testTag("player_tracks")) { Text(stringResource(R.string.player_tracks)) }
+                        TextButton(onClick = { qualityPanel = true }, modifier = Modifier.testTag("player_quality_details")) { Text(stringResource(R.string.player_quality)) }
+                    }
                 }
             }
-            holdSpeed?.takeUnless { pip }?.let { speed ->
-                Text(stringResource(R.string.player_hold_feedback, speed),
-                    Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(top = 24.dp)
-                        .background(Color(0xDD202024), CircleShape).padding(horizontal = 16.dp, vertical = 8.dp),
-                    color = Color.White, style = MaterialTheme.typography.titleMedium)
-            }
-            if((state.error || state.timedOut) && !pip) Surface(Modifier.align(Alignment.Center).padding(24.dp), shape = MaterialTheme.shapes.large) {
-                Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(stringResource(if(state.timedOut) R.string.player_timeout else R.string.player_error))
-                    Row { TextButton(onClick = controller::retry) { Text(stringResource(R.string.player_retry)) }; TextButton(onClick = if(controller.request.fromWeb) onReturnToWeb else onBack) { Text(stringResource(if(controller.request.fromWeb) R.string.player_return_web else R.string.player_back)) } }
-                }
-            }
-            if(state.resumed && visible && !pip && !state.error) TextButton(onClick = controller::restart, modifier = Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(top = 56.dp)) { Text(stringResource(R.string.player_resumed)) }
-            if(compare && output.rendering.active && output.decision.enabled && !pip && !locked)
-                SuperResComparison(output, split) { split = it }
-        }
-        if(embedded) Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(controller.request.title.ifBlank { stringResource(R.string.player_title) }, color = Color.White, style = MaterialTheme.typography.titleLarge)
-            val source = remember(controller.request.pageUrl, controller.request.url) { runCatching { Uri.parse(controller.request.pageUrl.ifBlank { controller.request.url }).host }.getOrNull().orEmpty() }
-            if(source.isNotBlank()) Text(stringResource(R.string.player_source_site, source), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-            if(state.width > 0 && state.height > 0) Text(stringResource(R.string.player_source_resolution, playerResolutionLabel(state.width, state.height), state.width, state.height), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { speedPanel = true }) { Text(stringResource(R.string.player_speed_value, state.speed.toString())) }
-                OutlinedButton(onClick = cycleFit) { Text(stringResource(fitLabel)) }
-            }
-            TextButton(onClick = { decoderPanel = true }) { Text(stringResource(R.string.player_playback_options)) }
-            TextButton(onClick = { tracksPanel = true }, modifier = Modifier.testTag("player_tracks")) { Text(stringResource(R.string.player_tracks)) }
-            TextButton(onClick = { qualityPanel = true }, modifier = Modifier.testTag("player_quality_details")) { Text(stringResource(R.string.player_quality)) }
-        }
-        }
-        if(speedPanel) AlertDialog(onDismissRequest = { speedPanel = false }, title = { Text(stringResource(R.string.player_speed)) }, text = { Column {
-            listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 2.5f, 3f).forEach { speed -> TextButton(onClick = { controller.speed(speed); speedPanel = false }, modifier = Modifier.fillMaxWidth().semantics { selected = speed == state.speed }) { Text("${speed}x", color = if(speed == state.speed) MaterialTheme.colorScheme.primary else Color.White) } }
-        } }, confirmButton = {})
-        if(decoderPanel) PlaybackOptionsDialog(activity, controller, onDismiss = { decoderPanel = false }, onEditSkips = {
-            decoderPanel = false
-            skipPanel = true
-        })
-        if(skipPanel) PlaybackSkipDialog(controller, onDismiss = { skipPanel = false })
-        if(tracksPanel) TracksDialog(controller, onImportSubtitle, onDismiss = { tracksPanel = false })
-        if(qualityPanel) SuperResQualityPanel(controller, output, compare, onCompare = {
-            compare = it
-            if(it) { qualityPanel = false; visible = false }
-        }, onDismiss = { qualityPanel = false })
-    }
-}
 
-/** Cancellation must reach our state before Slider invokes its finish callback. */
-private class SeekSliderInteractionSource(
-    private val onCancel: () -> Unit,
-    private val delegate: MutableInteractionSource = MutableInteractionSource(),
-) : MutableInteractionSource by delegate {
-    override suspend fun emit(interaction: Interaction) {
-        cancelIfNeeded(interaction)
-        delegate.emit(interaction)
-    }
-
-    override fun tryEmit(interaction: Interaction): Boolean {
-        cancelIfNeeded(interaction)
-        return delegate.tryEmit(interaction)
-    }
-
-    private fun cancelIfNeeded(interaction: Interaction) {
-        if(interaction is DragInteraction.Cancel) onCancel()
-    }
-}
-
-@Composable
-private fun SeekPreviewBubble(targetMs: Long, frame: SeekPreviewFrame<Bitmap>?, modifier: Modifier = Modifier) {
-    Surface(modifier.testTag("player_seek_preview_bubble"), shape = MaterialTheme.shapes.small,
-        color = Color.Black.copy(alpha = .88f), contentColor = Color.White, shadowElevation = 4.dp) {
-        Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            frame?.let {
-                val ratio = it.image.width.toFloat() / it.image.height.coerceAtLeast(1)
-                val imageWidth = minOf(160f, 90f * ratio).dp
-                val imageHeight = minOf(90f, 160f / ratio).dp
-                Image(it.image.asImageBitmap(), stringResource(R.string.player_seek_preview, playerTime(targetMs)),
-                    Modifier.size(imageWidth, imageHeight).testTag("player_seek_preview_image"), contentScale = ContentScale.Fit)
-            }
-            Text(playerTime(targetMs), style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"), maxLines = 1)
+            SpeedSidePanel(
+                visible = speedPanel,
+                currentSpeed = state.speed,
+                reducedMotion = reducedMotion,
+                onSelect = { speed -> controller.speed(speed); speedPanel = false },
+                onDismiss = { speedPanel = false },
+            )
+            PlaybackOptionsSidePanel(
+                visible = decoderPanel,
+                activity = activity,
+                controller = controller,
+                reducedMotion = reducedMotion,
+                onNotice = { toastMessage = it },
+                onDismiss = { decoderPanel = false },
+                onEditSkips = { decoderPanel = false; skipPanel = true },
+            )
+            PlaybackSkipDialog(
+                visible = skipPanel,
+                controller = controller,
+                reducedMotion = reducedMotion,
+                onDismiss = { skipPanel = false },
+            )
+            TracksSidePanel(
+                visible = tracksPanel,
+                controller = controller,
+                reducedMotion = reducedMotion,
+                onImportSubtitle = onImportSubtitle,
+                onDismiss = { tracksPanel = false },
+            )
+            SuperResQualityPanel(
+                visible = qualityPanel,
+                controller = controller,
+                output = output,
+                compare = compare,
+                reducedMotion = reducedMotion,
+                onCompare = {
+                    compare = it
+                    if (it) {
+                        qualityPanel = false
+                        visible = false
+                    }
+                },
+                onDismiss = { qualityPanel = false },
+            )
         }
     }
 }
@@ -403,95 +477,207 @@ private fun applySubtitleStyle(view: SubtitleView, preferences: PlayerPreference
     view.setApplyEmbeddedFontSizes(false)
     view.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, preferences.subtitleSizeSp)
     view.setBottomPaddingFraction(preferences.subtitleBottomMargin)
-    view.setStyle(CaptionStyleCompat(android.graphics.Color.WHITE, (preferences.subtitleBackgroundOpacity * 255).toInt() shl 24,
-        android.graphics.Color.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_OUTLINE, android.graphics.Color.BLACK, null))
+    view.setStyle(
+        CaptionStyleCompat(
+            android.graphics.Color.WHITE,
+            (preferences.subtitleBackgroundOpacity * 255).toInt() shl 24,
+            android.graphics.Color.TRANSPARENT,
+            CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+            android.graphics.Color.BLACK,
+            null,
+        ),
+    )
 }
 
 @Composable
-private fun TracksDialog(controller: PlayerController, onImportSubtitle: () -> Unit, onDismiss: () -> Unit) {
-    val tracks by controller.trackOptions.collectAsState()
-    val preferences by controller.preferences.collectAsState()
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.player_tracks)) }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.player_audio_tracks), style = MaterialTheme.typography.titleSmall)
-            if(tracks.audio.isEmpty()) Text(stringResource(R.string.player_no_audio_tracks), style = MaterialTheme.typography.bodyMedium)
-            tracks.audio.forEachIndexed { index, option ->
-                TextButton(onClick = { controller.selectAudio(option.id) }, modifier = Modifier.fillMaxWidth().testTag("player_audio_$index").semantics { selected = option.selected }) {
-                    Text(option.label, color = if(option.selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+private fun SpeedSidePanel(
+    visible: Boolean,
+    currentSpeed: Float,
+    reducedMotion: Boolean,
+    onSelect: (Float) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    PlayerSidePanel(
+        visible = visible,
+        title = stringResource(R.string.player_speed),
+        onDismiss = onDismiss,
+        reducedMotion = reducedMotion,
+        footer = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.player_options_done)) } },
+    ) {
+        Column(Modifier.selectableGroup()) {
+            listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 2.5f, 3f).forEach { speed ->
+                TextButton(
+                    onClick = { onSelect(speed) },
+                    modifier = Modifier.fillMaxWidth().semantics { selected = speed == currentSpeed },
+                ) {
+                    Text("${speed}x", color = if (speed == currentSpeed) MaterialTheme.colorScheme.primary else Color.White)
                 }
             }
-            HorizontalDivider()
-            Text(stringResource(R.string.player_subtitles), style = MaterialTheme.typography.titleSmall)
-            TextButton(onClick = { controller.selectSubtitle(null) }, modifier = Modifier.fillMaxWidth().testTag("player_subtitle_off").semantics { selected = tracks.subtitlesOff }) {
-                Text(stringResource(R.string.player_subtitle_off), color = if(tracks.subtitlesOff) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+
+@Composable
+private fun TracksSidePanel(
+    visible: Boolean,
+    controller: PlayerController,
+    reducedMotion: Boolean,
+    onImportSubtitle: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val tracks by controller.trackOptions.collectAsState()
+    val preferences by controller.preferences.collectAsState()
+    PlayerSidePanel(
+        visible = visible,
+        title = stringResource(R.string.player_tracks),
+        onDismiss = onDismiss,
+        reducedMotion = reducedMotion,
+        footer = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.player_options_done)) } },
+    ) {
+        Text(
+            stringResource(R.string.player_audio_tracks),
+            style = MaterialTheme.typography.titleSmall,
+            color = Color(0xCCFFFFFF),
+            modifier = Modifier.semantics { heading() },
+        )
+        if (tracks.audio.isEmpty()) Text(stringResource(R.string.player_no_audio_tracks), style = MaterialTheme.typography.bodyMedium, color = Color(0x99FFFFFF))
+        Column(Modifier.selectableGroup()) {
+            tracks.audio.forEachIndexed { index, option ->
+                TextButton(
+                    onClick = { controller.selectAudio(option.id) },
+                    modifier = Modifier.fillMaxWidth().testTag("player_audio_$index").semantics { selected = option.selected },
+                ) {
+                    Text(option.label, color = if (option.selected) MaterialTheme.colorScheme.primary else Color.White)
+                }
+            }
+        }
+        HorizontalDivider(color = Color(0x1FFFFFFF))
+        Text(
+            stringResource(R.string.player_subtitles),
+            style = MaterialTheme.typography.titleSmall,
+            color = Color(0xCCFFFFFF),
+            modifier = Modifier.semantics { heading() },
+        )
+        Column(Modifier.selectableGroup()) {
+            TextButton(
+                onClick = { controller.selectSubtitle(null) },
+                modifier = Modifier.fillMaxWidth().testTag("player_subtitle_off").semantics { selected = tracks.subtitlesOff },
+            ) {
+                Text(stringResource(R.string.player_subtitle_off), color = if (tracks.subtitlesOff) MaterialTheme.colorScheme.primary else Color.White)
             }
             tracks.subtitles.forEachIndexed { index, option ->
-                TextButton(onClick = { controller.selectSubtitle(option.id) }, modifier = Modifier.fillMaxWidth().testTag("player_subtitle_$index").semantics { selected = option.selected }) {
-                    Text(option.label, color = if(option.selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                TextButton(
+                    onClick = { controller.selectSubtitle(option.id) },
+                    modifier = Modifier.fillMaxWidth().testTag("player_subtitle_$index").semantics { selected = option.selected },
+                ) {
+                    Text(option.label, color = if (option.selected) MaterialTheme.colorScheme.primary else Color.White)
                 }
             }
             tracks.localSubtitleName?.let { name ->
-                TextButton(onClick = controller::selectLocalSubtitle, modifier = Modifier.fillMaxWidth().testTag("player_subtitle_local").semantics { selected = tracks.localSubtitleSelected }) {
-                    Text(stringResource(R.string.player_subtitle_loaded, name), color = if(tracks.localSubtitleSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                TextButton(
+                    onClick = controller::selectLocalSubtitle,
+                    modifier = Modifier.fillMaxWidth().testTag("player_subtitle_local").semantics { selected = tracks.localSubtitleSelected },
+                ) {
+                    Text(stringResource(R.string.player_subtitle_loaded, name), color = if (tracks.localSubtitleSelected) MaterialTheme.colorScheme.primary else Color.White)
                 }
             }
-            TextButton(onClick = onImportSubtitle, enabled = !tracks.importing, modifier = Modifier.fillMaxWidth().testTag("player_subtitle_import")) {
-                Text(stringResource(if(tracks.importing) R.string.player_subtitle_loading else R.string.player_subtitle_import))
-            }
-            Text(stringResource(R.string.player_subtitle_formats), style = MaterialTheme.typography.bodySmall)
-            if(tracks.importError) Text(stringResource(R.string.player_subtitle_import_error), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-            HorizontalDivider()
-            val sizeLabel = stringResource(R.string.player_subtitle_size)
-            Text(stringResource(R.string.player_subtitle_size_value, preferences.subtitleSizeSp.toInt()))
-            Slider(preferences.subtitleSizeSp, onValueChange = { controller.subtitleStyle(sizeSp = it) }, valueRange = 12f..40f, steps = 27, modifier = Modifier.semantics { contentDescription = sizeLabel })
-            val marginLabel = stringResource(R.string.player_subtitle_margin)
-            Text(stringResource(R.string.player_level_value, marginLabel, (preferences.subtitleBottomMargin * 100).toInt()))
-            Slider(preferences.subtitleBottomMargin, onValueChange = { controller.subtitleStyle(bottomMargin = it) }, valueRange = 0f..0.3f, modifier = Modifier.semantics { contentDescription = marginLabel })
-            val backgroundLabel = stringResource(R.string.player_subtitle_background)
-            Text(stringResource(R.string.player_level_value, backgroundLabel, (preferences.subtitleBackgroundOpacity * 100).toInt()))
-            Slider(preferences.subtitleBackgroundOpacity, onValueChange = { controller.subtitleStyle(backgroundOpacity = it) }, modifier = Modifier.semantics { contentDescription = backgroundLabel })
         }
-    }, confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.player_options_done)) } })
+        TextButton(onClick = onImportSubtitle, enabled = !tracks.importing, modifier = Modifier.fillMaxWidth().testTag("player_subtitle_import")) {
+            Text(stringResource(if (tracks.importing) R.string.player_subtitle_loading else R.string.player_subtitle_import))
+        }
+        Text(stringResource(R.string.player_subtitle_formats), style = MaterialTheme.typography.bodySmall, color = Color(0x99FFFFFF))
+        if (tracks.importError) Text(stringResource(R.string.player_subtitle_import_error), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+        HorizontalDivider(color = Color(0x1FFFFFFF))
+        val sizeLabel = stringResource(R.string.player_subtitle_size)
+        Text(stringResource(R.string.player_subtitle_size_value, preferences.subtitleSizeSp.toInt()), color = Color.White)
+        Slider(preferences.subtitleSizeSp, onValueChange = { controller.subtitleStyle(sizeSp = it) }, valueRange = 12f..40f, steps = 27, modifier = Modifier.semantics { contentDescription = sizeLabel })
+        val marginLabel = stringResource(R.string.player_subtitle_margin)
+        Text(stringResource(R.string.player_level_value, marginLabel, (preferences.subtitleBottomMargin * 100).toInt()), color = Color.White)
+        Slider(preferences.subtitleBottomMargin, onValueChange = { controller.subtitleStyle(bottomMargin = it) }, valueRange = 0f..0.3f, modifier = Modifier.semantics { contentDescription = marginLabel })
+        val backgroundLabel = stringResource(R.string.player_subtitle_background)
+        Text(stringResource(R.string.player_level_value, backgroundLabel, (preferences.subtitleBackgroundOpacity * 100).toInt()), color = Color.White)
+        Slider(preferences.subtitleBackgroundOpacity, onValueChange = { controller.subtitleStyle(backgroundOpacity = it) }, modifier = Modifier.semantics { contentDescription = backgroundLabel })
+    }
 }
 
 @Composable
-private fun PlaybackOptionsDialog(activity: Activity, controller: PlayerController, onDismiss: () -> Unit, onEditSkips: () -> Unit) {
+private fun PlaybackOptionsSidePanel(
+    visible: Boolean,
+    activity: Activity,
+    controller: PlayerController,
+    reducedMotion: Boolean,
+    onNotice: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onEditSkips: () -> Unit,
+) {
     val state by controller.state.collectAsState()
     val audio = remember(activity) { activity.getSystemService(AudioManager::class.java) }
     fun readBrightness() = activity.window.attributes.screenBrightness.takeIf { it >= 0 }
         ?: runCatching { Settings.System.getInt(activity.contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128) / 255f }.getOrDefault(0.5f)
-    fun readVolume(): Float = runCatching { (audio?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0).toFloat() / (audio?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 1).coerceAtLeast(1) }.getOrDefault(0.5f)
-    var brightness by remember(activity) { mutableFloatStateOf(readBrightness().coerceIn(0f, 1f)) }
-    var volume by remember(activity) { mutableFloatStateOf(readVolume().coerceIn(0f, 1f)) }
+    fun readVolume(): Float = runCatching {
+        (audio?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0).toFloat() / (audio?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 1).coerceAtLeast(1)
+    }.getOrDefault(0.5f)
+    var brightness by remember(activity, visible) { mutableFloatStateOf(readBrightness().coerceIn(0f, 1f)) }
+    var volume by remember(activity, visible) { mutableFloatStateOf(readVolume().coerceIn(0f, 1f)) }
     var volumeFailureShown by remember { mutableStateOf(false) }
     val brightnessLabel = stringResource(R.string.player_brightness_control)
     val volumeLabel = stringResource(R.string.player_volume_control)
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.player_playback_options)) }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.player_decoder), style = MaterialTheme.typography.titleSmall)
+    val volumeUnavailable = stringResource(R.string.player_volume_unavailable)
+
+    PlayerSidePanel(
+        visible = visible,
+        title = stringResource(R.string.player_playback_options),
+        onDismiss = onDismiss,
+        reducedMotion = reducedMotion,
+        footer = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.player_options_done)) } },
+    ) {
+        Text(
+            stringResource(R.string.player_decoder),
+            style = MaterialTheme.typography.titleSmall,
+            color = Color(0xCCFFFFFF),
+            modifier = Modifier.semantics { heading() },
+        )
+        Column(Modifier.selectableGroup()) {
             listOf("auto" to R.string.player_decoder_auto, "hardware" to R.string.player_decoder_hardware, "software" to R.string.player_decoder_software).forEach { (mode, label) ->
-                TextButton(onClick = { controller.decoder(mode); onDismiss() }, modifier = Modifier.fillMaxWidth().semantics { selected = mode == state.decoder }) { Text(stringResource(label)) }
-            }
-            HorizontalDivider()
-            Text(stringResource(R.string.player_level_value, brightnessLabel, (brightness * 100).toInt()))
-            Slider(brightness, onValueChange = { value ->
-                brightness = value
-                activity.window.attributes = activity.window.attributes.apply { screenBrightness = value }
-            }, modifier = Modifier.semantics { contentDescription = brightnessLabel })
-            Text(stringResource(R.string.player_level_value, volumeLabel, (volume * 100).toInt()))
-            Slider(volume, onValueChange = { value ->
-                volume = value
-                runCatching { audio?.setStreamVolume(AudioManager.STREAM_MUSIC, (value * (audio?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 1)).toInt(), 0) }
-                    .onFailure {
-                        volume = readVolume().coerceIn(0f, 1f)
-                        if(!volumeFailureShown) { volumeFailureShown = true; Toast.makeText(activity, R.string.player_volume_unavailable, Toast.LENGTH_LONG).show() }
-                    }
-            }, modifier = Modifier.semantics { contentDescription = volumeLabel })
-            if (controller.skipScopes.isNotEmpty()) {
-                TextButton(onClick = onEditSkips, enabled = state.seekableVod) {
-                    Text(stringResource(R.string.player_skip_sections))
+                TextButton(
+                    onClick = { controller.decoder(mode); onDismiss() },
+                    modifier = Modifier.fillMaxWidth().semantics { selected = mode == state.decoder },
+                ) {
+                    Text(stringResource(label), color = if (mode == state.decoder) MaterialTheme.colorScheme.primary else Color.White)
                 }
             }
         }
-    }, confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.player_options_done)) } })
+        HorizontalDivider(color = Color(0x1FFFFFFF))
+        Text(stringResource(R.string.player_level_value, brightnessLabel, (brightness * 100).toInt()), color = Color.White)
+        Slider(
+            brightness,
+            onValueChange = { value ->
+                brightness = value
+                activity.window.attributes = activity.window.attributes.apply { screenBrightness = value }
+            },
+            modifier = Modifier.semantics { contentDescription = brightnessLabel },
+        )
+        Text(stringResource(R.string.player_level_value, volumeLabel, (volume * 100).toInt()), color = Color.White)
+        Slider(
+            volume,
+            onValueChange = { value ->
+                volume = value
+                runCatching {
+                    audio?.setStreamVolume(AudioManager.STREAM_MUSIC, (value * (audio?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 1)).toInt(), 0)
+                }.onFailure {
+                    volume = readVolume().coerceIn(0f, 1f)
+                    if (!volumeFailureShown) {
+                        volumeFailureShown = true
+                        onNotice(volumeUnavailable)
+                    }
+                }
+            },
+            modifier = Modifier.semantics { contentDescription = volumeLabel },
+        )
+        if (controller.skipScopes.isNotEmpty()) {
+            TextButton(onClick = onEditSkips, enabled = state.seekableVod) {
+                Text(stringResource(R.string.player_skip_sections))
+            }
+        }
+    }
 }

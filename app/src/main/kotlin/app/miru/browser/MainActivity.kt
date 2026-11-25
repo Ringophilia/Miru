@@ -907,7 +907,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
             ) }
             if(mediaPanel) key(tab?.id, tab?.url) {
                 MediaSheet(pageMedia, onDismiss = { mediaPanel = false }, onPlay = ::playMedia,
-                    resolve = { item -> container.mediaProbe.probe(item)?.let { "${it.label} · ${it.width} × ${it.height}" } }, onDownload = ::downloadMedia)
+                    resolve = { item -> container.mediaProbe.probe(item)?.let { "${it.label} · ${it.width} × ${it.height}" } }, onDownload = ::downloadMedia, onMessage = ::showMessage)
             }
             if(offlineBusy) AlertDialog(onDismissRequest = ::cancelOfflinePreparation,
                 title = { Text(stringResource(R.string.offline_preparing)) },
