@@ -130,6 +130,11 @@ import app.miru.ntp.NewTabPage
 import app.miru.settings.AboutScreen
 import app.miru.settings.SettingsScreen
 import app.miru.settings.ClearBrowsingDataScreen
+import app.miru.settings.SiteSettingsScreen
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import app.miru.data.BrowsingDataClearRequest
+import app.miru.data.BrowsingDataRange
 import app.miru.tabs.TabItem
 import app.miru.toolbar.MiruToolbar
 import app.miru.toolbar.ToolbarState
@@ -193,7 +198,8 @@ class MainActivity : ComponentActivity() {
             ) {
                 FirstRunGate(container, ::requestDefaultBrowser) { MiruApp(container, incoming, incomingOffline,
                     onIncomingOfflineConsumed = { incomingOffline = null; intent.removeExtra("miru.offline.id") },
-                    onIncomingConsumed = { incoming = null }, onExit = { moveTaskToBack(true) }, onDefaultBrowser = ::requestDefaultBrowser) }
+                    onIncomingConsumed = { incoming = null }, onExit = { moveTaskToBack(true) },
+                    onQuit = { finishAndRemoveTask() }, onDefaultBrowser = ::requestDefaultBrowser) }
             }
         }
     }
@@ -245,11 +251,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Route { BROWSER, HISTORY, BOOKMARKS, DOWNLOADS, SETTINGS, DOWNLOAD_SETTINGS, PLAYER_SETTINGS, CLEAR_DATA, ADBLOCK, ABOUT }
+private enum class Route { BROWSER, HISTORY, BOOKMARKS, DOWNLOADS, SETTINGS, DOWNLOAD_SETTINGS, PLAYER_SETTINGS, CLEAR_DATA, SITE_SETTINGS, ADBLOCK, ABOUT }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, incomingOffline: String?, onIncomingOfflineConsumed: () -> Unit, onIncomingConsumed: () -> Unit, onExit: () -> Unit, onDefaultBrowser: () -> Unit) {
+private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, incomingOffline: String?, onIncomingOfflineConsumed: () -> Unit, onIncomingConsumed: () -> Unit, onExit: () -> Unit, onQuit: () -> Unit, onDefaultBrowser: () -> Unit) {
     val controller = container.browser
     val library = container.library
     val downloads = container.downloads
@@ -393,10 +399,19 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
         pageNeedsReload = adblock.pageNeedsReload,
     )
     val menuActions = setOf(MenuAction.NEW_TAB, MenuAction.NEW_PRIVATE_TAB, MenuAction.HISTORY, MenuAction.BOOKMARKS, MenuAction.DOWNLOADS, MenuAction.ADBLOCK, MenuAction.SETTINGS) +
-        if(webPage) {
+        (if(webPage) {
             setOf(MenuAction.FORWARD, MenuAction.BOOKMARK, MenuAction.DOWNLOAD, MenuAction.PAGE_INFO, MenuAction.RELOAD, MenuAction.SHARE, MenuAction.DESKTOP_SITE) +
                 if(snapshot.ready) setOf(MenuAction.FIND_IN_PAGE) else emptySet()
-        } else emptySet()
+        } else emptySet()) +
+        if (settings.clearDataOnExit) setOf(MenuAction.QUIT) else emptySet()
+    var defaultBrowser by remember { mutableStateOf(isDefaultBrowser(context)) }
+    DisposableEffect(lifecycle, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) defaultBrowser = isDefaultBrowser(context)
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
 
     fun showMessage(message: String) { scope.launch { snackbars.showMessage(message) } }
     val clientCertificateNone = stringResource(R.string.client_certificate_none)
@@ -473,7 +488,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     }
     LaunchedEffect(tab?.id, tab?.url) { mediaPanel = false; mediaHint = false }
     fun navigate(value: String, newTab: Boolean = false) {
-        when(val target = AddressResolver.resolve(value, settings.searchEngine)) {
+        when(val target = AddressResolver.resolve(value, settings.searchEngine, settings.customSearchUrl)) {
             is AddressTarget.Web -> {
                 val path = android.net.Uri.parse(target.url).path.orEmpty().lowercase()
                 if(listOf(".m3u8", ".mp4", ".mpd").any(path::endsWith)) {
@@ -665,7 +680,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
             editing -> editing = false
             finding -> finding = false
             tabsVisible -> tabsVisible = false
-            route in setOf(Route.ABOUT, Route.DOWNLOAD_SETTINGS, Route.PLAYER_SETTINGS, Route.CLEAR_DATA, Route.ADBLOCK) -> route = Route.SETTINGS
+            route in setOf(Route.ABOUT, Route.DOWNLOAD_SETTINGS, Route.PLAYER_SETTINGS, Route.CLEAR_DATA, Route.SITE_SETTINGS, Route.ADBLOCK) -> route = Route.SETTINGS
             route != Route.BROWSER -> route = Route.BROWSER
             controller.goBack() -> Unit
             snapshot.tabs.size > 1 && tab != null -> closeTab(tab.id)
@@ -687,6 +702,8 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                 Box(Modifier.fillMaxSize().then(if (route != Route.BROWSER || tabsVisible) Modifier.clearAndSetSemantics { } else Modifier)) {
                     val toolbarBadge = adblock.takeIf { it.badgeTabId == tab?.id }
                     val toolbarState = ToolbarState(url = tab?.url.orEmpty(), title = tab?.title.orEmpty(), editing = editing, input = input, inlineAddress = inlineAddress?.text, inlineDestination = inlineAddress?.url, tabCount = snapshot.tabs.count { it.isPrivate == (tab?.isPrivate == true) }, loading = tab?.loading == true, progress = tab?.progress ?: 0, incognito = tab?.isPrivate == true, adblockAvailable = adblock.installed, blockedCount = toolbarBadge?.blockedCount ?: 0, secure = tab?.secure == true, downloading = activeDownloads > 0 && (!downloadInFlight || keepDownloadDot), adblockNeedsReload = toolbarBadge?.pageNeedsReload == true, mediaCount = videoCount, tabId = tab?.id)
+                    val clipboard = LocalClipboardManager.current
+                    val linkCopied = stringResource(app.miru.toolbar.R.string.toolbar_link_copied)
                     val toolbar: @Composable () -> Unit = {
                         Box {
                             if(finding) FindBar(findQuery, tab?.findCurrent ?: 0, tab?.findTotal ?: 0, { findQuery = it }, { controller.findNext(false) }, { controller.findNext(true) }, { finding = false })
@@ -705,6 +722,18 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                                 onEditorBounds = { editorBounds = it },
                                 onMenuBounds = { menuBounds = it },
                                 downloadArrival = downloadArrival,
+                                onCopyUrl = {
+                                    tab?.url?.takeIf { it != NEW_TAB_URL }?.let { url ->
+                                        clipboard.setText(AnnotatedString(url))
+                                        showMessage(linkCopied)
+                                    }
+                                },
+                                onPasteAndGo = { pasted -> navigate(pasted) },
+                                onShareUrl = {
+                                    tab?.url?.takeIf { it != NEW_TAB_URL }?.let { url ->
+                                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, url) }, null))
+                                    }
+                                },
                                 overflowMenu = {
                                     MiruMenu(
                                         expanded = menuVisible,
@@ -726,6 +755,16 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                                                 MenuAction.DESKTOP_SITE -> controller.setDesktopMode(tab?.desktopMode != true)
                                                 MenuAction.FIND_IN_PAGE -> { finding = true; findQuery = "" }
                                                 MenuAction.SETTINGS -> route = Route.SETTINGS
+                                                MenuAction.QUIT -> scope.launch {
+                                                    try {
+                                                        if (settings.clearDataOnExit && settings.clearOnExitTypes.isNotEmpty()) {
+                                                            container.clearBrowsingDataNow(BrowsingDataClearRequest(settings.clearOnExitTypes, BrowsingDataRange.ALL_TIME))
+                                                        }
+                                                        controller.closePrivateTabsPermanently()
+                                                    } finally {
+                                                        onQuit()
+                                                    }
+                                                }
                                                 else -> Unit
                                             }
                                         },
@@ -773,6 +812,9 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                                 NewTabPage(
                                     incognito = tab?.isPrivate == true, onSearch = { editAddress(fromHome = true) },
                                     onOpenUrl = { navigate(it) }, snackbar = snackbars, editing = editing,
+                                    showShortcuts = settings.ntpShowShortcuts,
+                                    onOpenInNewTab = { openInNewTab(it, false) },
+                                    onOpenInIncognito = { openInNewTab(it, true) },
                                     reducedMotion = reducedMotion, motionProgress = focusProgress, onSearchBounds = { homeSearchBounds = it },
                                 )
                             }
@@ -840,8 +882,22 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                                 onBlockThirdPartyCookies = { enabled -> scope.launch { container.settings.setBlockThirdPartyCookies(enabled) } },
                                 onHttpsOnly = { enabled -> scope.launch { container.settings.setHttpsOnly(enabled) } },
                                 onSecureDns = { mode, url -> scope.launch { container.settings.setSecureDns(mode, url) } },
+                                isDefaultBrowser = defaultBrowser,
+                                onCustomSearchUrl = { template -> scope.launch { container.settings.setCustomSearchUrl(template) } },
+                                onWebZoomPercent = { percent -> scope.launch { container.settings.setWebZoomPercent(percent) } },
+                                onNtpShowShortcuts = { show -> scope.launch { container.settings.setNtpShowShortcuts(show) } },
+                                onClearDataOnExit = { enabled -> scope.launch { container.settings.setClearDataOnExit(enabled) } },
+                                onClearOnExitTypes = { types -> scope.launch { container.settings.setClearOnExitTypes(types) } },
+                                onSiteSettings = { route = Route.SITE_SETTINGS },
                             )
                             Route.CLEAR_DATA -> ClearBrowsingDataScreen(container.browsingDataClearer, onBack = { route = Route.SETTINGS })
+                            Route.SITE_SETTINGS -> SiteSettingsScreen(
+                                loadSites = { controller.listSavedSites().map { it.toSiteSettingsItem(context) } },
+                                onResetSite = { controller.resetSavedSite(it) },
+                                onResetAll = { controller.resetAllSavedSites().successful },
+                                snackbar = snackbars,
+                                onBack = { route = Route.SETTINGS },
+                            )
                             Route.PLAYER_SETTINGS -> PlayerSettingsScreen(container.playerPreferences, snackbars, onBack = { route = Route.SETTINGS })
                             Route.ABOUT -> AboutScreen(BuildConfig.VERSION_NAME, { route = Route.SETTINGS }, { navigate(it, newTab = true) }, adblockVersion = adblock.version.takeIf { adblock.installed })
                         }

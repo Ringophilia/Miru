@@ -72,6 +72,7 @@ class BrowserController(
     private val applicationScope: CoroutineScope,
     private val historyDelegate: HistoryTrackingDelegate? = null,
     private val securitySettings: Flow<BrowserSecuritySettings>,
+    private val webZoomPercent: Flow<Int> = kotlinx.coroutines.flow.flowOf(100),
 ) {
     private val applicationContext = context.applicationContext
     val websiteIcons = WebsiteIcons(applicationContext)
@@ -146,6 +147,7 @@ class BrowserController(
     private val viewBindings = mutableSetOf<EngineViewBinding>()
     private var initialization: Job? = null
     private var securityUpdates: Job? = null
+    private var zoomUpdates: Job? = null
     private var interactedBeforeRestore = false
     private var isReady = false
     private var initializationError: String? = null
@@ -204,7 +206,10 @@ class BrowserController(
                     .remoteDebuggingEnabled(false)
                     .consoleOutput(false)
                     .crashHandler(null)
-                    .build().also { it.applyBrowserSecurity(initialSecurity) }
+                    .build().also {
+                        it.applyBrowserSecurity(initialSecurity)
+                        it.applyWebZoom(webZoomPercent.first())
+                    }
                 val existingRuntime = runtime ?: GeckoRuntime.create(applicationContext, runtimeSettings).also { runtime = it }
                 existingRuntime.setWebNotificationDelegate(webNotifications.delegate)
                 val pendingReadiness = earlyAddonReadiness ?: if(engine == null)
@@ -234,9 +239,14 @@ class BrowserController(
                 // Android Components applies recommended cookie behavior during engine setup.
                 // Reapply the user's choices before restoring or loading any tabs.
                 existingRuntime.settings.applyBrowserSecurity(securitySettings.first())
+                existingRuntime.settings.applyWebZoom(webZoomPercent.first())
                 securityUpdates?.cancel()
                 securityUpdates = applicationScope.launch(Dispatchers.Main.immediate) {
                     securitySettings.distinctUntilChanged().collect(existingRuntime.settings::applyBrowserSecurity)
+                }
+                zoomUpdates?.cancel()
+                zoomUpdates = applicationScope.launch(Dispatchers.Main.immediate) {
+                    webZoomPercent.distinctUntilChanged().collect(existingRuntime.settings::applyWebZoom)
                 }
                 // No telemetry SDK, crash uploader, Firefox account, experiments, or sync is initialized.
                 createdEngine.notifyTelemetryPrefChanged(false)
@@ -474,6 +484,35 @@ class BrowserController(
     }
 
     suspend fun clearBrowsingData(request: BrowsingDataClearRequest): BrowsingDataClearResult = dataCleaner.clear(request)
+
+    suspend fun listSavedSites(): List<SavedSiteEntry> {
+        val perms = permissions.listSavedDefaultPermissions()
+        val autoplay = permissions.listSavedDefaultAutoplay()
+        val popups = prompts.savedPopupOrigins()
+        val allOrigins = (perms.keys + autoplay.keys + popups).distinct().sorted()
+        return allOrigins.map { origin ->
+            SavedSiteEntry(
+                origin = origin,
+                permissions = perms[origin].orEmpty(),
+                autoplay = autoplay[origin],
+                allowPopups = origin in popups,
+            )
+        }
+    }
+
+    suspend fun resetSavedSite(origin: String) {
+        val normalized = siteOrigin(origin) ?: return
+        requireEngine()
+        permissions.resetSavedDefaultSite(normalized)
+        prompts.clearPopupOrigin(normalized)
+    }
+
+    suspend fun resetAllSavedSites(): BrowsingDataClearResult = clearBrowsingData(
+        app.miru.data.BrowsingDataClearRequest(
+            types = setOf(app.miru.data.BrowsingDataType.SITE_SETTINGS),
+            range = app.miru.data.BrowsingDataRange.ALL_TIME,
+        ),
+    )
 
     private suspend fun requireEngine(): GeckoEngine = withContext(Dispatchers.Main.immediate) {
         initialize()

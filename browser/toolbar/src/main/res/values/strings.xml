@@ -6,6 +6,10 @@
     </plurals>
     <string name="toolbar_adblock_reload">广告拦截需要刷新网页</string>
     <string name="toolbar_search_hint">搜索或输入网址</string>
+    <string name="toolbar_copy_link">复制链接</string>
+    <string name="toolbar_paste_and_go">粘贴并前往</string>
+    <string name="toolbar_share_link">分享链接</string>
+    <string name="toolbar_link_copied">已复制链接</string>
     <string name="toolbar_cancel_edit">取消编辑</string>
     <string name="toolbar_clear_input">清空输入</string>
     <string name="toolbar_site_info">网站信息</string>

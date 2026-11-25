@@ -39,6 +39,12 @@ data class DownloadPreferences(
     val threadsPerFile: Int = 4,
     val directoryUri: String? = null,
     val deleteFileWithRecord: Boolean = true,
+    val videoWifiOnly: Boolean = false,
 )
+
+internal object DownloadNetworkPolicy {
+    fun canTransfer(category: DownloadCategory, videoWifiOnly: Boolean, hasInternet: Boolean, isUnmetered: Boolean): Boolean =
+        hasInternet && !(videoWifiOnly && category == DownloadCategory.VIDEO && !isUnmetered)
+}
 
 internal fun DownloadEntity.item() = DownloadItem(id, url, fileName, mimeType, destUri, totalBytes, downloadedBytes, status, error, sourcePage, createdAt, completedAt, directoryUri, DownloadLogic.category(fileName, mimeType), isPrivate=isPrivate)

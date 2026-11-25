@@ -36,34 +36,45 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 
-class AppContainer(application: Application) {
+class AppContainer(private val application: Application) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val settings = SettingsRepository(application)
     val library = BrowsingLibrary(application)
     internal var searchSuggestions = app.miru.browser.engine.SearchSuggestionClient()
     val downloads = DownloadCoordinator.get(application)
-    val browser = BrowserController(application, scope, LibraryHistoryDelegate(library), settings.settings.map { it.security })
+    val browser = BrowserController(
+        application,
+        scope,
+        LibraryHistoryDelegate(library),
+        settings.settings.map { it.security },
+        settings.settings.map { it.webZoomPercent },
+    )
     val privateTabsNotifications = PrivateTabsNotifications(application, browser, scope)
     val playerPreferences = PlayerPreferencesRepository(application)
     val mediaProbe = MediaResolutionProbe(application)
     val offline = OfflineCoordinator.get(application)
-    val browsingDataClearer = ClearBrowsingDataController { request ->
+    val browsingDataClearer = ClearBrowsingDataController(::clearBrowsingDataNow)
+
+    suspend fun clearBrowsingDataNow(request: app.miru.data.BrowsingDataClearRequest): BrowsingDataClearResult {
         val engineResult = browser.clearBrowsingData(request)
         val completed = engineResult.completed.toMutableSet()
         val failed = engineResult.failed.toMutableSet()
-        for(type in request.types - app.miru.browser.engine.BrowserDataCleaner.ENGINE_TYPES) {
+        for (type in request.types - app.miru.browser.engine.BrowserDataCleaner.ENGINE_TYPES) {
             try {
-                when(type) {
+                when (type) {
                     BrowsingDataType.HISTORY -> library.history.clear(request.since)
                     BrowsingDataType.PLAYBACK_PROGRESS -> PlaybackData.clearProgress(application, request.since)
                     BrowsingDataType.PLAYBACK_CACHE -> withContext(Dispatchers.IO) { PlaybackCache.clear(application) }
                     else -> error("UNSUPPORTED_CLEAR_TYPE")
                 }
                 completed.add(type)
-            } catch(cancelled: CancellationException) { throw cancelled }
-            catch(_: Exception) { failed.add(type) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                failed.add(type)
+            }
         }
-        BrowsingDataClearResult(completed, failed)
+        return BrowsingDataClearResult(completed, failed)
     }
     // Process-only handoff guard survives browser Activity recreation; never save private URLs.
     val automaticMediaPages = mutableMapOf<String, String>()

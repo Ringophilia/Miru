@@ -8,6 +8,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import java.io.IOException
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import app.miru.superres.SuperResFit
 import app.miru.superres.SuperResMode
 import app.miru.superres.SuperResTier
 
@@ -33,8 +34,13 @@ data class PlayerPreferences(
     val superResTier: SuperResTier = SuperResTier.BALANCED,
     val superResDeviceCeiling: SuperResTier? = null,
     val backgroundPlayback: Boolean = false,
+    val defaultSpeed: Float = 1f,
+    val rememberProgress: Boolean = true,
+    val defaultVideoFit: SuperResFit = SuperResFit.CONTAIN,
+    val defaultDecoder: String = "auto",
 ) {
     companion object {
+        val supportedDecoders = setOf("auto", "hardware", "software")
         fun dataSaverActive(metered: Boolean, status: Int): Boolean = metered && status in setOf(
             android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED,
             android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELISTED,
@@ -44,7 +50,9 @@ data class PlayerPreferences(
         holdSpeed = holdSpeed.takeIf { it.isFinite() }?.coerceIn(0.5f, 3f) ?: 2f, dragRangeSeconds = dragRangeSeconds.coerceIn(30, 600),
         subtitleSizeSp = subtitleSizeSp.takeIf { it.isFinite() }?.coerceIn(12f, 40f) ?: 20f,
         subtitleBottomMargin = subtitleBottomMargin.takeIf { it.isFinite() }?.coerceIn(0f, 0.3f) ?: 0.08f,
-        subtitleBackgroundOpacity = subtitleBackgroundOpacity.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0.6f)
+        subtitleBackgroundOpacity = subtitleBackgroundOpacity.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0.6f,
+        defaultSpeed = defaultSpeed.takeIf { it.isFinite() }?.coerceIn(0.5f, 2f) ?: 1f,
+        defaultDecoder = if (defaultDecoder in supportedDecoders) defaultDecoder else "auto")
     fun bufferMillis(dataSaver: Boolean): Pair<Int, Int> {
         val maximum = (if(dataSaver) minOf(bufferSeconds, 30) else bufferSeconds).coerceIn(15, 180) * 1000
         return maxOf(15_000, maximum / 2) to maximum
@@ -73,12 +81,21 @@ class PlayerPreferencesRepository(context: Context) {
     private val superMode = stringPreferencesKey("superres.mode")
     private val superTier = stringPreferencesKey("superres.tier")
     private val superCeiling = intPreferencesKey("superres.deviceCeiling")
+    private val defaultSpeedKey = floatPreferencesKey("player.defaultSpeed")
+    private val rememberProgressKey = booleanPreferencesKey("player.rememberProgress")
+    private val defaultFitKey = stringPreferencesKey("player.defaultVideoFit")
+    private val defaultDecoderKey = stringPreferencesKey("player.defaultDecoder")
     private fun decode(p: Preferences) = PlayerPreferences(p[cache] ?: 1024, p[buffer] ?: 60, p[seek] ?: 10, p[hold] ?: 2f, p[drag] ?: 120,
         p[center] ?: true, p[brightness] ?: true, p[volume] ?: true, p[haptics] ?: true, p[pip] ?: true, p[webHold] ?: true, p[takeover] ?: false,
         p[subtitleSize] ?: 20f, p[subtitleMargin] ?: 0.08f, p[subtitleBackground] ?: 0.6f,
         SuperResMode.entries.firstOrNull { it.name == p[superMode] } ?: SuperResMode.OFF,
         SuperResTier.entries.firstOrNull { it.name == p[superTier] } ?: SuperResTier.BALANCED,
-        p[superCeiling]?.let { SuperResTier.entries.getOrNull(it) }, backgroundPlayback = p[background] ?: false).bounded()
+        p[superCeiling]?.let { SuperResTier.entries.getOrNull(it) },
+        backgroundPlayback = p[background] ?: false,
+        defaultSpeed = p[defaultSpeedKey] ?: 1f,
+        rememberProgress = p[rememberProgressKey] ?: true,
+        defaultVideoFit = SuperResFit.entries.firstOrNull { it.name == p[defaultFitKey] } ?: SuperResFit.CONTAIN,
+        defaultDecoder = p[defaultDecoderKey] ?: "auto").bounded()
     val settings = data.map(::decode)
 
     internal fun skipRules(scopes: List<PlaybackSkipScope>) = data.map { preferences ->
@@ -107,6 +124,10 @@ class PlayerPreferencesRepository(context: Context) {
             p[subtitleSize] = next.subtitleSizeSp; p[subtitleMargin] = next.subtitleBottomMargin; p[subtitleBackground] = next.subtitleBackgroundOpacity
             p[superMode] = next.superResMode.name; p[superTier] = next.superResTier.name
             next.superResDeviceCeiling?.let { p[superCeiling] = it.ordinal } ?: p.remove(superCeiling)
+            p[defaultSpeedKey] = next.defaultSpeed
+            p[rememberProgressKey] = next.rememberProgress
+            p[defaultFitKey] = next.defaultVideoFit.name
+            p[defaultDecoderKey] = next.defaultDecoder
         }
     }
 }

@@ -19,6 +19,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
+import app.miru.superres.SuperResFit
 import app.miru.superres.SuperResMode
 import app.miru.superres.SuperResTier
 
@@ -69,6 +70,10 @@ fun PlayerSettingsScreen(repository: PlayerPreferencesRepository, snackbar: Snac
             PlayerSwitch(R.string.player_volume_gesture, options.volumeGesture) { value -> change { it.copy(volumeGesture = value) } }
             PlayerSwitch(R.string.player_haptics, options.haptics) { value -> change { it.copy(haptics = value) } }
             PlayerGroup(R.string.player_behavior)
+            PlayerSetting(stringResource(R.string.player_default_speed), "${options.defaultSpeed}x") { dialog = "default-speed" }
+            PlayerSetting(stringResource(R.string.player_default_aspect), stringResource(fitLabel(options.defaultVideoFit))) { dialog = "default-fit" }
+            PlayerSetting(stringResource(R.string.player_default_decoder), stringResource(decoderLabel(options.defaultDecoder))) { dialog = "default-decoder" }
+            PlayerSwitch(R.string.player_remember_progress, options.rememberProgress) { value -> change { it.copy(rememberProgress = value) } }
             PlayerSwitch(R.string.player_web_hold, options.webHoldSpeed) { value -> change { it.copy(webHoldSpeed = value) } }
             PlayerSwitch(R.string.player_auto_takeover, options.autoTakeover) { value -> change { it.copy(autoTakeover = value) } }
             PlayerSwitch(R.string.player_background_playback, options.backgroundPlayback) { value -> change { it.copy(backgroundPlayback = value) } }
@@ -79,11 +84,14 @@ fun PlayerSettingsScreen(repository: PlayerPreferencesRepository, snackbar: Snac
         "superres-mode" -> PlayerChoice(stringResource(R.string.player_superres), SuperResMode.entries.toList(), options.superResMode, { stringResource(superResModeLabel(it)) }, { value -> change { it.copy(superResMode = value) }; dialog = null }, { dialog = null })
         "superres-tier" -> PlayerChoice(stringResource(R.string.player_superres_tier), SuperResTier.entries.toList(), options.superResTier, { stringResource(superResTierLabel(it)) }, { value -> change { it.copy(superResTier = value) }; dialog = null }, { dialog = null })
         "superres-benchmark" -> SuperResBenchmarkDialog(onDismiss = { dialog = null }, onApply = { tier -> change { it.copy(superResTier = tier, superResDeviceCeiling = null) }; dialog = null })
-        "cache" -> PlayerChoice(stringResource(R.string.player_cache_limit), listOf(256, 512, 1024, 2048, 4096), options.cacheMb, { stringResource(R.string.player_megabytes, it) }, { value -> change { it.copy(cacheMb = value) }; dialog = null }, { dialog = null })
+        "cache" -> PlayerChoice(stringResource(R.string.player_cache_limit), listOf(128, 256, 512, 1024, 2048, 4096), options.cacheMb, { stringResource(R.string.player_megabytes, it) }, { value -> change { it.copy(cacheMb = value) }; dialog = null }, { dialog = null })
         "buffer" -> PlayerChoice(stringResource(R.string.player_prebuffer), listOf(15, 30, 60, 120, 180), options.bufferSeconds, { stringResource(R.string.player_seconds, it) }, { value -> change { it.copy(bufferSeconds = value) }; dialog = null }, { dialog = null })
         "seek" -> PlayerChoice(stringResource(R.string.player_double_tap), listOf(5, 10, 15, 30), options.doubleTapSeconds, { stringResource(R.string.player_seconds, it) }, { value -> change { it.copy(doubleTapSeconds = value) }; dialog = null }, { dialog = null })
         "hold" -> PlayerChoice(stringResource(R.string.player_hold), listOf(1.5f, 2f, 2.5f, 3f), options.holdSpeed, { "${it}x" }, { value -> change { it.copy(holdSpeed = value) }; dialog = null }, { dialog = null })
         "drag" -> PlayerChoice(stringResource(R.string.player_drag_range), listOf(60, 120, 180, 300), options.dragRangeSeconds, { stringResource(R.string.player_seconds, it) }, { value -> change { it.copy(dragRangeSeconds = value) }; dialog = null }, { dialog = null })
+        "default-speed" -> PlayerChoice(stringResource(R.string.player_default_speed), listOf(0.75f, 1f, 1.25f, 1.5f, 2f), options.defaultSpeed, { "${it}x" }, { value -> change { it.copy(defaultSpeed = value) }; dialog = null }, { dialog = null })
+        "default-fit" -> PlayerChoice(stringResource(R.string.player_default_aspect), SuperResFit.entries.toList(), options.defaultVideoFit, { stringResource(fitLabel(it)) }, { value -> change { it.copy(defaultVideoFit = value) }; dialog = null }, { dialog = null })
+        "default-decoder" -> PlayerChoice(stringResource(R.string.player_default_decoder), listOf("auto", "hardware", "software"), options.defaultDecoder, { stringResource(decoderLabel(it)) }, { value -> change { it.copy(defaultDecoder = value) }; dialog = null }, { dialog = null })
         "clear-cache", "clear-progress" -> {
             val cache = dialog == "clear-cache"
             AlertDialog(onDismissRequest = { dialog = null }, title = { Text(stringResource(if(cache) R.string.player_clear_cache_title else R.string.player_clear_progress_title)) },
@@ -113,4 +121,16 @@ fun PlayerSettingsScreen(repository: PlayerPreferencesRepository, snackbar: Snac
     AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = { Column { choices.forEach { value ->
         Row(Modifier.fillMaxWidth().clickable { onSelect(value) }.padding(vertical = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { RadioButton(value == selected, onClick = { onSelect(value) }); Text(label(value), Modifier.padding(start = 8.dp)) }
     } } }, confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.player_cancel)) } })
+}
+
+private fun fitLabel(fit: SuperResFit): Int = when (fit) {
+    SuperResFit.CONTAIN -> R.string.player_fit
+    SuperResFit.COVER -> R.string.player_crop
+    SuperResFit.FILL -> R.string.player_stretch
+}
+
+private fun decoderLabel(decoder: String): Int = when (decoder) {
+    "hardware" -> R.string.player_decoder_hardware
+    "software" -> R.string.player_decoder_software
+    else -> R.string.player_decoder_auto
 }

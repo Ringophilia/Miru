@@ -105,7 +105,7 @@ fun ClearBrowsingDataScreen(controller: ClearBrowsingDataController, onBack: () 
     } }, dismissButton = { TextButton(onClick = { confirm = false }, modifier = Modifier.testTag("clear_confirm_cancel")) { Text(stringResource(R.string.clear_cancel)) } })
 }
 
-@Composable private fun typeName(type: BrowsingDataType): String = stringResource(when(type) {
+@Composable internal fun typeName(type: BrowsingDataType): String = stringResource(when(type) {
     BrowsingDataType.HISTORY -> R.string.clear_history
     BrowsingDataType.COOKIES -> R.string.clear_cookies
     BrowsingDataType.SITE_DATA -> R.string.clear_site_data

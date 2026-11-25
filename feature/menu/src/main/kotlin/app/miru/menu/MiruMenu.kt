@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.AddToHomeScreen
+import androidx.compose.material.icons.automirrored.outlined.ExitToApp
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -21,7 +22,7 @@ import app.miru.design.AnchoredMenu
 enum class MenuAction {
     FORWARD, BOOKMARK, DOWNLOAD, PAGE_INFO, RELOAD,
     NEW_TAB, NEW_PRIVATE_TAB, HISTORY, DOWNLOADS, BOOKMARKS,
-    SHARE, FIND_IN_PAGE, ADD_TO_HOME, DESKTOP_SITE, ADBLOCK, SETTINGS,
+    SHARE, FIND_IN_PAGE, ADD_TO_HOME, DESKTOP_SITE, ADBLOCK, SETTINGS, QUIT,
 }
 
 @Composable
@@ -100,6 +101,10 @@ fun MiruMenu(
             onClick = { invoke(MenuAction.ADBLOCK) },
         )
         MenuRow(R.string.menu_settings, Icons.Outlined.Settings, MenuAction.SETTINGS, enabledActions, ::invoke)
+        if (MenuAction.QUIT in enabledActions) {
+            HorizontalDivider()
+            MenuRow(R.string.menu_quit, Icons.AutoMirrored.Outlined.ExitToApp, MenuAction.QUIT, enabledActions, ::invoke)
+        }
     }
 }
 

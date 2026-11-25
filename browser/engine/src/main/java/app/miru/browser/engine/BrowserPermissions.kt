@@ -57,6 +57,7 @@ class BrowserPermissions internal constructor(
     private val autoplay = AutoplayPermissions(
         { autoplayPreferences.getString(it, null) },
         { key, value -> autoplayPreferences.edit().apply { if (value == null) remove(key) else putString(key, value) }.apply() },
+        { autoplayPreferences.all.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }.toMap() },
         { autoplayPreferences.edit().clear().apply() },
     )
     private val decisions = Mutex()
@@ -591,6 +592,24 @@ class BrowserPermissions internal constructor(
     }
 
     /** B20's Gecko clear callback is awaited under the same barrier as every decision write. */
+    internal suspend fun listSavedDefaultPermissions(): Map<String, Map<SitePermissionKind, SitePermissionChoice>> =
+        decisions.withLock { repository.listSavedDefaultOrigins() }
+
+    internal fun listSavedDefaultAutoplay(): Map<String, SiteAutoplayChoice> = autoplay.savedDefaultEntries()
+
+    internal suspend fun resetSavedDefaultSite(origin: String) = withContext(Dispatchers.Main.immediate) {
+        val normalized = siteOrigin(origin) ?: return@withContext
+        val site = PermissionSite(normalized, isPrivate = false, contextId = null)
+        decisions.withLock {
+            withContext(NonCancellable) {
+                repository.reset(site)
+                autoplay.clearOrigin(normalized)
+                onSiteChanged(normalized, false, null)
+            }
+        }
+        refreshSite()
+    }
+
     internal suspend fun clearAllSiteSettings(clearGecko: suspend () -> Unit) = withContext(Dispatchers.Main.immediate) {
         clearing = true
         policyGeneration++

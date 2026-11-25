@@ -43,6 +43,7 @@ class BrowserPrompts internal constructor(private val context: Context, private 
     private val popupPermissions = PopupPermissions(
         { popupPreferences.getBoolean(it, false) },
         { key, allowed -> popupPreferences.edit().apply { if (allowed) putBoolean(key, true) else remove(key) }.apply() },
+        { popupPreferences.all.filterValues { it == true }.keys.toSet() },
         { popupPreferences.edit().clear().apply() },
     )
     private val mutablePopup = MutableStateFlow<BlockedPopup?>(null)
@@ -360,6 +361,13 @@ class BrowserPrompts internal constructor(private val context: Context, private 
         val binding = bindings[site.tabId] ?: return
         if(siteOrigin(binding.nativePageUrl) != site.origin || store.state.selectedTabId != site.tabId) return
         popupPermissions.set(site.origin, binding.isPrivate, binding.contextId, allowed)
+        publish()
+    }
+
+    internal fun savedPopupOrigins(): Set<String> = popupPermissions.savedDefaultAllowedOrigins()
+
+    internal fun clearPopupOrigin(origin: String) {
+        popupPermissions.clearOrigin(origin)
         publish()
     }
 

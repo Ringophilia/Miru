@@ -29,3 +29,13 @@ internal fun GeckoRuntimeSettings.applyBrowserSecurity(settings: BrowserSecurity
     setTrustedRecursiveResolverUri(custom.orEmpty())
     setTrustedRecursiveResolverMode(mode)
 }
+
+internal fun GeckoRuntimeSettings.applyWebZoom(percent: Int) {
+    val clamped = percent.coerceIn(50, 200)
+    if (clamped == 100) {
+        setAutomaticFontSizeAdjustment(true)
+    } else {
+        setAutomaticFontSizeAdjustment(false)
+        setFontSizeFactor(clamped / 100f)
+    }
+}

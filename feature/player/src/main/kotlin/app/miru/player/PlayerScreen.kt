@@ -122,7 +122,11 @@ fun PlayerScreen(
     var compare by remember { mutableStateOf(false) }
     var split by remember { mutableFloatStateOf(.5f) }
     var output by remember { mutableStateOf(SuperResViewState()) }
-    var fit by remember(controller) { mutableStateOf(SuperResFit.CONTAIN) }
+    var fit by remember(controller) { mutableStateOf(preferences.defaultVideoFit) }
+    var fitOverridden by remember(controller) { mutableStateOf(false) }
+    LaunchedEffect(controller, preferences.defaultVideoFit) {
+        if (!fitOverridden) fit = preferences.defaultVideoFit
+    }
     var zoom by remember(controller) { mutableStateOf<VideoZoom?>(null) }
     val fitLabel = when (fit) {
         SuperResFit.CONTAIN -> R.string.player_fit
@@ -131,6 +135,7 @@ fun PlayerScreen(
     }
     val cycleFit = {
         zoom = null
+        fitOverridden = true
         fit = SuperResFit.entries[(fit.ordinal + 1) % SuperResFit.entries.size]
     }
     var drag by remember(controller) { mutableStateOf<Float?>(null) }

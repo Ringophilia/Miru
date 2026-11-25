@@ -31,10 +31,12 @@ class OmniboxSuggestionsTest {
             assertFalse(input,SearchSuggestionPolicy.mayRequest(input,SearchEngine.GOOGLE,true,false))
     }
     @Test fun providerUrlsEncodeUnicodeWithoutTrackingParameters() {
-        for(engine in SearchEngine.entries) {
+        for(engine in SearchEngine.entries.filter { it != SearchEngine.CUSTOM }) {
             val url=SearchSuggestionPolicy.url(engine,"天气 & moon")
             assertTrue(url.startsWith("https://"));assertTrue(url.contains("%E5%A4%A9%E6%B0%94+%26+moon"))
             assertFalse(url.contains("partner"))
         }
+        assertFalse(SearchSuggestionPolicy.mayRequest("hello",SearchEngine.CUSTOM,true,false))
+        assertEquals("",SearchSuggestionPolicy.url(SearchEngine.CUSTOM,"hello"))
     }
 }

@@ -7,6 +7,10 @@
     </plurals>
     <string name="toolbar_adblock_reload">Reload this page to apply ad blocking fully</string>
     <string name="toolbar_search_hint">Search or enter address</string>
+    <string name="toolbar_copy_link">Copy link</string>
+    <string name="toolbar_paste_and_go">Paste and go</string>
+    <string name="toolbar_share_link">Share link</string>
+    <string name="toolbar_link_copied">Link copied</string>
     <string name="toolbar_cancel_edit">Cancel editing</string>
     <string name="toolbar_clear_input">Clear input</string>
     <string name="toolbar_site_info">Site information</string>

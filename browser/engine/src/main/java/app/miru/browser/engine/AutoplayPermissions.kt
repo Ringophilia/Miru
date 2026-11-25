@@ -12,6 +12,7 @@ enum class SiteAutoplayChoice {
 internal class AutoplayPermissions(
     private val read: (String) -> String?,
     private val write: (String, String?) -> Unit,
+    private val readAll: () -> Map<String, String> = { emptyMap() },
     private val clearSaved: () -> Unit,
 ) {
     private val privateChoices = mutableMapOf<String, SiteAutoplayChoice>()
@@ -28,6 +29,20 @@ internal class AutoplayPermissions(
         if (isPrivate) {
             if (choice == SiteAutoplayChoice.BLOCK_AUDIBLE) privateChoices.remove(key) else privateChoices[key] = choice
         } else write(key, choice.name.takeUnless { choice == SiteAutoplayChoice.BLOCK_AUDIBLE })
+    }
+    fun savedDefaultEntries(): Map<String, SiteAutoplayChoice> = buildMap {
+        readAll().forEach { (key, raw) ->
+            if (!key.endsWith("|0")) return@forEach
+            val origin = siteOrigin(key.removeSuffix("|0")) ?: return@forEach
+            val choice = SiteAutoplayChoice.entries.firstOrNull { it.name == raw } ?: return@forEach
+            if (choice != SiteAutoplayChoice.BLOCK_AUDIBLE) put(origin, choice)
+        }
+    }
+    fun clearOrigin(origin: String) {
+        siteOrigin(origin)?.let { normalized ->
+            write("$normalized|0", null)
+            privateChoices.remove("$normalized|0")
+        }
     }
     fun clearPrivate() = privateChoices.clear()
     fun clearAll() { clearSaved(); clearPrivate() }

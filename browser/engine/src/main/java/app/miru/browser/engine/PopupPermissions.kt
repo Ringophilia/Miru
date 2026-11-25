@@ -6,6 +6,7 @@ package app.miru.browser.engine
 internal class PopupPermissions(
     private val read: (String) -> Boolean,
     private val write: (String, Boolean) -> Unit,
+    private val readAllAllowed: () -> Set<String> = { emptySet() },
     private val clearSaved: () -> Unit,
 ) {
     private val privateAllowed = mutableSetOf<String>()
@@ -19,6 +20,17 @@ internal class PopupPermissions(
         if (isPrivate) { if (allowed) privateAllowed.add(key) else privateAllowed.remove(key) }
         else write(key, allowed)
         return true
+    }
+    fun savedDefaultAllowedOrigins(): Set<String> = buildSet {
+        readAllAllowed().forEach { key ->
+            if (key.endsWith("|")) siteOrigin(key.removeSuffix("|"))?.let(::add)
+        }
+    }
+    fun clearOrigin(origin: String) {
+        siteOrigin(origin)?.let { normalized ->
+            write("$normalized|", false)
+            privateAllowed.remove("$normalized|")
+        }
     }
     fun clearPrivate() = privateAllowed.clear()
     fun clearAll() { clearSaved(); clearPrivate() }

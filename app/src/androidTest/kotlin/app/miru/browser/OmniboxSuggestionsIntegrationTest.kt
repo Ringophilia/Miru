@@ -89,12 +89,18 @@ class OmniboxSuggestionsIntegrationTest {
     }
 
     @Test fun allProvidersUseTheirSelectedEngineAndLateResponsesDoNotReplaceNewInput() = fixture { origin ->
-        for(engine in SearchEngine.entries) {
+        for(engine in SearchEngine.entries.filter { it != SearchEngine.CUSTOM }) {
             runBlocking { container.settings.setSearchEngine(engine) }
             openEditor();editor().performTextInput("provider")
             compose.waitUntil(5000) { origin.queries.any { it==engine.name+":provider" } }
             compose.onNodeWithContentDescription(label(app.miru.toolbar.R.string.toolbar_cancel_edit)).performClick()
         }
+        val beforeCustom = origin.queries.size
+        runBlocking { container.settings.setCustomSearchUrl("https://example.org/search?q=%s") }
+        openEditor();editor().performTextInput("customquery")
+        SystemClock.sleep(500);assertEquals(beforeCustom,origin.queries.size)
+        compose.onNodeWithContentDescription(label(app.miru.toolbar.R.string.toolbar_cancel_edit)).performClick()
+        runBlocking { container.settings.setSearchEngine(SearchEngine.GOOGLE) }
         openEditor();editor().performTextInput("slow")
         compose.waitUntil(5000) { origin.queries.any { it.endsWith(":slow") } }
         editor().performTextReplacement("fresh")

@@ -50,6 +50,9 @@ fun NewTabPage(
     snackbar: SnackbarHostState,
     modifier: Modifier = Modifier,
     editing: Boolean = false,
+    showShortcuts: Boolean = true,
+    onOpenInNewTab: (String) -> Unit = {},
+    onOpenInIncognito: (String) -> Unit = {},
     reducedMotion: Boolean = false,
     motionProgress: () -> Float = { 0f },
     onSearchBounds: (Rect) -> Unit = {},
@@ -136,7 +139,7 @@ fun NewTabPage(
                         Text(stringResource(R.string.ntp_search_hint), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                if (!incognito) {
+                if (!incognito && showShortcuts) {
                     Spacer(Modifier.height(28.dp))
                     Column(outgoing.widthIn(max = 400.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         val entries = shortcuts.map { it as Shortcut? } + if (shortcuts.size < 8) listOf(null) else emptyList()
@@ -149,6 +152,8 @@ fun NewTabPage(
                                         ShortcutTile(
                                             shortcut,
                                             onClick = { onOpenUrl(shortcut.url) },
+                                            onOpenNewTab = { onOpenInNewTab(shortcut.url) },
+                                            onOpenIncognito = { onOpenInIncognito(shortcut.url) },
                                             onEdit = { editedShortcut = shortcut; editorVisible = true },
                                             onRemove = {
                                                 val previousIndex = shortcuts.indexOfFirst { it.id == shortcut.id }
@@ -184,7 +189,14 @@ fun NewTabPage(
 }
 
 @Composable
-private fun ShortcutTile(shortcut: Shortcut?, onClick: () -> Unit, onEdit: () -> Unit = {}, onRemove: () -> Unit = {}) {
+private fun ShortcutTile(
+    shortcut: Shortcut?,
+    onClick: () -> Unit,
+    onOpenNewTab: () -> Unit = {},
+    onOpenIncognito: () -> Unit = {},
+    onEdit: () -> Unit = {},
+    onRemove: () -> Unit = {},
+) {
     var menuOpen by remember { mutableStateOf(false) }
     val editLabel = stringResource(R.string.ntp_shortcut_edit)
     Box {
@@ -206,6 +218,8 @@ private fun ShortcutTile(shortcut: Shortcut?, onClick: () -> Unit, onEdit: () ->
             Text(shortcut?.title ?: stringResource(R.string.ntp_shortcut_add), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         DropdownMenu(menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(text = { Text(stringResource(R.string.ntp_shortcut_open_new_tab)) }, onClick = { menuOpen = false; onOpenNewTab() })
+            DropdownMenuItem(text = { Text(stringResource(R.string.ntp_shortcut_open_incognito)) }, onClick = { menuOpen = false; onOpenIncognito() })
             DropdownMenuItem(text = { Text(stringResource(R.string.ntp_shortcut_edit)) }, onClick = { menuOpen = false; onEdit() })
             DropdownMenuItem(text = { Text(stringResource(R.string.ntp_shortcut_remove)) }, onClick = { menuOpen = false; onRemove() })
         }

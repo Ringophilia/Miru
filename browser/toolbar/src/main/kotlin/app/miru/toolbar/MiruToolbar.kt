@@ -9,6 +9,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
@@ -30,6 +31,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -84,9 +86,14 @@ fun MiruToolbar(
     onEditorBounds: (Rect) -> Unit = {},
     onMenuBounds: (Rect) -> Unit = {},
     downloadArrival: Int = 0,
+    onCopyUrl: () -> Unit = {},
+    onPasteAndGo: (String) -> Unit = {},
+    onShareUrl: () -> Unit = {},
     overflowMenu: @Composable () -> Unit = {},
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
+    val clipboard = LocalClipboardManager.current
+    var addressMenuOpen by remember { mutableStateOf(false) }
     Box(modifier.background(MaterialTheme.colorScheme.surface)) {
         val row = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp)
         Row(
@@ -115,14 +122,48 @@ fun MiruToolbar(
                         Icon(Icons.Outlined.Search, null, Modifier.padding(start = 12.dp).size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(8.dp))
                     }
-                    Box(Modifier.weight(1f).fillMaxHeight().clickable(enabled = !state.editing, onClick = onEdit), contentAlignment = Alignment.CenterStart) {
+                    val webAddress = state.url != "about:newtab"
+                    Box(
+                        Modifier.weight(1f).fillMaxHeight()
+                            .testTag("address-rest-box")
+                            .combinedClickable(
+                                enabled = !state.editing,
+                                onClick = onEdit,
+                                onLongClick = { addressMenuOpen = true },
+                            ),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
                         Text(
-                            if (state.url == "about:newtab") stringResource(R.string.toolbar_search_hint) else displayAddress(state.url),
+                            if (!webAddress) stringResource(R.string.toolbar_search_hint) else displayAddress(state.url),
                             style = MaterialTheme.typography.bodyLarge,
-                            color = if (state.url == "about:newtab") MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                            color = if (!webAddress) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        DropdownMenu(
+                            expanded = addressMenuOpen && !state.editing,
+                            onDismissRequest = { addressMenuOpen = false },
+                        ) {
+                            if (webAddress) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.toolbar_copy_link)) },
+                                    onClick = { addressMenuOpen = false; onCopyUrl() },
+                                )
+                            }
+                            val clipText = if (addressMenuOpen) clipboard.getText()?.text?.trim().orEmpty() else ""
+                            if (clipText.isNotEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.toolbar_paste_and_go)) },
+                                    onClick = { addressMenuOpen = false; onPasteAndGo(clipText) },
+                                )
+                            }
+                            if (webAddress) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.toolbar_share_link)) },
+                                    onClick = { addressMenuOpen = false; onShareUrl() },
+                                )
+                            }
+                        }
                     }
                     if (state.url != "about:newtab" && state.adblockAvailable) key(state.tabId, state.url) {
                         AdblockIndicator(state.blockedCount, state.adblockNeedsReload, reducedMotion, !state.editing, onAdblock)

@@ -75,7 +75,14 @@ class DownloadCoordinator private constructor(private val context: Context) {
     init {
         scope.launch {
             settingsStore.data.catch { if(it is IOException) emit(emptyPreferences()) else throw it }.collect { values ->
-                mutableSettings.value = DownloadPreferences(values[booleanPreferencesKey("ask")] ?: true, (values[intPreferencesKey("concurrent")] ?: 3).coerceIn(1,5), (values[intPreferencesKey("threads")] ?: 4).coerceIn(1,8), values[stringPreferencesKey("directory")], values[booleanPreferencesKey("deleteFile")] ?: true)
+                mutableSettings.value = DownloadPreferences(
+                    values[booleanPreferencesKey("ask")] ?: true,
+                    (values[intPreferencesKey("concurrent")] ?: 3).coerceIn(1,5),
+                    (values[intPreferencesKey("threads")] ?: 4).coerceIn(1,8),
+                    values[stringPreferencesKey("directory")],
+                    values[booleanPreferencesKey("deleteFile")] ?: true,
+                    values[booleanPreferencesKey("videoWifiOnly")] ?: false,
+                )
             }
         }
         scope.launch {
@@ -84,6 +91,9 @@ class DownloadCoordinator private constructor(private val context: Context) {
         }
         manager.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) { if(serviceActive) pump() }
+            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                if (serviceActive) pump()
+            }
             override fun onLost(network: Network) { if(!online()) active.keys.forEach { id -> transfer.cancel(id) } }
         })
     }
@@ -95,6 +105,7 @@ class DownloadCoordinator private constructor(private val context: Context) {
             values[intPreferencesKey("concurrent")] = updated.maxConcurrent.coerceIn(1,5)
             values[intPreferencesKey("threads")] = updated.threadsPerFile.coerceIn(1,8)
             values[booleanPreferencesKey("deleteFile")] = updated.deleteFileWithRecord
+            values[booleanPreferencesKey("videoWifiOnly")] = updated.videoWifiOnly
             if(updated.directoryUri == null) values.remove(stringPreferencesKey("directory")) else values[stringPreferencesKey("directory")] = updated.directoryUri
         }; if(serviceActive) pump() }
     }
@@ -206,12 +217,21 @@ class DownloadCoordinator private constructor(private val context: Context) {
         catch(error: Exception) { scope.launch { dao.pending().forEach { dao.status(it.id,"paused","FOREGROUND_REQUIRED") } } }
     }
     private fun online(): Boolean = manager.activeNetwork?.let { manager.getNetworkCapabilities(it)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) } == true
+    private fun canTransfer(item: DownloadEntity): Boolean {
+        val caps = manager.activeNetwork?.let { manager.getNetworkCapabilities(it) } ?: return false
+        return DownloadNetworkPolicy.canTransfer(
+            category = DownloadLogic.category(item.fileName, item.mimeType),
+            videoWifiOnly = settings.value.videoWifiOnly,
+            hasInternet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
+            isUnmetered = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED),
+        )
+    }
     private fun pump() { scope.launch { mutex.withLock {
         if(!serviceActive) return@withLock
         for(item in dao.pending()) {
             if(active.size >= settings.value.maxConcurrent) break
             if(active.containsKey(item.id)) continue
-            if(!online()) { dao.status(item.id,"waiting_network"); continue }
+            if(!canTransfer(item)) { dao.status(item.id,"waiting_network"); continue }
             val job = scope.launch(start = CoroutineStart.LAZY) { runDownload(item.id) }
             active[item.id]=job; job.start()
         }

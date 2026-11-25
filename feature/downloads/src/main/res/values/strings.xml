@@ -61,6 +61,8 @@
     <string name="download_concurrent">同时下载数：%1$d</string>
     <string name="download_threads">单文件线程数：%1$d</string>
     <string name="download_delete_with_record">删除记录时同时删除文件</string>
+    <string name="download_video_wifi_only">仅在 Wi-Fi 下下载视频</string>
+    <string name="download_video_wifi_only_summary">移动网络下视频下载保持等待网络状态</string>
     <string name="download_all">全部</string>
     <string name="download_video">视频</string>
     <string name="download_audio">音频</string>

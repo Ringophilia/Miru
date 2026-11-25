@@ -61,6 +61,8 @@
     <string name="download_concurrent">Concurrent downloads: %1$d</string>
     <string name="download_threads">Threads per file: %1$d</string>
     <string name="download_delete_with_record">Delete file with record</string>
+    <string name="download_video_wifi_only">Download videos over Wi-Fi only</string>
+    <string name="download_video_wifi_only_summary">Keep video downloads waiting for Wi-Fi on metered mobile data</string>
     <string name="download_all">All</string>
     <string name="download_video">Videos</string>
     <string name="download_audio">Audio</string>

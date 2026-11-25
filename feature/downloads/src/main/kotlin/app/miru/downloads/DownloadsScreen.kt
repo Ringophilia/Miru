@@ -7,8 +7,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -342,24 +342,6 @@ fun DownloadConfirmSheet(request:DownloadRequest,onDismiss:()->Unit,onConfirm:(D
                     },
                 ) { Text(stringResource(R.string.download_start)) }
             }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun DownloadSettingsScreen(coordinator:DownloadCoordinator,onBack:()->Unit) {
-    val preferences by coordinator.settings.collectAsState()
-    val context=LocalContext.current
-    val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()){uri->if(uri!=null){runCatching{context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)};coordinator.updatePreferences{it.copy(directoryUri=uri.toString())}}}
-    Scaffold(topBar={TopAppBar(title={Text(stringResource(R.string.download_settings))},navigationIcon={IconButton(onClick=onBack){Icon(Icons.AutoMirrored.Outlined.ArrowBack,stringResource(R.string.download_back))}})}){padding->
-        Column(Modifier.padding(padding).verticalScroll(rememberScrollState())) {
-            ListItem(headlineContent={Text(stringResource(R.string.download_ask))},trailingContent={Switch(preferences.askBeforeDownload,{checked->coordinator.updatePreferences{it.copy(askBeforeDownload=checked)}})})
-            ListItem(headlineContent={Text(stringResource(R.string.download_location))},supportingContent={Text(preferences.directoryUri?.let { Uri.parse(it).lastPathSegment }.orEmpty().ifBlank { stringResource(R.string.download_default_folder) })},trailingContent={Icon(Icons.Outlined.FolderOpen,null)},modifier=Modifier.clickable{picker.launch(preferences.directoryUri?.let(Uri::parse))})
-            if(preferences.directoryUri!=null&&Build.VERSION.SDK_INT>=29)TextButton(onClick={coordinator.updatePreferences{it.copy(directoryUri=null)}}){Text(stringResource(R.string.download_reset_folder))}
-            Text(stringResource(R.string.download_concurrent,preferences.maxConcurrent),Modifier.padding(16.dp));Slider(preferences.maxConcurrent.toFloat(),{value->coordinator.updatePreferences{it.copy(maxConcurrent=value.toInt())}},Modifier.padding(horizontal=24.dp),valueRange=1f..5f,steps=3)
-            Text(stringResource(R.string.download_threads,preferences.threadsPerFile),Modifier.padding(16.dp));Slider(preferences.threadsPerFile.toFloat(),{value->coordinator.updatePreferences{it.copy(threadsPerFile=value.toInt())}},Modifier.padding(horizontal=24.dp),valueRange=1f..8f,steps=6)
-            ListItem(headlineContent={Text(stringResource(R.string.download_delete_with_record))},trailingContent={Switch(preferences.deleteFileWithRecord,{checked->coordinator.updatePreferences{it.copy(deleteFileWithRecord=checked)}})})
         }
     }
 }

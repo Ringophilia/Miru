@@ -128,6 +128,7 @@ class PlayerController(
     val seekPreview = SeekPreviewController<android.graphics.Bitmap>(scope, ::onPreviewFailure)
     private var speedRevision = 0
     private var currentSpeed = 1f
+    private var speedOverridden = false
     private val mutableTracks = MutableStateFlow(PlayerTrackOptions())
     val trackOptions = mutableTracks.asStateFlow()
     private val mutableSubtitleText = MutableStateFlow("")
@@ -164,9 +165,9 @@ class PlayerController(
         settingsRepository.saveSkipRule(scope, rule)
     }
 
-    init { connectivity.registerDefaultNetworkCallback(networkCallback); open(request.positionMs, "auto", restore = !request.fromWeb) }
+    init { connectivity.registerDefaultNetworkCallback(networkCallback); open(request.positionMs, "auto", restore = !request.fromWeb, useDefaults = true) }
 
-    private fun open(position: Long, decoder: String, restore: Boolean = false) {
+    private fun open(position: Long, decoder: String, restore: Boolean = false, useDefaults: Boolean = false) {
         if(released) return
         val revision = ++sourceRevision
         skipTracker.positionDiscontinuity(userSeek = false)
@@ -186,16 +187,23 @@ class PlayerController(
         initialization = scope.launch {
             try {
             val options = settingsRepository.settings.first()
+            val effectiveDecoder = if (useDefaults && decoder == "auto") options.defaultDecoder else decoder
+            if (effectiveDecoder != decoder) {
+                mutable.value = mutable.value.copy(decoder = effectiveDecoder)
+            }
+            if (useDefaults && !speedOverridden) {
+                currentSpeed = options.defaultSpeed
+            }
             if (skipScopes.isNotEmpty()) skipRules.first { it != null }
             val offline = request.offlineId?.let { id -> OfflineCoordinator.get(context).playback(id)
                 ?: throw java.io.IOException("Offline media is unavailable") }
             val disk = withContext(Dispatchers.IO) { if(request.isPrivate || offline != null) null else runCatching { PlaybackCache.get(context) }.getOrNull() }
-            val saved = if(restore && !request.isPrivate) withContext(Dispatchers.IO) {
+            val saved = if(restore && options.rememberProgress && !request.isPrivate) withContext(Dispatchers.IO) {
                 runCatching { PlaybackHistory.get(context).progress().get(progressKey)?.let { PlaybackPolicy.resume(it.position, it.duration) } ?: 0L }.getOrDefault(0L)
             } else 0L
             ensureActive()
             val renderers = DefaultRenderersFactory(context).setEnableDecoderFallback(true).setMediaCodecSelector { mime, secure, tunneling ->
-                MediaCodecSelector.DEFAULT.getDecoderInfos(mime, secure, tunneling).filter { when(decoder) { "software" -> it.softwareOnly; "hardware" -> it.hardwareAccelerated; else -> true } }
+                MediaCodecSelector.DEFAULT.getDecoderInfos(mime, secure, tunneling).filter { when(effectiveDecoder) { "software" -> it.softwareOnly; "hardware" -> it.hardwareAccelerated; else -> true } }
             }
             val dataSaver = PlayerPreferences.dataSaverActive(connectivity.isActiveNetworkMetered, connectivity.restrictBackgroundStatus)
             val (minimum, maximum) = options.bufferMillis(dataSaver)
@@ -268,13 +276,13 @@ class PlayerController(
                                     catch(cancelled: CancellationException) { throw cancelled }
                                     catch(_: Exception) { null }
                                 if(released || revision != sourceRevision || player !== created) return@launch
-                                if(refreshed == null) failBackToWeb() else { authentication = null; headers = refreshed; open(resumeAt, decoder) }
+                                if(refreshed == null) failBackToWeb() else { authentication = null; headers = refreshed; open(resumeAt, effectiveDecoder) }
                             }
                         } else failBackToWeb()
-                    } else if(error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED && !softwareRetried && decoder != "software") {
+                    } else if(error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED && !softwareRetried && effectiveDecoder != "software") {
                         softwareRetried = true; open(created.currentPosition, "software")
                     } else if(error.errorCode in setOf(PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED, PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED)) {
-                        if(!forceProgressive) { forceProgressive = true; open(created.currentPosition, decoder) }
+                        if(!forceProgressive) { forceProgressive = true; open(created.currentPosition, effectiveDecoder) }
                         else if(request.fromWeb) failBackToWeb() else mutable.value = mutable.value.copy(error = true, buffering = false)
                     } else mutable.value = mutable.value.copy(error = true, buffering = false)
                 }
@@ -283,7 +291,7 @@ class PlayerController(
             created.setMediaSource(source, maxOf(position, saved))
             if(saved > 0) mutable.value = mutable.value.copy(resumed = true)
             created.prepare(); created.playWhenReady = !pausedForStop
-            speed(currentSpeed)
+            applySpeed(currentSpeed)
             watchStartup(created)
             ticker = scope.launch { while(isActive) { update(); if(System.currentTimeMillis() - lastSave >= 10_000) save(); delay(250) } }
             } catch(cancelled: CancellationException) { throw cancelled }
@@ -599,6 +607,11 @@ class PlayerController(
     fun live() { player?.seekToDefaultPosition() }
     fun restart() { seek(0); mutable.value = mutable.value.copy(resumed = false) }
     fun speed(requested: Float) {
+        speedOverridden = true
+        applySpeed(requested)
+    }
+
+    private fun applySpeed(requested: Float) {
         val revision = ++speedRevision
         scope.launch {
             if(revision != speedRevision || released) return@launch
@@ -613,7 +626,7 @@ class PlayerController(
     fun retry() { returnedToWeb = false; authenticationRetried = false; open(player?.currentPosition ?: 0, state.value.decoder) }
     fun pause() { player?.pause(); save() }
     fun save() {
-        if(request.isPrivate) return
+        if(request.isPrivate || !preferences.value.rememberProgress) return
         val snapshot = state.value
         if(snapshot.duration <= 0 || !snapshot.ready) return
         lastSave = System.currentTimeMillis()

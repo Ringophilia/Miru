@@ -17,5 +17,6 @@
     <string name="menu_desktop_site">桌面版网站</string>
     <string name="menu_adblock">广告拦截</string>
     <string name="menu_settings">设置</string>
+    <string name="menu_quit">退出</string>
     <string name="menu_bookmark_remove">移除书签</string>
 </resources>

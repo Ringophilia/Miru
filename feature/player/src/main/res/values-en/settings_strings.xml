@@ -19,6 +19,10 @@
     <string name="player_volume_gesture">Swipe right side for volume</string>
     <string name="player_haptics">Gesture haptics</string>
     <string name="player_behavior">Playback behavior</string>
+    <string name="player_default_speed">Default playback speed</string>
+    <string name="player_remember_progress">Remember playback position</string>
+    <string name="player_default_aspect">Default aspect ratio</string>
+    <string name="player_default_decoder">Default decoder</string>
     <string name="player_auto_pip">Enter picture-in-picture automatically</string>
     <string name="player_clear">Clear</string>
     <string name="player_cancel">Cancel</string>

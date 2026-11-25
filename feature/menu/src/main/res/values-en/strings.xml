@@ -17,5 +17,6 @@
     <string name="menu_desktop_site">Desktop site</string>
     <string name="menu_adblock">Ad blocking</string>
     <string name="menu_settings">Settings</string>
+    <string name="menu_quit">Quit</string>
     <string name="menu_bookmark_remove">Remove bookmark</string>
 </resources>

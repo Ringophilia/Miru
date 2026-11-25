@@ -12,9 +12,25 @@ enum class SearchEngine(val template: String) {
     GOOGLE("https://www.google.com/search?q=%s"),
     BING("https://www.bing.com/search?q=%s"),
     DUCKDUCKGO("https://duckduckgo.com/?q=%s"),
-    BAIDU("https://www.baidu.com/s?wd=%s");
+    BAIDU("https://www.baidu.com/s?wd=%s"),
+    CUSTOM("");
 
-    fun search(query: String): String = template.replace("%s", URLEncoder.encode(query, StandardCharsets.UTF_8.name()))
+    fun search(query: String, customTemplate: String? = null): String {
+        val active = if (this == CUSTOM) {
+            customTemplate?.trim()?.takeIf(::validateCustomSearchTemplate) ?: GOOGLE.template
+        } else {
+            template
+        }
+        return active.replace("%s", URLEncoder.encode(query, StandardCharsets.UTF_8.name()))
+    }
+}
+
+fun validateCustomSearchTemplate(template: String): Boolean {
+    val trimmed = template.trim()
+    if (!trimmed.contains("%s") || trimmed.any { it.isWhitespace() || it.isISOControl() }) return false
+    val uri = runCatching { URI(trimmed.replace("%s", "miru")) }.getOrNull() ?: return false
+    val scheme = uri.scheme?.lowercase()
+    return scheme in setOf("http", "https") && !uri.host.isNullOrBlank() && uri.userInfo == null
 }
 
 sealed interface AddressTarget {
@@ -29,7 +45,7 @@ object AddressResolver {
     private val scheme = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:")
     private val domain = Regex("^(?:localhost|(?:[\\p{L}\\p{N}](?:[\\p{L}\\p{N}-]*[\\p{L}\\p{N}])?\\.)+[\\p{L}\\p{N}-]+)(?::[0-9]{1,5})?(?:[/?#].*)?$", RegexOption.IGNORE_CASE)
 
-    fun resolve(input: String, engine: SearchEngine = SearchEngine.GOOGLE): AddressTarget {
+    fun resolve(input: String, engine: SearchEngine = SearchEngine.GOOGLE, customSearchUrl: String? = null): AddressTarget {
         val value = input.trim()
         if (value.isEmpty()) return AddressTarget.Empty
         if (value == "about:newtab") return AddressTarget.Internal("newtab")
@@ -48,7 +64,7 @@ object AddressResolver {
         if (!value.any(Char::isWhitespace) && domain.matches(value)) {
             return AddressTarget.Web("https://$value")
         }
-        return AddressTarget.Web(engine.search(value))
+        return AddressTarget.Web(engine.search(value, customSearchUrl))
     }
 
     fun display(url: String): String {

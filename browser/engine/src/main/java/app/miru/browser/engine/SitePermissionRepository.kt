@@ -129,6 +129,22 @@ internal class SitePermissionRepository(
         }
     }
 
+    suspend fun listSavedDefaultOrigins(): Map<String, Map<SitePermissionKind, SitePermissionChoice>> = withContext(Dispatchers.IO) {
+        val result = linkedMapOf<String, MutableMap<SitePermissionKind, SitePermissionChoice>>()
+        database.readableDatabase.query(
+            TABLE, arrayOf("origin", "kind", "choice"), "context_key = ?", arrayOf("0"),
+            null, null, "origin ASC",
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val origin = siteOrigin(cursor.getString(0)) ?: continue
+                val kind = runCatching { SitePermissionKind.valueOf(cursor.getString(1)) }.getOrNull() ?: continue
+                val choice = runCatching { SitePermissionChoice.valueOf(cursor.getString(2)) }.getOrNull() ?: continue
+                result.getOrPut(origin) { linkedMapOf() }[kind] = choice
+            }
+        }
+        result
+    }
+
     suspend fun reset(site: PermissionSite) {
         requireSite(site)
         val generation = privateGeneration

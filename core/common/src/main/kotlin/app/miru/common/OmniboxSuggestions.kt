@@ -30,6 +30,7 @@ object InlineDomainCompletion {
 
 object SearchSuggestionPolicy {
     fun mayRequest(input: String,engine: SearchEngine,enabled: Boolean,isPrivate: Boolean): Boolean {
+        if(engine==SearchEngine.CUSTOM)return false
         val query=input.trim()
         if(!enabled || isPrivate || query.length !in 2..128 || query.any(Char::isISOControl))return false
         if(query.contains('@') || query.startsWith('/') || query.startsWith('\\'))return false
@@ -46,6 +47,7 @@ object SearchSuggestionPolicy {
             SearchEngine.BING -> "https://www.bing.com/osjson.aspx?query=$encoded"
             SearchEngine.DUCKDUCKGO -> "https://ac.duckduckgo.com/ac/?type=list&q=$encoded"
             SearchEngine.BAIDU -> "https://www.baidu.com/su?ie=utf-8&action=opensearch&wd=$encoded"
+            SearchEngine.CUSTOM -> ""
         }
     }
 }

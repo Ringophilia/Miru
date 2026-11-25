@@ -65,4 +65,31 @@
     <string name="android_license">AndroidX / Kotlin · Apache-2.0</string>
     <string name="search_suggestions">Online search suggestions</string>
     <string name="search_suggestions_detail">Send search terms to your search engine; disabled in private tabs</string>
+    <string name="search_suggestions_custom_disabled">Disabled when using a custom search engine</string>
+    <string name="search_custom">Custom</string>
+    <string name="search_custom_title">Custom search engine</string>
+    <string name="search_custom_url">Search URL template</string>
+    <string name="search_custom_hint">https://example.com/search?q=%s</string>
+    <string name="search_custom_invalid">Enter a valid http or https URL containing %s.</string>
+    <string name="search_custom_save">Save</string>
+    <string name="default_browser_is_default">Already set as default</string>
+    <string name="web_zoom">Web text zoom</string>
+    <string name="web_zoom_value">%1$d%%</string>
+    <string name="web_zoom_reset">Reset to 100%</string>
+    <string name="ntp_show_shortcuts">Show home shortcuts</string>
+    <string name="ntp_show_shortcuts_detail">Display frequent site shortcuts on the new tab page</string>
+    <string name="clear_on_exit">Clear browsing data on exit</string>
+    <string name="clear_on_exit_detail">Automatically clear selected data when choosing Quit from the menu</string>
+    <string name="clear_on_exit_types">Data cleared on exit</string>
+    <string name="clear_on_exit_types_count">%1$d selected</string>
+    <string name="site_settings">Site settings</string>
+    <string name="site_settings_detail">Review and reset saved permissions, autoplay, and pop-up choices</string>
+    <string name="site_settings_empty">No saved site permissions yet</string>
+    <string name="site_settings_reset">Reset</string>
+    <string name="site_settings_reset_all">Reset all</string>
+    <string name="site_settings_reset_all_title">Reset all site permissions?</string>
+    <string name="site_settings_reset_all_confirm">This clears saved camera, microphone, location, notification, protected media, autoplay, and pop-up rules for every site.</string>
+    <string name="site_settings_reset_done">Site permissions reset</string>
+    <string name="site_settings_reset_failed">Could not reset site permissions. Try again later.</string>
+    <string name="downloads_and_player">Downloads &amp; player</string>
 </resources>
