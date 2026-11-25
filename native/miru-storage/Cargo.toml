@@ -1,0 +1,9 @@
+[package]
+name = "miru-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Fast in-memory omnibox inline domain completion and ranked history/bookmark search for Miru"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

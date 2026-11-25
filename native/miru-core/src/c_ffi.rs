@@ -155,10 +155,47 @@ pub unsafe extern "C" fn miru_media_probe_bytes(data: *const u8, len: usize) -> 
     }
 }
 
-// --- URL & Cache Key C ABI ---
+#[no_mangle]
+pub unsafe extern "C" fn miru_media_probe_hls(playlist_utf8: *const c_char) -> MiruResolution {
+    let Some(text) = str_from_ptr(playlist_utf8) else {
+        return MiruResolution { width: 0, height: 0, valid: 0 };
+    };
+    match miru_media::probe_hls_manifest(text) {
+        Some(r) => MiruResolution { width: r.width, height: r.height, valid: 1 },
+        None => MiruResolution { width: 0, height: 0, valid: 0 },
+    }
+}
+
+// --- URL, Referrer & Cache Key C ABI ---
+
+#[no_mangle]
+pub unsafe extern "C" fn miru_url_normalized_cache_url(url_utf8: *const c_char, is_range: c_int) -> *mut c_char {
+    let Some(url) = str_from_ptr(url_utf8) else { return ptr::null_mut() };
+    alloc_cstring(&miru_url::normalized_cache_url(url, is_range != 0))
+}
 
 #[no_mangle]
 pub unsafe extern "C" fn miru_url_strip_signature_params(url_utf8: *const c_char) -> *mut c_char {
     let Some(url) = str_from_ptr(url_utf8) else { return ptr::null_mut() };
     alloc_cstring(&miru_url::strip_ephemeral_signature_params(url))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn miru_url_site_origin(url_utf8: *const c_char) -> *mut c_char {
+    let Some(url) = str_from_ptr(url_utf8) else { return ptr::null_mut() };
+    miru_url::site_origin(url).map(|s| alloc_cstring(&s)).unwrap_or(ptr::null_mut())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn miru_url_context_referrer(
+    page_url_utf8: *const c_char,
+    target_url_utf8: *const c_char,
+    captured_referrer_utf8: *const c_char,
+) -> *mut c_char {
+    let Some(page) = str_from_ptr(page_url_utf8) else { return ptr::null_mut() };
+    let Some(target) = str_from_ptr(target_url_utf8) else { return ptr::null_mut() };
+    let captured = str_from_ptr(captured_referrer_utf8);
+    miru_url::context_referrer(page, target, captured)
+        .map(|s| alloc_cstring(&s))
+        .unwrap_or(ptr::null_mut())
 }

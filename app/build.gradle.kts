@@ -25,6 +25,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
+    sourceSets["main"].jniLibs.srcDir(rootProject.file("native/android-jniLibs"))
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     // 发布签名读取未提交的 keystore.properties；缺省时用调试密钥，仅供本机安装。
     val releaseKeys = rootProject.file("keystore.properties").takeIf { it.exists() }
@@ -83,6 +84,8 @@ dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:data"))
     implementation(project(":core:design"))
+    implementation(project(":core:native-core"))
+    implementation(project(":browser:adblock-rust"))
     implementation(project(":browser:engine-api"))
     implementation(project(":browser:engine-gecko"))
     implementation(project(":browser:toolbar"))

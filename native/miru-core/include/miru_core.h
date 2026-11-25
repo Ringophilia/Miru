@@ -45,9 +45,15 @@ char* miru_media_classify(const char* url_utf8,
                           const char* content_type_utf8,
                           int64_t content_length);
 MiruResolution miru_media_probe_bytes(const uint8_t* data, size_t len);
+MiruResolution miru_media_probe_hls(const char* playlist_utf8);
 
-/* URL & cache-key normalization */
+/* URL, referrer & cache-key normalization */
+char* miru_url_normalized_cache_url(const char* url_utf8, int is_range);
 char* miru_url_strip_signature_params(const char* url_utf8);
+char* miru_url_site_origin(const char* url_utf8);
+char* miru_url_context_referrer(const char* page_url_utf8,
+                                const char* target_url_utf8,
+                                const char* captured_referrer_utf8);
 
 /* Memory disposal */
 void miru_bytes_free(MiruBytes bytes);

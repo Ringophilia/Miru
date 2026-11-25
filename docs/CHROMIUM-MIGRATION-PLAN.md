@@ -100,7 +100,7 @@
 | 广告拦截引擎（`miru-adblock`） | **Rust（`libmiru_core`）** | FlatBuffers 亚毫秒冷启动（实测 5k 规则 `0.31 ms`）、微秒级请求匹配（`2.00 µs`），直挂 Chromium C++ IO 线程零 JNI 开销 |
 | 媒体嗅探分类 & 清晰度流头解析（`miru-media`） | **Rust（`libmiru_core`）** | 零 GC 字节流解析（HLS/DASH、TS/H.264/H.265 SPS、MP4 `stsd`、VAST），与 Chromium C++ 网络层和未来 iOS 共享一套实现 |
 | URL / Origin / Referrer / 缓存键策略（`miru-url`） | **Rust（`libmiru_core`）** | 统一 PSL 域名与安全边界判定，消除 Kotlin / JS / C++ / Swift 多份重复逻辑与语义漂移 |
-| 历史/书签 FTS5 检索与地址栏补全打分（`miru-storage`，Phase C3） | **Rust（`libmiru_core`）** | 毫秒级中文/域名模糊与前缀匹配，无主线程 GC 抖动，输入跟手度更高 |
+| 历史/书签检索与地址栏补全索引（`miru-storage`） | **Rust（`libmiru_core`）** | 内存索引与前缀/中文关键词排序（Phase C0 已先落地并接入生产地址栏，Phase C3 按需接 FTS5），消除 Kotlin 5000 条正则遍历与主线程 GC 抖动 |
 | 多分段下载与校验核心（`miru-download`，Phase C3） | **Rust 核心 + Android 原生服务壳** | `tokio` + `rustls` 高吞吐零拷贝分块写入 Android SAF/MediaStore `fd`；通知、网络监听与系统生命周期仍归 Kotlin |
 | 浏览器外壳、手势、弹簧动效与无障碍 | **Kotlin + Jetpack Compose（iOS 用 SwiftUI/UIKit）** | 保持系统级帧同步、IME 键盘协调、TalkBack 无障碍与原生手势物理手感，绝不降级为自绘跨端壳 |
 | 网页内核渲染与合成 | **Chromium C++（去 Google 化）** | 复用 Blink / V8 / Skia / Viz 成熟移动能力，通过极薄 `extern "C"` 静态链接 `libmiru_core.a` |

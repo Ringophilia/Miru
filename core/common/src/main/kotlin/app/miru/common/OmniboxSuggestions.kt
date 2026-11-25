@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package app.miru.common
 
+import app.miru.nativecore.MiruNativeCore
 import java.net.URI
 import java.net.URLEncoder
 import java.util.Locale
@@ -11,6 +12,9 @@ data class InlineDomain(val text: String,val url: String)
 object InlineDomainCompletion {
     /** Complete only a domain, never a history path, query, credentials or Chinese composition. */
     fun find(input: String,historyUrls: List<String>): InlineDomain? {
+        if (MiruNativeCore.isAvailable) {
+            return MiruNativeCore.completeInlineDomain(input, historyUrls)?.let { InlineDomain(it.text, it.url) }
+        }
         val scheme=when { input.startsWith("https://",true)->input.take(8);input.startsWith("http://",true)->input.take(7);else->"" }
         val prefix=input.removePrefix(scheme)
         if(!prefix.matches(Regex("[A-Za-z0-9][A-Za-z0-9.-]*")))return null

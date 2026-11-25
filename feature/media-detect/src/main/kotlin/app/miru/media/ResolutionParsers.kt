@@ -2,23 +2,29 @@
 // SPDX-License-Identifier: MPL-2.0
 package app.miru.media
 
+import app.miru.nativecore.MiruNativeCore
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.math.min
 import org.w3c.dom.Element
 
-/** Bounded, defensive container parsers. No decoder, network or Android state is needed. */
+/** Bounded, defensive container parsers. Uses unified Rust core (`libmiru_core`) with pure-Kotlin fallback. */
 internal object ResolutionParsers {
     fun attributes(line: String): Map<String, String> = Regex("([A-Za-z0-9-]+)=(\"[^\"]*\"|[^,]*)")
         .findAll(line.substringAfter(':', line)).associate { it.groupValues[1].uppercase() to it.groupValues[2].trim().removeSurrounding("\"") }
 
-    fun hls(text: String): MediaResolution? = text.lineSequence().map(String::trim)
-        .filter { it.startsWith("#EXT-X-STREAM-INF:") || it.startsWith("#EXT-X-I-FRAME-STREAM-INF:") }
-        .mapNotNull { line ->
-            val sizes = attributes(line)["RESOLUTION"]?.split('x', 'X') ?: return@mapNotNull null
-            if (sizes.size != 2) null else MediaResolution.valid(sizes[0].toIntOrNull() ?: 0, sizes[1].toIntOrNull() ?: 0)
-        }.maxByOrNull { it.pixels }
+    fun hls(text: String): MediaResolution? {
+        if (MiruNativeCore.isAvailable) {
+            return MiruNativeCore.probeHls(text)?.let { (w, h) -> MediaResolution.valid(w, h) }
+        }
+        return text.lineSequence().map(String::trim)
+            .filter { it.startsWith("#EXT-X-STREAM-INF:") || it.startsWith("#EXT-X-I-FRAME-STREAM-INF:") }
+            .mapNotNull { line ->
+                val sizes = attributes(line)["RESOLUTION"]?.split('x', 'X') ?: return@mapNotNull null
+                if (sizes.size != 2) null else MediaResolution.valid(sizes[0].toIntOrNull() ?: 0, sizes[1].toIntOrNull() ?: 0)
+            }.maxByOrNull { it.pixels }
+    }
 
     fun dash(bytes: ByteArray): MediaResolution? = runCatching {
         val text = bytes.toString(Charsets.UTF_8)
@@ -83,40 +89,48 @@ internal object ResolutionParsers {
     }
     private fun child(data: ByteArray, parent: Box, name: String): Box? = boxes(data, parent.content, parent.end).firstOrNull { it.type == name }
 
-    fun mp4(data: ByteArray): MediaResolution? = runCatching {
-        val movies = boxes(data, 0, data.size).filter { it.type == "moov" }.toMutableList()
-        // A suffix request starts in mdat; accept only a complete moov and validate its
-        // video handler/sample hierarchy, rather than trusting an arbitrary stsd string.
-        if (movies.isEmpty()) for (i in 4 until data.size - 3) {
-            if (data[i] != 0x6d.toByte() || data[i + 1] != 0x6f.toByte() || data[i + 2] != 0x6f.toByte() || data[i + 3] != 0x76.toByte()) continue
-            val size = u32(data, i - 4)
-            if (size >= 8 && size <= data.size.toLong() - i + 4) movies += Box("moov", i + 4, i - 4 + size.toInt(), true)
+    fun mp4(data: ByteArray): MediaResolution? {
+        if (MiruNativeCore.isAvailable) {
+            return MiruNativeCore.probeMp4(data)?.let { (w, h) -> MediaResolution.valid(w, h) }
         }
-        var best: MediaResolution? = null
-        for (movie in movies) for (track in boxes(data, movie.content, movie.end).filter { it.type == "trak" }) {
-            val media = child(data, track, "mdia") ?: continue
-            val handler = child(data, media, "hdlr") ?: continue
-            if (handler.content + 12 > handler.end || type(data, handler.content + 8) != "vide") continue
-            val table = child(data, media, "minf")?.let { child(data, it, "stbl") }
-            val description = table?.let { child(data, it, "stsd") }
-            var measured: MediaResolution? = null
-            if (description != null && description.content + 8 <= description.end) {
-                val count = u32(data, description.content + 4).coerceAtMost(256).toInt()
-                for (entry in boxes(data, description.content + 8, description.end).take(count)) {
-                    if (entry.type !in setOf("avc1", "avc3", "hvc1", "hev1", "av01", "vp09", "encv", "mp4v") || entry.content + 28 > entry.end) continue
-                    measured = MediaResolution.valid(u16(data, entry.content + 24), u16(data, entry.content + 26))
-                    if (measured != null) break
+        return runCatching {
+            val movies = boxes(data, 0, data.size).filter { it.type == "moov" }.toMutableList()
+            // A suffix request starts in mdat; accept only a complete moov and validate its
+            // video handler/sample hierarchy, rather than trusting an arbitrary stsd string.
+            if (movies.isEmpty()) for (i in 4 until data.size - 3) {
+                if (data[i] != 0x6d.toByte() || data[i + 1] != 0x6f.toByte() || data[i + 2] != 0x6f.toByte() || data[i + 3] != 0x76.toByte()) continue
+                val size = u32(data, i - 4)
+                if (size >= 8 && size <= data.size.toLong() - i + 4) movies += Box("moov", i + 4, i - 4 + size.toInt(), true)
+            }
+            var best: MediaResolution? = null
+            for (movie in movies) for (track in boxes(data, movie.content, movie.end).filter { it.type == "trak" }) {
+                val media = child(data, track, "mdia") ?: continue
+                val handler = child(data, media, "hdlr") ?: continue
+                if (handler.content + 12 > handler.end || type(data, handler.content + 8) != "vide") continue
+                val table = child(data, media, "minf")?.let { child(data, it, "stbl") }
+                val description = table?.let { child(data, it, "stsd") }
+                var measured: MediaResolution? = null
+                if (description != null && description.content + 8 <= description.end) {
+                    val count = u32(data, description.content + 4).coerceAtMost(256).toInt()
+                    for (entry in boxes(data, description.content + 8, description.end).take(count)) {
+                        if (entry.type !in setOf("avc1", "avc3", "hvc1", "hev1", "av01", "vp09", "encv", "mp4v") || entry.content + 28 > entry.end) continue
+                        measured = MediaResolution.valid(u16(data, entry.content + 24), u16(data, entry.content + 26))
+                        if (measured != null) break
+                    }
                 }
+                if (measured == null) child(data, track, "tkhd")?.let { header ->
+                    if (header.complete && header.end - header.content >= 84) measured = MediaResolution.valid((u32(data, header.end - 8) shr 16).toInt(), (u32(data, header.end - 4) shr 16).toInt())
+                }
+                if ((measured?.pixels ?: 0) > (best?.pixels ?: 0)) best = measured
             }
-            if (measured == null) child(data, track, "tkhd")?.let { header ->
-                if (header.complete && header.end - header.content >= 84) measured = MediaResolution.valid((u32(data, header.end - 8) shr 16).toInt(), (u32(data, header.end - 4) shr 16).toInt())
-            }
-            if ((measured?.pixels ?: 0) > (best?.pixels ?: 0)) best = measured
-        }
-        best
-    }.getOrNull()
+            best
+        }.getOrNull()
+    }
 
     fun media(data: ByteArray): MediaResolution? {
+        if (MiruNativeCore.isAvailable) {
+            return MiruNativeCore.probeMediaBytes(data)?.let { (w, h) -> MediaResolution.valid(w, h) }
+        }
         mp4(data)?.let { return it }
         val start = tsStart(data) ?: return null
         return ts(data, start)

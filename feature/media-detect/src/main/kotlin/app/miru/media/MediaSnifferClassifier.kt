@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: MPL-2.0
 package app.miru.media
 
+import app.miru.nativecore.MiruNativeCore
 import java.net.URI
 import java.util.Locale
 
 /**
- * Pure-Kotlin media classifier mirroring the shared JS specification (`media-classifier.js`),
- * used directly by the v2.0 Chromium C++ `URLLoaderThrottle` media sniffing bridge.
+ * Unified Rust/Kotlin media classifier mirroring the shared JS specification (`media-classifier.js`),
+ * shared across Chromium C++ `URLLoaderThrottle` and the Android UI/player pipeline.
  */
 object MediaSnifferClassifier {
     private val segmentExtensions = Regex(".*\\.(ts|m4s|aac|cmfv|cmfa)$")
@@ -23,17 +24,21 @@ object MediaSnifferClassifier {
     private const val MIN_VIDEO_BYTES = 200L * 1024L
     private const val MIN_AUDIO_BYTES = 1024L * 1024L
 
-    fun dedupKey(rawUrl: String): String? = runCatching {
-        val uri = URI(rawUrl)
-        val scheme = uri.scheme?.lowercase(Locale.ROOT)?.takeIf { it == "http" || it == "https" } ?: return null
-        val host = uri.host?.lowercase(Locale.ROOT)?.takeIf(String::isNotBlank) ?: return null
-        val defaultPort = if (scheme == "https") 443 else 80
-        val port = if (uri.port == -1 || uri.port == defaultPort) "" else ":${uri.port}"
-        val path = uri.rawPath.orEmpty().ifEmpty { "/" }
-        "$scheme://$host$port$path"
-    }.getOrNull()
+    fun dedupKey(rawUrl: String): String? {
+        if (MiruNativeCore.isAvailable) return MiruNativeCore.mediaDedupKey(rawUrl)
+        return runCatching {
+            val uri = URI(rawUrl)
+            val scheme = uri.scheme?.lowercase(Locale.ROOT)?.takeIf { it == "http" || it == "https" } ?: return null
+            val host = uri.host?.lowercase(Locale.ROOT)?.takeIf(String::isNotBlank) ?: return null
+            val defaultPort = if (scheme == "https") 443 else 80
+            val port = if (uri.port == -1 || uri.port == defaultPort) "" else ":${uri.port}"
+            val path = uri.rawPath.orEmpty().ifEmpty { "/" }
+            "$scheme://$host$port$path"
+        }.getOrNull()
+    }
 
     fun classify(rawUrl: String, contentType: String? = null, contentLength: Long? = null): String? {
+        if (MiruNativeCore.isAvailable) return MiruNativeCore.classifyMedia(rawUrl, contentType, contentLength)
         val uri = runCatching { URI(rawUrl) }.getOrNull() ?: return null
         val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return null
         if (scheme != "http" && scheme != "https") return null

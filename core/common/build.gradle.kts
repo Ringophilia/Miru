@@ -3,4 +3,10 @@
 
 plugins { alias(libs.plugins.kotlin.jvm) }
 kotlin { jvmToolchain(21) }
-dependencies { testImplementation(libs.junit) }
+dependencies {
+    implementation(project(":core:native-core"))
+    testImplementation(libs.junit)
+}
+tasks.test {
+    systemProperty("miru.core.native.dir", rootProject.file("native/target/release").absolutePath)
+}

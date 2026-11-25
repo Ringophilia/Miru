@@ -30,6 +30,9 @@ android {
     buildFeatures { compose = true }
     sourceSets.getByName("androidTest").assets.srcDir(rootProject.file("app/src/androidTest/assets/media/seek-preview"))
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+    testOptions {
+        unitTests.all { it.systemProperty("miru.core.native.dir", rootProject.file("native/target/release").absolutePath) }
+    }
 }
 androidComponents {
     onVariants(selector().withBuildType("debug")) { variant ->
@@ -40,6 +43,7 @@ kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarg
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 dependencies {
     implementation(project(":core:design"))
+    implementation(project(":core:native-core"))
     implementation(project(":feature:offline"))
     api(project(":feature:superres"))
     implementation(libs.androidx.activity.compose)

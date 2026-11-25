@@ -2,20 +2,26 @@
 // SPDX-License-Identifier: MPL-2.0
 package app.miru.player
 
+import app.miru.nativecore.MiruNativeCore
 import java.net.URI
 import java.net.URLDecoder
 import java.security.MessageDigest
 
 object PlaybackPolicy {
     private val signatures = setOf("sign", "token", "expires", "timestamp", "t", "auth_key", "Expires", "Signature", "Key-Pair-Id", "Policy")
-    fun normalizedCacheUrl(raw: String, range: Boolean = false): String = runCatching {
-        val uri = URI(raw)
-        val path = uri.path.orEmpty().lowercase()
-        if(path.endsWith(".m3u8") || path.endsWith(".mpd")) return raw
-        val segment = range || listOf(".ts", ".m4s", ".mp4").any(path::endsWith)
-        val keys = uri.rawQuery?.split('&')?.map { URLDecoder.decode(it.substringBefore('='), "UTF-8") }.orEmpty()
-        if(segment && keys.isNotEmpty() && keys.all { it in signatures }) raw.substringBefore('?') else raw
-    }.getOrDefault(raw)
+    fun normalizedCacheUrl(raw: String, range: Boolean = false): String {
+        if (MiruNativeCore.isAvailable) {
+            MiruNativeCore.normalizedCacheUrl(raw, range)?.let { return it }
+        }
+        return runCatching {
+            val uri = URI(raw)
+            val path = uri.path.orEmpty().lowercase()
+            if(path.endsWith(".m3u8") || path.endsWith(".mpd")) return raw
+            val segment = range || listOf(".ts", ".m4s", ".mp4").any(path::endsWith)
+            val keys = uri.rawQuery?.split('&')?.map { URLDecoder.decode(it.substringBefore('='), "UTF-8") }.orEmpty()
+            if(segment && keys.isNotEmpty() && keys.all { it in signatures }) raw.substringBefore('?') else raw
+        }.getOrDefault(raw)
+    }
     fun digest(value: String): String = MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 255) }
     fun resume(position: Long, duration: Long): Long = if(position > 5_000 && duration > position + 15_000) position else 0
     fun progressKey(page: String, media: String): String = digest("$page|${media.substringBefore('?')}")

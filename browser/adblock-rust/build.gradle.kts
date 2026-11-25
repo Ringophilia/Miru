@@ -10,6 +10,7 @@ kotlin {
 }
 
 dependencies {
+    api(project(":core:native-core"))
     testImplementation(libs.junit)
 }
 

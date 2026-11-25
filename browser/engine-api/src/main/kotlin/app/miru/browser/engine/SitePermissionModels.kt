@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package app.miru.browser.engine
 
+import app.miru.nativecore.MiruNativeCore
 import java.net.URI
 import java.util.Locale
 
@@ -55,7 +56,9 @@ data class SavedSiteEntry(
 
 /** A complete web origin; paths, queries and fragments never form permission keys. */
 fun siteOrigin(value: String?): String? {
-    if (value.isNullOrEmpty() || value.any { it.code <= 0x20 || it.code == 0x7f }) return null
+    if (value.isNullOrEmpty()) return null
+    if (MiruNativeCore.isAvailable) return MiruNativeCore.siteOrigin(value)
+    if (value.any { it.code <= 0x20 || it.code == 0x7f }) return null
     return runCatching {
         val uri = URI(value)
         if (uri.isOpaque || uri.rawUserInfo != null) return null

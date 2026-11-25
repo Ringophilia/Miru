@@ -189,15 +189,16 @@ Miru 的取舍遵循产品规范 [MIRU-SPEC.md](MIRU-SPEC.md)（唯一需求来�
 Miru
 ├── app                    Application / AppContainer / Activity / 导航
 ├── core
-│   ├── common             地址判断、搜索引擎定义（纯 JVM）
+│   ├── common             地址判断、搜索引擎定义、Omnibox 建议（接入 libmiru_core，纯 JVM）
 │   ├── data               DataStore 设置，本地历史与书签（SQLite）
-│   └── design             主题、设计与动效 token、矢量字标
+│   ├── design             主题、设计与动效 token、矢量字标
+│   └── native-core        统一 Rust 原生库 `:core:native-core` JNI 网关与安全回退
 ├── browser
 │   ├── engine-api         纯 Kotlin 引擎抽象契约（标签/视图/权限/提示/下载/拦截/嗅探）
 │   ├── engine-gecko       v1.0 GeckoView 冻结参考后端（仅过渡期保留）
-│   ├── adblock-rust       Kotlin JVM / Android JNI 桥接层（对接 libmiru_core）
+│   ├── adblock-rust       Kotlin `adblock-rust` 封装层（经 `:core:native-core` 对接 libmiru_core）
 │   └── toolbar            Compose 地址栏
-├── native                 统一 Rust 原生核心 Workspace（miru-adblock / miru-media / miru-url → libmiru_core）
+├── native                 统一 Rust 原生核心 Workspace（miru-adblock / miru-media / miru-url / miru-storage → libmiru_core）
 ├── feature
 │   ├── ntp                原生新标签页与快捷方式
 │   ├── tabs               普通 / 无痕标签切换器

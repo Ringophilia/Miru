@@ -11,10 +11,14 @@ android {
     defaultConfig { minSdk = 26 }
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+    testOptions {
+        unitTests.all { it.systemProperty("miru.core.native.dir", rootProject.file("native/target/release").absolutePath) }
+    }
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 dependencies {
     implementation(project(":core:design"))
+    implementation(project(":core:native-core"))
     implementation(libs.kotlinx.coroutines.android)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation(libs.junit)

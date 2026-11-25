@@ -14,7 +14,13 @@ pub fn site_origin(value: &str) -> Option<String> {
     }
     let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     let authority = &rest[..authority_end];
-    if authority.is_empty() || authority.contains('@') || authority.ends_with(':') {
+    if authority.is_empty()
+        || authority.contains('@')
+        || authority.ends_with(':')
+        || authority
+            .bytes()
+            .any(|b| matches!(b, b'<' | b'>' | b'"' | b'{' | b'}' | b'|' | b'\\' | b'^' | b'`'))
+    {
         return None;
     }
     let (host, port) = split_host_port(authority)?;
@@ -125,7 +131,9 @@ pub fn external_data_allowed(value: &str, has_package: bool) -> bool {
     if scheme == "http" || scheme == "https" {
         return has_package && web_fallback(value).is_some();
     }
-    !matches!(scheme.as_str(), "intent" | "android-app" | "file" | "content" | "miru")
+    let ssp = value.split_once(':').map(|(_, rest)| rest).unwrap_or("");
+    !ssp.is_empty()
+        && !matches!(scheme.as_str(), "intent" | "android-app" | "file" | "content" | "miru")
         && !is_browser_scheme(&scheme)
 }
 

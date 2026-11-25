@@ -5,3 +5,8 @@
 # TypeDescription and PropertySubstitute static loggers. Keep those package
 # identities while allowing class/member renaming, shrinking and optimization.
 -keeppackagenames org.yaml.snakeyaml,org.yaml.snakeyaml.introspector
+
+# Unified Rust native core (libmiru_core.so) JNI entry points.
+-keep class app.miru.nativecore.MiruNativeBridge {
+    native <methods>;
+}

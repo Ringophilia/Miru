@@ -4,28 +4,16 @@
 use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{jboolean, jbyteArray, jlong, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
-
 use miru_adblock::MiruAdblockEngine;
+
+use crate::jni_util::{read_jstring, to_jstring};
 
 unsafe fn engine_ref<'a>(handle: jlong) -> Option<&'a MiruAdblockEngine> {
     if handle == 0 { None } else { Some(&*(handle as *const MiruAdblockEngine)) }
 }
 
-fn read_jstring(env: &mut JNIEnv, input: &JString) -> String {
-    if input.is_null() {
-        return String::new();
-    }
-    env.get_string(input).map(|s| s.into()).unwrap_or_default()
-}
-
-fn to_jstring(env: &mut JNIEnv, text: &str) -> jstring {
-    env.new_string(text).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
-}
-
-// --- Adblock JNI ---
-
 #[no_mangle]
-pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeCreateFromRules(
+pub extern "system" fn Java_app_miru_nativecore_MiruNativeBridge_nativeCreateFromRules(
     mut env: JNIEnv, _class: JClass, rules: JString,
 ) -> jlong {
     let text = read_jstring(&mut env, &rules);
@@ -33,7 +21,7 @@ pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeCrea
 }
 
 #[no_mangle]
-pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeCreateFromSnapshot(
+pub extern "system" fn Java_app_miru_nativecore_MiruNativeBridge_nativeCreateFromSnapshot(
     env: JNIEnv, _class: JClass, snapshot: JByteArray,
 ) -> jlong {
     let Ok(bytes) = env.convert_byte_array(snapshot) else { return 0 };
@@ -44,7 +32,7 @@ pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeCrea
 }
 
 #[no_mangle]
-pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeSerializeSnapshot(
+pub extern "system" fn Java_app_miru_nativecore_MiruNativeBridge_nativeSerializeSnapshot(
     env: JNIEnv, _class: JClass, handle: jlong,
 ) -> jbyteArray {
     let Some(engine) = (unsafe { engine_ref(handle) }) else { return std::ptr::null_mut() };
@@ -54,7 +42,7 @@ pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeSeri
 }
 
 #[no_mangle]
-pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeCheckRequestJson(
+pub extern "system" fn Java_app_miru_nativecore_MiruNativeBridge_nativeCheckRequestJson(
     mut env: JNIEnv, _class: JClass, handle: jlong, url: JString, source_url: JString, request_type: JString,
 ) -> jstring {
     let Some(engine) = (unsafe { engine_ref(handle) }) else {
@@ -69,7 +57,7 @@ pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeChec
 }
 
 #[no_mangle]
-pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeCosmeticResourcesJson(
+pub extern "system" fn Java_app_miru_nativecore_MiruNativeBridge_nativeCosmeticResourcesJson(
     mut env: JNIEnv, _class: JClass, handle: jlong, url: JString,
 ) -> jstring {
     let Some(engine) = (unsafe { engine_ref(handle) }) else {
@@ -82,14 +70,16 @@ pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeCosm
 }
 
 #[no_mangle]
-pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeSetEnabled(
+pub extern "system" fn Java_app_miru_nativecore_MiruNativeBridge_nativeSetEnabled(
     _env: JNIEnv, _class: JClass, handle: jlong, enabled: jboolean,
 ) {
-    if let Some(engine) = unsafe { engine_ref(handle) } { engine.set_enabled(enabled != JNI_FALSE); }
+    if let Some(engine) = unsafe { engine_ref(handle) } {
+        engine.set_enabled(enabled != JNI_FALSE);
+    }
 }
 
 #[no_mangle]
-pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeSetSiteAllowed(
+pub extern "system" fn Java_app_miru_nativecore_MiruNativeBridge_nativeSetSiteAllowed(
     mut env: JNIEnv, _class: JClass, handle: jlong, host: JString, allowed: jboolean,
 ) {
     if let Some(engine) = unsafe { engine_ref(handle) } {
@@ -99,7 +89,7 @@ pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeSetS
 }
 
 #[no_mangle]
-pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeIsSiteAllowed(
+pub extern "system" fn Java_app_miru_nativecore_MiruNativeBridge_nativeIsSiteAllowed(
     mut env: JNIEnv, _class: JClass, handle: jlong, host: JString,
 ) -> jboolean {
     let Some(engine) = (unsafe { engine_ref(handle) }) else { return JNI_FALSE };
@@ -108,7 +98,7 @@ pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeIsSi
 }
 
 #[no_mangle]
-pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeAddCustomRule(
+pub extern "system" fn Java_app_miru_nativecore_MiruNativeBridge_nativeAddCustomRule(
     mut env: JNIEnv, _class: JClass, handle: jlong, rule: JString,
 ) -> jboolean {
     let Some(engine) = (unsafe { engine_ref(handle) }) else { return JNI_FALSE };
@@ -117,7 +107,7 @@ pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeAddC
 }
 
 #[no_mangle]
-pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeRemoveCustomRule(
+pub extern "system" fn Java_app_miru_nativecore_MiruNativeBridge_nativeRemoveCustomRule(
     mut env: JNIEnv, _class: JClass, handle: jlong, rule: JString,
 ) -> jboolean {
     let Some(engine) = (unsafe { engine_ref(handle) }) else { return JNI_FALSE };
@@ -126,7 +116,7 @@ pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeRemo
 }
 
 #[no_mangle]
-pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeCustomRulesJson(
+pub extern "system" fn Java_app_miru_nativecore_MiruNativeBridge_nativeCustomRulesJson(
     mut env: JNIEnv, _class: JClass, handle: jlong,
 ) -> jstring {
     let Some(engine) = (unsafe { engine_ref(handle) }) else { return to_jstring(&mut env, "[]") };
@@ -135,57 +125,10 @@ pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeCust
 }
 
 #[no_mangle]
-pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeDestroy(
+pub extern "system" fn Java_app_miru_nativecore_MiruNativeBridge_nativeDestroy(
     _env: JNIEnv, _class: JClass, handle: jlong,
 ) {
-    if handle != 0 { unsafe { let _ = Box::from_raw(handle as *mut MiruAdblockEngine); } }
-}
-
-// --- Media & URL JNI (unified libmiru_core) ---
-
-#[no_mangle]
-pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeClassifyMedia(
-    mut env: JNIEnv, _class: JClass, url: JString, content_type: JString, content_length: jlong,
-) -> jstring {
-    let u = read_jstring(&mut env, &url);
-    let ct = read_jstring(&mut env, &content_type);
-    let ct_opt = (!ct.is_empty()).then_some(ct.as_str());
-    let len_opt = (content_length > 0).then_some(content_length as u64);
-    match miru_media::classify_media(&u, ct_opt, len_opt) {
-        Some(kind) => to_jstring(&mut env, kind.as_str()),
-        None => std::ptr::null_mut(),
-    }
-}
-
-#[no_mangle]
-pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeProbeMediaBytesJson(
-    mut env: JNIEnv, _class: JClass, bytes: JByteArray,
-) -> jstring {
-    let Ok(raw) = env.convert_byte_array(bytes) else { return std::ptr::null_mut() };
-    match miru_media::probe_media_bytes(&raw) {
-        Some(res) => {
-            let json = serde_json::to_string(&res).unwrap_or_default();
-            to_jstring(&mut env, &json)
-        }
-        None => std::ptr::null_mut(),
-    }
-}
-
-#[no_mangle]
-pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeStripCacheKeySignatures(
-    mut env: JNIEnv, _class: JClass, url: JString,
-) -> jstring {
-    let u = read_jstring(&mut env, &url);
-    to_jstring(&mut env, &miru_url::strip_ephemeral_signature_params(&u))
-}
-
-#[no_mangle]
-pub extern "system" fn Java_app_miru_adblock_rust_NativeAdblockBridge_nativeSiteOrigin(
-    mut env: JNIEnv, _class: JClass, url: JString,
-) -> jstring {
-    let u = read_jstring(&mut env, &url);
-    match miru_url::site_origin(&u) {
-        Some(origin) => to_jstring(&mut env, &origin),
-        None => std::ptr::null_mut(),
+    if handle != 0 {
+        unsafe { let _ = Box::from_raw(handle as *mut MiruAdblockEngine); }
     }
 }

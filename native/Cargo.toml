@@ -4,6 +4,7 @@ members = [
     "miru-adblock",
     "miru-url",
     "miru-media",
+    "miru-storage",
     "miru-core",
 ]
 

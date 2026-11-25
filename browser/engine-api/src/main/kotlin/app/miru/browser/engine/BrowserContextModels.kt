@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package app.miru.browser.engine
 
+import app.miru.nativecore.MiruNativeCore
 import java.net.URI
 import java.util.Locale
 
@@ -51,6 +52,9 @@ fun isBrowserScheme(scheme: String) = scheme in setOf(
 )
 
 fun externalDataAllowed(value: String, hasPackage: Boolean): Boolean {
+    if (MiruNativeCore.isAvailable) {
+        MiruNativeCore.externalDataAllowed(value, hasPackage)?.let { return it }
+    }
     val scheme = linkScheme(value) ?: return false
     if (scheme in setOf("http", "https")) return hasPackage && webFallback(value) != null
     return scheme !in setOf("intent", "android-app", "file", "content", "miru") &&
@@ -65,6 +69,9 @@ fun webFallback(value: String?): String? = value?.takeIf {
 /** Obtained from a matching image in its live document, never guessed from a missing header. */
 class ContextImagePolicy private constructor(val documentUrl: String, val policy: String) {
     fun referrerFor(targetUrl: String): String? {
+        if (MiruNativeCore.isAvailable) {
+            return MiruNativeCore.referrerForPolicy(documentUrl, targetUrl, policy)
+        }
         val source = ReferrerAddress.parse(documentUrl) ?: return null
         val target = ReferrerAddress.parse(targetUrl) ?: return null
         val sameOrigin = source.origin == target.origin
@@ -127,6 +134,9 @@ private class ReferrerAddress(val origin: String, val document: String, val trus
  * The owning document bounds a native context action's referrer.
  */
 fun contextReferrer(pageUrl: String, targetUrl: String, capturedReferrer: String? = null): String? {
+    if (MiruNativeCore.isAvailable) {
+        return MiruNativeCore.contextReferrer(pageUrl, targetUrl, capturedReferrer)
+    }
     val page = ReferrerUrl.parse(pageUrl) ?: return null
     val target = ReferrerUrl.parse(targetUrl) ?: return null
     if (page.scheme == "https" && target.scheme != "https") return null

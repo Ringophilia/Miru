@@ -316,12 +316,20 @@ dependencies = [
  "jni",
  "miru-adblock",
  "miru-media",
+ "miru-storage",
  "miru-url",
  "serde_json",
 ]
 
 [[package]]
 name = "miru-media"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "miru-storage"
 version = "0.1.0"
 dependencies = [
  "serde",
