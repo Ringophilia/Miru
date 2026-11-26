@@ -16,9 +16,11 @@
     <string name="security_dns_save">保存</string>
     <string name="adblock">广告拦截</string>
     <string name="adblock_detail">uBlock Origin、例外网站与过滤规则</string>
+    <string name="adblock_detail_native">原生拦截引擎、过滤列表与自定义规则</string>
     <string name="downloads">下载设置</string>
     <string name="downloads_detail">保存位置、同时下载数与下载线程</string>
     <string name="ublock_version">uBlock Origin %1$s</string>
+    <string name="native_adblock_version">Miru 原生广告拦截（%1$s）</string>
     <string name="ublock_license">uBlock Origin · GPL-3.0 · 查看源码</string>
     <string name="settings_title">设置</string>
     <string name="back">返回</string>
@@ -58,9 +60,12 @@
     <string name="third_party_notices">完整第三方组件与许可说明</string>
     <string name="version">版本 %1$s · 开发预览</string>
     <string name="preview_detail">当前版本提供基础浏览、uBlock Origin、文件下载，以及网页视频识别与原生播放预览。高级播放功能仍在开发。</string>
+    <string name="native_preview_detail">当前版本提供去 Google 化 Chromium 浏览、原生 adblock-rust 广告拦截、文件下载与网页视频原生播放。</string>
     <string name="privacy_detail">无需账号，不上传遥测或崩溃报告。普通标签在本机保存，无痕标签不会写入会话文件。</string>
     <string name="open_source">开源许可</string>
     <string name="mozilla_license">Mozilla GeckoView / Android Components · MPL-2.0</string>
+    <string name="chromium_license">Chromium Project（去 Google 化构建）· BSD-3-Clause</string>
+    <string name="adblock_rust_license">adblock-rust · MPL-2.0</string>
     <string name="mpl">查看 Mozilla 公共许可证</string>
     <string name="android_license">AndroidX / Kotlin · Apache-2.0</string>
     <string name="search_suggestions">在线搜索建议</string>

@@ -65,6 +65,7 @@ fun SettingsScreen(
     onClearDataOnExit: (Boolean) -> Unit = {},
     onClearOnExitTypes: (Set<BrowsingDataType>) -> Unit = {},
     onSiteSettings: () -> Unit = {},
+    nativeAdblock: Boolean = false,
 ) {
     var dialog by remember { mutableStateOf<String?>(null) }
     val suggestionsLabel = stringResource(R.string.search_suggestions)
@@ -160,7 +161,11 @@ fun SettingsScreen(
                 onClick = onSiteSettings,
             )
             BrowserSecurityRows(settings.security, onBlockThirdPartyCookies, onHttpsOnly, onSecureDns)
-            SettingRow(stringResource(R.string.adblock), stringResource(R.string.adblock_detail), onAdblock)
+            SettingRow(
+                stringResource(R.string.adblock),
+                stringResource(if (nativeAdblock) R.string.adblock_detail_native else R.string.adblock_detail),
+                onAdblock,
+            )
             GroupLabel(R.string.downloads_and_player)
             SettingRow(stringResource(R.string.downloads), stringResource(R.string.downloads_detail), onDownloads)
             SettingRow(stringResource(R.string.player), stringResource(R.string.player_detail), onPlayer)
@@ -322,24 +327,41 @@ private fun ClearOnExitTypesDialog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AboutScreen(versionName: String, onBack: () -> Unit, onOpenUrl: (String) -> Unit, adblockVersion: String? = null) {
+fun AboutScreen(
+    versionName: String,
+    onBack: () -> Unit,
+    onOpenUrl: (String) -> Unit,
+    adblockVersion: String? = null,
+    nativeAdblock: Boolean = false,
+) {
     Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.about)) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) } }) }) { padding ->
         Column(Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(stringResource(R.string.miru), style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
             Text(stringResource(R.string.version, versionName))
             Text(stringResource(R.string.author), style = MaterialTheme.typography.bodyMedium)
-            Text(stringResource(R.string.preview_detail), style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(if (nativeAdblock) R.string.native_preview_detail else R.string.preview_detail), style = MaterialTheme.typography.bodyMedium)
             Text(stringResource(R.string.privacy_detail), style = MaterialTheme.typography.bodyMedium)
-            if (adblockVersion != null) Text(stringResource(R.string.ublock_version, adblockVersion), style = MaterialTheme.typography.bodyMedium)
+            if (adblockVersion != null) {
+                Text(
+                    stringResource(if (nativeAdblock) R.string.native_adblock_version else R.string.ublock_version, adblockVersion),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
             HorizontalDivider()
             Text(stringResource(R.string.open_source), style = MaterialTheme.typography.titleMedium)
             TextButton(onClick = { onOpenUrl("https://github.com/Ringophilia/Miru") }) { Text(stringResource(R.string.project_source)) }
             TextButton(onClick = { onOpenUrl("https://github.com/Ringophilia/Miru/blob/main/LICENSE") }) { Text(stringResource(R.string.project_license)) }
             TextButton(onClick = { onOpenUrl("https://github.com/Ringophilia/Miru/blob/main/third_party/README.md") }) { Text(stringResource(R.string.third_party_notices)) }
-            TextButton(onClick = { onOpenUrl("https://github.com/mozilla-mobile/reference-browser") }) { Text(stringResource(R.string.mozilla_license)) }
-            TextButton(onClick = { onOpenUrl("https://www.mozilla.org/MPL/2.0/") }) { Text(stringResource(R.string.mpl)) }
-            TextButton(onClick = { onOpenUrl("https://source.android.com/docs/setup/about/licenses") }) { Text(stringResource(R.string.android_license)) }
-            TextButton(onClick = { onOpenUrl("https://github.com/gorhill/uBlock") }) { Text(stringResource(R.string.ublock_license)) }
+            if (nativeAdblock) {
+                TextButton(onClick = { onOpenUrl("https://chromium.googlesource.com/chromium/src/+/HEAD/LICENSE") }) { Text(stringResource(R.string.chromium_license)) }
+                TextButton(onClick = { onOpenUrl("https://github.com/brave/adblock-rust") }) { Text(stringResource(R.string.adblock_rust_license)) }
+                TextButton(onClick = { onOpenUrl("https://source.android.com/docs/setup/about/licenses") }) { Text(stringResource(R.string.android_license)) }
+            } else {
+                TextButton(onClick = { onOpenUrl("https://github.com/mozilla-mobile/reference-browser") }) { Text(stringResource(R.string.mozilla_license)) }
+                TextButton(onClick = { onOpenUrl("https://www.mozilla.org/MPL/2.0/") }) { Text(stringResource(R.string.mpl)) }
+                TextButton(onClick = { onOpenUrl("https://source.android.com/docs/setup/about/licenses") }) { Text(stringResource(R.string.android_license)) }
+                TextButton(onClick = { onOpenUrl("https://github.com/gorhill/uBlock") }) { Text(stringResource(R.string.ublock_license)) }
+            }
         }
     }
 }

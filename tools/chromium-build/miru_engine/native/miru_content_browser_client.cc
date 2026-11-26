@@ -5,6 +5,7 @@
 
 #include "base/android/apk_assets.h"
 #include "base/containers/fixed_flat_set.h"
+#include "base/functional/bind.h"
 #include "base/memory/weak_ptr.h"
 #include "base/posix/global_descriptors.h"
 #include "components/embedder_support/user_agent_utils.h"
@@ -13,6 +14,7 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/posix_file_descriptor_info.h"
 #include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/url_constants.h"
 #include "miru_core.h"
@@ -22,7 +24,11 @@
 #include "miru_engine/native/miru_tab.h"
 #include "miru_engine/native/miru_url_loader_factory.h"
 #include "miru_engine/native/miru_url_loader_throttle.h"
+#include "net/cookies/canonical_cookie.h"
+#include "net/cookies/cookie_options.h"
+#include "net/cookies/cookie_partition_key_collection.h"
 #include "services/network/public/cpp/url_loader_factory_builder.h"
+#include "services/network/public/mojom/cookie_manager.mojom.h"
 #include "url/gurl.h"
 #include "url/url_constants.h"
 
@@ -197,9 +203,15 @@ std::shared_ptr<MiruAdblockRef> MiruContentBrowserClient::GetAdblockRef() const 
 }
 
 void MiruContentBrowserClient::SetAdblockRules(const std::string& rules_utf8) {
-  auto next = std::make_shared<MiruAdblockRef>(
-      miru_adblock_create_from_rules(rules_utf8.c_str()));
+  MiruAdblockHandle* raw = miru_adblock_create_from_rules(rules_utf8.c_str());
+  auto next = std::make_shared<MiruAdblockRef>(raw);
   base::AutoLock lock(adblock_lock_);
+  if (raw) {
+    miru_adblock_set_enabled(raw, adblock_enabled_ ? 1 : 0);
+    for (const std::string& host : allowed_hosts_) {
+      miru_adblock_set_site_allowed(raw, host.c_str(), 1);
+    }
+  }
   adblock_ref_ = std::move(next);
 }
 
@@ -211,23 +223,65 @@ bool MiruContentBrowserClient::SetAdblockSnapshot(const uint8_t* data,
   }
   auto next = std::make_shared<MiruAdblockRef>(raw);
   base::AutoLock lock(adblock_lock_);
+  miru_adblock_set_enabled(raw, adblock_enabled_ ? 1 : 0);
+  for (const std::string& host : allowed_hosts_) {
+    miru_adblock_set_site_allowed(raw, host.c_str(), 1);
+  }
   adblock_ref_ = std::move(next);
   return true;
 }
 
 void MiruContentBrowserClient::SetAdblockEnabled(bool enabled) {
-  auto ref = GetAdblockRef();
-  if (ref && ref->ptr) {
-    miru_adblock_set_enabled(ref->ptr, enabled ? 1 : 0);
+  base::AutoLock lock(adblock_lock_);
+  adblock_enabled_ = enabled;
+  if (adblock_ref_ && adblock_ref_->ptr) {
+    miru_adblock_set_enabled(adblock_ref_->ptr, enabled ? 1 : 0);
   }
 }
 
 void MiruContentBrowserClient::SetSiteAdblockAllowed(const std::string& host,
                                                      bool allowed) {
-  auto ref = GetAdblockRef();
-  if (ref && ref->ptr) {
-    miru_adblock_set_site_allowed(ref->ptr, host.c_str(), allowed ? 1 : 0);
+  base::AutoLock lock(adblock_lock_);
+  if (allowed) {
+    allowed_hosts_.insert(host);
+  } else {
+    allowed_hosts_.erase(host);
   }
+  if (adblock_ref_ && adblock_ref_->ptr) {
+    miru_adblock_set_site_allowed(adblock_ref_->ptr, host.c_str(),
+                                  allowed ? 1 : 0);
+  }
+}
+
+void MiruContentBrowserClient::GetCookiesForUrl(
+    bool off_the_record,
+    const std::string& url,
+    base::OnceCallback<void(std::string)> callback) {
+  MiruBrowserContext* ctx =
+      off_the_record ? (main_parts_ ? main_parts_->off_the_record_context() : nullptr)
+                     : normal_context();
+  const GURL gurl(url);
+  if (!ctx || !gurl.is_valid() || !gurl.SchemeIsHTTPOrHTTPS()) {
+    std::move(callback).Run(std::string());
+    return;
+  }
+  auto* partition = ctx->GetDefaultStoragePartition();
+  auto* cookie_manager =
+      partition ? partition->GetCookieManagerForBrowserProcess() : nullptr;
+  if (!cookie_manager) {
+    std::move(callback).Run(std::string());
+    return;
+  }
+  cookie_manager->GetCookieList(
+      gurl, net::CookieOptions::MakeAllInclusive(),
+      net::CookiePartitionKeyCollection::ContainsAll(),
+      base::BindOnce(
+          [](base::OnceCallback<void(std::string)> cb,
+             const net::CookieAccessResultList& cookies,
+             const net::CookieAccessResultList& /*excluded*/) {
+            std::move(cb).Run(net::CanonicalCookie::BuildCookieLine(cookies));
+          },
+          std::move(callback)));
 }
 
 }  // namespace miru

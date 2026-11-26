@@ -6,8 +6,13 @@ package app.miru.chromium.engine;
 import android.app.Application;
 import android.content.Context;
 
+import org.jni_zero.CalledByNative;
 import org.jni_zero.JNINamespace;
 import org.jni_zero.NativeMethods;
+
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 import org.chromium.base.ApplicationStatus;
 import org.chromium.base.CommandLine;
@@ -28,6 +33,9 @@ import org.chromium.net.NetworkChangeNotifier;
 @NullMarked
 public final class MiruChromiumRuntime {
     private static final String PRIVATE_DATA_DIR_SUFFIX = "miru_chromium";
+    private static final AtomicLong sNextRequestId = new AtomicLong(1L);
+    private static final ConcurrentHashMap<Long, Consumer<String>> sCookieCallbacks =
+            new ConcurrentHashMap<>();
     private static boolean sAttached;
     private static boolean sStarted;
 
@@ -92,6 +100,31 @@ public final class MiruChromiumRuntime {
         MiruChromiumRuntimeJni.get().destroyOffTheRecordProfile();
     }
 
+    public static void getCookiesForUrl(boolean isPrivate, String url, Consumer<String> callback) {
+        if (!sStarted) {
+            callback.accept("");
+            return;
+        }
+        long id = sNextRequestId.getAndIncrement();
+        sCookieCallbacks.put(id, callback);
+        MiruChromiumRuntimeJni.get().getCookiesForUrl(isPrivate, url, id);
+    }
+
+    public static String getUserAgent() {
+        if (!sStarted) {
+            return "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/159.0.8154.33 Mobile Safari/537.36";
+        }
+        return MiruChromiumRuntimeJni.get().getUserAgent();
+    }
+
+    @CalledByNative
+    private static void onNativeCookiesResult(long requestId, String cookieHeader) {
+        Consumer<String> cb = sCookieCallbacks.remove(requestId);
+        if (cb != null) {
+            cb.accept(cookieHeader != null ? cookieHeader : "");
+        }
+    }
+
     @NativeMethods
     interface Natives {
         void setAdblockRules(String rulesText);
@@ -99,5 +132,7 @@ public final class MiruChromiumRuntime {
         void setAdblockEnabled(boolean enabled);
         void setSiteAdblockAllowed(String host, boolean allowed);
         void destroyOffTheRecordProfile();
+        void getCookiesForUrl(boolean offTheRecord, String url, long requestId);
+        String getUserAgent();
     }
 }

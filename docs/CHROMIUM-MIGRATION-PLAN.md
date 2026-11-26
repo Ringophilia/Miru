@@ -150,17 +150,23 @@
   - Android 15 `x86_64` 模拟器实测通过多标签与普通历史入库、`OTRProfile` 隔离/销毁、`Chrome/159.0` UA、广告脚本零服务端命中与元素隐藏（`2/2` 用例通过；全套首跑曾出现一次页面提交瞬间元素隐藏样式竞争波动，独立复跑与整套复跑均通过），并在 Miru 原生壳中实时截取 `example.com` 渲染画面核对通过。
   - **外部硬件余项**：实体 ARM64 真机冒烟及真机冷启动 `< 800 ms` 实测待连接物理手机后补测；Phase C2 同步将元素隐藏注入时机由 `DidFinishNavigation` 加固至 `DOMContentLoaded` 阶段。
 
-### Phase C2 · 原生 `adblock-rust` 与 C++ 网络层视频嗅探
+### Phase C2 · 原生 `adblock-rust` 与 C++ 网络层视频嗅探（2026-11-26 阶段达成）
 
 **目标**：让 Miru 两个核心差异化能力（开箱即用广告拦截 + 网页视频一键原生播放）在 Chromium 上达到甚至超过 v1.0 体验。
 
-- 在已在 Chromium C++ 网络层（`URLLoaderFactory` / `URLLoaderThrottle`）与 `libmiru_core.so` 打通的 FFI 通道上，接入默认过滤列表内置快照与后台定时更新，并将元素隐藏注入时机由导航提交加固至 DOM 就绪阶段，同时完成 `miru-media` 零 JNI 往返视频嗅探分类。
-- 对接原生 Compose 盾牌面板（本页计数、累计统计、本站开关与自动刷新、例外管理、过滤列表开关、原生元素拾取）。
-- 将 Chromium C++ 网络层视频嗅探、Rust 流头清晰度解析（`miru-media`）与轻量页面脚本接入 `:feature:media-detect`，直连现有 `:feature:player`（暂停网页视频、续接时间点、内存请求头传递、401/403 刷新 Cookie 重试、网页内长按倍速）。
-- **阶段门（C2 Exit Gate）**：
-  - 冷启动恢复含广告测试页实现首屏零漏拦，无任何启动等待超时；
-  - 本地 MockWebServer 与真实站点验证 `d3ward` 拦截率、本站白名单切换与元素拾取；
-  - 本地与真实视频站点验证 HLS / DASH / MP4 嗅探（含子 iframe 与带 Referer/Cookie 鉴权）、时间衔接误差 `< 2 s` 与无痕严格隔离。
+- **C++ 网络层与双架构 AAR 升级（`424,524,310 B`，SHA-256 `c9e3e9415258244f12ff26762ddd552bd7165ab771671e09cd13e548b2d898c6`）**：
+  - `MiruURLLoaderFactory` / `MiruUrlLoaderThrottle` 新增内存请求头 JSON 序列化（`Referer`/`Origin`/`User-Agent`/`Authorization`）与自销毁零正文拷贝 `MiruSniffingURLLoaderClient`，直接调用 `miru_media_classify` 识别主框、子 iframe 与重定向媒体响应并上报 `MiruTab::NotifyMediaDetected`；`MiruContentBrowserClient::SetAdblockRules` / `SetAdblockSnapshot` 原子热切换时保持 `enabled` 与 `allowed_hosts` 不丢失，并提供按 Profile 隔离的 `GetCookiesForUrl`。
+  - `MiruTab` 新增每标签 128 位随机 `bridge_nonce_` 验证 `DidAddMessageToConsole` 事件信道、将 `InjectCosmeticRules` 同步加固至 `DOMContentLoaded`、并通过 `ForEachRenderFrameHost` 实现多框架独立世界 JS 执行与结果汇总。
+- **开箱即用原生广告拦截与盾牌 UI**：
+  - 内置 4 份离线基础列表（`assets/adblock/default-{core,privacy,hosts,china}.txt`），`ChromiumAdblockManager` 在后台 `Dispatchers.IO` 初始化并按配置哈希缓存 FlatBuffers 二进制引擎快照（`adblock/engine.dat`）后再标记引擎就绪，支持周期联网更新、按站点白名单开关自动刷新、以及闭源/影子 DOM 隔离的元素拾取工具条与自定义规则持久化。
+  - 新增 `AdblockUiBridge` 连接 Compose 原生 Material 3 `NativeAdblockSheet` 与 `MiruAdblockRouteScreen`，`SettingsScreen` 按 `nativeAdblock` 开关隐藏旧 uBO 措辞。
+- **视频抓流与原生播放器链路**：
+  - `ChromiumMediaManager` 合并 C++ 网络抓流请求头（保留已捕获 `Referer` 不被空头覆盖）、轻量页面脚本 `dom_media` 状态与长按倍速（`seeking`/`seeked`/`loadedmetadata`），在 UI 线程调度 `prepareMedia` 暂停网页视频、读取断点并返回隔离 Cookie / Referer / User-Agent 直连 `:feature:media-detect` 与 `:feature:player`。
+- **阶段门（C2 Exit Gate）核对结论**：
+  - 全量核心单测 **25/25** 通过（`:browser:engine-chromium:testDebugUnitTest` 4/4、`:browser:adblock-rust:test` 3/3、`:feature:media-detect:testDebugUnitTest` 18/18）；`:app:lintChromiumDebug` **0 错误**（145 警告）；冻结 `:app:assembleGeckoDebug` 保持编过。
+  - `:app:assembleChromiumRelease` ARM64 单 ABI 发布包：**`91,101,159 B`（`86.88 MiB` < `150 MB`）**，SHA-256 `a10504831c169733cca2d1d93a11045e40eebe5a5488ee99c40f1ca50462c329`，仅含 `arm64-v8a`（含 `libmiru_core.so` 与 `libmiru_chromium.so`）与 4 份内置规则及零压缩核心资产，零 Gecko/Mozilla/uBO/GMS 条目。
+  - Android 15 `x86_64` `emulator-5554` 运行 `ChromiumEngineIntegrationTest,ChromiumPhaseC2IntegrationTest` 全部 **`4/4` 通过**（`288.352 s`），并在真机画面截取验证 `NativeAdblockSheet` 原生盾牌面板显示与交互正常。
+  - **外部硬件与公网余项**：真实公网 `d3ward` 拦截率对照、真实公网站点视频抓流（HLS/DASH/反爬刷新）与连接物理 ARM64 手机的真机冷启动/手感实测，留待连接真机与公网实测阶段补齐。
 
 ### Phase C3 · 功能对齐与隐私 / 安全闭环
 

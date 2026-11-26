@@ -43,16 +43,23 @@ class MiruTab : public content::WebContentsDelegate,
   void NotifyMediaDetected(const std::string& media_url,
                            const std::string& kind,
                            const std::string& mime_type,
-                           int64_t content_length);
+                           int64_t content_length,
+                           const std::string& headers_json);
+  void NotifyIsolatedJsResult(jlong request_id, const std::string& result_json);
 
   void FindAll(JNIEnv* env, const jni_zero::JavaRef<jstring>& jquery, bool forward);
   void FindAll(const std::u16string& query, bool forward);
   void ClearFind();
+  void EvaluateIsolatedJs(JNIEnv* env,
+                          const jni_zero::JavaRef<jstring>& jscript,
+                          bool all_frames,
+                          jlong request_id);
   void DestroyTab(JNIEnv* env);
 
   // content::WebContentsObserver:
   void DidFinishNavigation(
       content::NavigationHandle* navigation_handle) override;
+  void DOMContentLoaded(content::RenderFrameHost* render_frame_host) override;
   void DidReceiveFindReply(int request_id,
                            int number_of_matches,
                            const gfx::Rect& selection_rect,
@@ -60,6 +67,12 @@ class MiruTab : public content::WebContentsDelegate,
                            bool final_update) override;
 
   // content::WebContentsDelegate:
+  bool DidAddMessageToConsole(
+      content::WebContents* source,
+      blink::mojom::ConsoleMessageLevel log_level,
+      const std::u16string& message,
+      int32_t line_no,
+      const std::u16string& source_id) override;
   content::WebContents* OpenURLFromTab(
       content::WebContents* source,
       const content::OpenURLParams& params,
@@ -79,6 +92,7 @@ class MiruTab : public content::WebContentsDelegate,
 
   base::android::ScopedJavaGlobalRef<jobject> java_tab_;
   std::unique_ptr<content::WebContents> web_contents_;
+  std::string bridge_nonce_;
   bool is_fullscreen_ = false;
   std::u16string last_find_query_;
   base::WeakPtrFactory<MiruTab> weak_factory_{this};

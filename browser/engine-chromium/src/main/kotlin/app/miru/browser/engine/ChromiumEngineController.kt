@@ -12,8 +12,6 @@ import app.miru.data.BrowsingDataClearResult
 import app.miru.data.BrowsingDataType
 import app.miru.data.BrowsingLibrary
 import app.miru.media.DetectedMedia
-import app.miru.media.MediaSnifferClassifier
-import app.miru.media.MediaSnifferCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -27,32 +25,50 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.URI
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
  * De-Googled Chromium 159 backend controller implementing [BrowserEngineController].
- * Owns per-tab `MiruChromiumTab` (`WebContents` + C++ `MiruTab` + `URLLoaderThrottle` `adblock-rust`),
- * normal vs OffTheRecord profile isolation, and `MediaSnifferCoordinator` media propagation.
+ * Delegates native `adblock-rust` snapshot/lists/picker management to [ChromiumAdblockManager]
+ * and C++ network-layer video sniffing + isolated-world handoff to [ChromiumMediaManager].
  */
-class ChromiumEngineController(
+class ChromiumEngineController internal constructor(
     context: Context,
     private val applicationScope: CoroutineScope,
     private val library: BrowsingLibrary,
     private val securitySettings: Flow<BrowserSecuritySettings>,
     private val webZoomPercent: Flow<Int>,
+    internal val adblockManager: ChromiumAdblockManager,
+    internal val mediaManager: ChromiumMediaManager,
 ) : BrowserEngineController {
+    constructor(
+        context: Context,
+        applicationScope: CoroutineScope,
+        library: BrowsingLibrary,
+        securitySettings: Flow<BrowserSecuritySettings>,
+        webZoomPercent: Flow<Int>,
+    ) : this(
+        context = context,
+        applicationScope = applicationScope,
+        library = library,
+        securitySettings = securitySettings,
+        webZoomPercent = webZoomPercent,
+        adblockManager = ChromiumAdblockManager(context, applicationScope),
+        mediaManager = ChromiumMediaManager(),
+    )
+
     private val applicationContext = context.applicationContext
     private val tabsById = linkedMapOf<String, TabRecord>()
     private val tabBlockedCounts = ConcurrentHashMap<String, Int>()
-    private val mediaCoordinator = MediaSnifferCoordinator()
     private val scrollFlow = MutableSharedFlow<Float>(replay = 1, extraBufferCapacity = 32)
     private val downloadChannel = Channel<BrowserDownloadRequest>(Channel.UNLIMITED)
-    private val mediaHintsChannel = Channel<Pair<String, Boolean>>(Channel.UNLIMITED)
     private val activeNativeTabFlow = MutableStateFlow<MiruChromiumTab?>(null)
     private var zoomPercentValue = 100
-    private var adblockEnabled = true
-    private var totalBlocked = 0L
+    private var webHoldEnabled = true
+    private var webHoldSpeed = 2f
     private var initialized = false
 
     private data class TabRecord(
@@ -82,15 +98,17 @@ class ChromiumEngineController(
     override val uploads: BrowserFileUploadsController = ChromiumFileUploadsController()
     override val permissions: BrowserPermissionsController = ChromiumPermissionsController()
     override val webNotifications: BrowserNotificationsController = ChromiumNotificationsController()
-    override val media: StateFlow<Map<String, List<DetectedMedia>>> = mediaCoordinator.state
-    override val mediaHints: Flow<Pair<String, Boolean>> = mediaHintsChannel.receiveAsFlow()
+    override val media: StateFlow<Map<String, List<DetectedMedia>>> = mediaManager.state
+    override val mediaHints: Flow<Pair<String, Boolean>> = mediaManager.hints
     override val downloadRequests: Flow<BrowserDownloadRequest> = downloadChannel.receiveAsFlow()
+    override val nativeAdblock: StateFlow<NativeAdblockState> = adblockManager.state
 
     private val adblockState = MutableStateFlow(
         AdblockSnapshot(
             status = AdblockStatus.STARTING,
             installed = true,
             enabled = true,
+            version = "adblock-rust",
             backend = AdblockBackendKind.NATIVE_RUST,
             nativeControlsAvailable = true,
             siteBlockingEnabled = true,
@@ -119,14 +137,12 @@ class ChromiumEngineController(
         initialized = true
         applicationScope.launch(Dispatchers.Main.immediate) {
             MiruChromiumRuntime.ensureStarted(applicationContext)
-            MiruChromiumRuntime.setAdblockEnabled(adblockEnabled)
-            adblockState.value = adblockState.value.copy(
-                status = if (adblockEnabled) AdblockStatus.READY else AdblockStatus.DISABLED,
-                installed = true,
-                enabled = adblockEnabled,
-                backend = AdblockBackendKind.NATIVE_RUST,
-                nativeControlsAvailable = true,
-            )
+            // Compile/load bundled & cached adblock snapshot off the UI thread before any tab navigates.
+            withContext(Dispatchers.IO) { adblockManager.initializeSync() }
+            publishState(ready = true)
+            launch {
+                adblockManager.state.collect { syncAdblockSnapshot(pageNeedsReload = adblockState.value.pageNeedsReload) }
+            }
             val selected = mutableState.value.selectedTabId?.let(tabsById::get)
             selected?.let { rec ->
                 if (rec.nativeTab == null && !rec.url.equals(NEW_TAB_URL, ignoreCase = true)) {
@@ -152,7 +168,7 @@ class ChromiumEngineController(
             ensureNativeTab(record).loadUrl(url)
         }
         activeNativeTabFlow.value = record.nativeTab
-        publishState(selectedTabId = id)
+        publishState(selectedTabId = id, pageNeedsReload = false)
         return id
     }
 
@@ -162,14 +178,14 @@ class ChromiumEngineController(
         selected.url = normalized
         selected.showToolbarAsExpanded = false
         tabBlockedCounts[selected.id] = 0
-        mediaCoordinator.onNavigation(selected.id)
+        mediaManager.onNavigation(selected.id)
         if (normalized == NEW_TAB_URL) {
             selected.nativeTab?.stopLoading()
             selected.title = ""
             selected.loading = false
             selected.progress = 0
             activeNativeTabFlow.value = null
-            publishState()
+            publishState(pageNeedsReload = false)
             return
         }
         if (initialized) {
@@ -177,13 +193,13 @@ class ChromiumEngineController(
             activeNativeTabFlow.value = nativeTab
             nativeTab.loadUrl(normalized)
         }
-        publishState()
+        publishState(pageNeedsReload = false)
     }
 
     override fun selectTab(id: String) {
         val record = tabsById[id] ?: return
         activeNativeTabFlow.value = if (record.url == NEW_TAB_URL) null else record.nativeTab
-        publishState(selectedTabId = id)
+        publishState(selectedTabId = id, pageNeedsReload = false)
     }
 
     override fun closeTab(id: String) {
@@ -195,24 +211,22 @@ class ChromiumEngineController(
             val replacementId = UUID.randomUUID().toString()
             tabsById[replacementId] = TabRecord(id = replacementId, isPrivate = false, url = NEW_TAB_URL)
         }
-        mediaCoordinator.retainTabs(tabsById.keys.toSet())
+        mediaManager.retainTabs(tabsById.keys.toSet())
         val nextSelected = if (mutableState.value.selectedTabId == id) tabsById.keys.last() else mutableState.value.selectedTabId
         val activeRec = nextSelected?.let(tabsById::get)
         activeNativeTabFlow.value = if (activeRec?.url == NEW_TAB_URL) null else activeRec?.nativeTab
         if (removed.isPrivate && tabsById.values.none { it.isPrivate }) {
             if (initialized) MiruChromiumRuntime.destroyOffTheRecordProfile()
         }
-        publishState(selectedTabId = nextSelected)
+        publishState(selectedTabId = nextSelected, pageNeedsReload = false)
     }
 
     override fun closeAllTabs(isPrivate: Boolean) {
-        val toClose = tabsById.values.filter { it.isPrivate == isPrivate }.map { it.id }
-        toClose.forEach { closeTab(it) }
+        tabsById.values.filter { it.isPrivate == isPrivate }.map { it.id }.forEach(::closeTab)
     }
 
     override fun closePrivateTabsPermanently() {
-        val privateIds = tabsById.values.filter { it.isPrivate }.map { it.id }
-        privateIds.forEach { id ->
+        tabsById.values.filter { it.isPrivate }.map { it.id }.forEach { id ->
             tabsById.remove(id)?.let { rec ->
                 rec.nativeTab?.destroy()
                 rec.nativeTab = null
@@ -223,12 +237,12 @@ class ChromiumEngineController(
             val replacementId = UUID.randomUUID().toString()
             tabsById[replacementId] = TabRecord(id = replacementId, isPrivate = false, url = NEW_TAB_URL)
         }
-        mediaCoordinator.retainTabs(tabsById.keys.toSet())
+        mediaManager.retainTabs(tabsById.keys.toSet())
         val nextSelected = mutableState.value.selectedTabId?.takeIf(tabsById::containsKey) ?: tabsById.keys.last()
         val activeRec = tabsById[nextSelected]
         activeNativeTabFlow.value = if (activeRec?.url == NEW_TAB_URL) null else activeRec?.nativeTab
         if (initialized) MiruChromiumRuntime.destroyOffTheRecordProfile()
-        publishState(selectedTabId = nextSelected)
+        publishState(selectedTabId = nextSelected, pageNeedsReload = false)
     }
 
     override fun undoClose() = Unit
@@ -252,8 +266,18 @@ class ChromiumEngineController(
         return true
     }
 
-    override fun configureWebMedia(holdEnabled: Boolean, holdSpeed: Float) = Unit
-    override fun reload() { currentTab()?.nativeTab?.reload() }
+    override fun configureWebMedia(holdEnabled: Boolean, holdSpeed: Float) {
+        webHoldEnabled = holdEnabled
+        webHoldSpeed = holdSpeed.takeIf { it.isFinite() }?.coerceIn(0.5f, 3f) ?: 2f
+        if (!initialized) return
+        mediaManager.configureWebMedia(tabsById.values.mapNotNull { it.nativeTab }, webHoldEnabled, webHoldSpeed)
+    }
+
+    override fun reload() {
+        syncAdblockSnapshot(pageNeedsReload = false)
+        currentTab()?.nativeTab?.reload()
+    }
+
     override fun stopLoading() { currentTab()?.nativeTab?.stopLoading() }
 
     override fun setDesktopMode(enabled: Boolean) {
@@ -273,15 +297,11 @@ class ChromiumEngineController(
     }
 
     override fun setAdblockEnabled(enabled: Boolean) {
-        adblockEnabled = enabled
-        if (initialized) MiruChromiumRuntime.setAdblockEnabled(enabled)
-        adblockState.value = adblockState.value.copy(
-            enabled = enabled,
-            status = if (enabled) AdblockStatus.READY else AdblockStatus.DISABLED,
-        )
+        adblockManager.setEnabled(enabled)
+        syncAdblockSnapshot(pageNeedsReload = true)
     }
 
-    override fun retryAdblock() = setAdblockEnabled(adblockEnabled)
+    override fun retryAdblock() = setAdblockEnabled(adblockManager.isEnabled)
     override fun openAdblockPopup(): Boolean = false
     override fun closeAdblockPopup() = Unit
     override fun openAdblockDashboard(): Boolean = false
@@ -289,21 +309,38 @@ class ChromiumEngineController(
     override fun openAdblockLogger(): Boolean = false
 
     override fun setSiteAdblockEnabled(host: String, enabled: Boolean): Boolean {
-        if (!initialized || host.isBlank()) return false
-        MiruChromiumRuntime.setSiteAdblockAllowed(host, !enabled)
-        adblockState.value = adblockState.value.copy(siteBlockingEnabled = enabled, pageNeedsReload = true)
+        if (!adblockManager.setSiteAllowed(host, !enabled)) return false
+        syncAdblockSnapshot(pageNeedsReload = true)
         return true
     }
 
+    override fun startAdblockElementPicker(): Boolean {
+        val nativeTab = currentTab()?.nativeTab ?: return false
+        adblockManager.setPickerActive(true)
+        nativeTab.evaluateIsolatedJs(ChromiumPageScripts.elementPickerScript(), false, null)
+        return true
+    }
+
+    override fun toggleAdblockFilterList(id: String, enabled: Boolean) =
+        adblockManager.toggleFilterList(id, enabled)
+
+    override fun refreshAdblockLists() = adblockManager.refreshLists()
+    override fun addAdblockCustomRule(rule: String): Boolean = adblockManager.addCustomRule(rule)
+    override fun removeAdblockCustomRule(rule: String): Boolean = adblockManager.removeCustomRule(rule)
+
     fun setAdblockRules(rulesText: String) {
-        if (!initialized) return
-        MiruChromiumRuntime.setAdblockRules(rulesText)
-        MiruChromiumRuntime.setAdblockEnabled(adblockEnabled)
+        if (initialized) adblockManager.setRulesOverrideForTesting(rulesText)
+    }
+
+    fun restoreDefaultAdblockRules() {
+        if (initialized) {
+            adblockManager.restoreDefaultRulesForTesting()
+            syncAdblockSnapshot(pageNeedsReload = false)
+        }
     }
 
     fun evaluateJavaScript(tabId: String? = null, script: String, onResult: (String) -> Unit) {
-        val target = tabId?.let(tabsById::get) ?: currentTab()
-        val nativeTab = target?.nativeTab
+        val nativeTab = (tabId?.let(tabsById::get) ?: currentTab())?.nativeTab
         if (nativeTab == null) {
             onResult("")
             return
@@ -312,18 +349,22 @@ class ChromiumEngineController(
     }
 
     override suspend fun prepareMedia(tabId: String, mediaId: String): PreparedMedia? {
-        val found = mediaCoordinator.state.value[tabId]?.firstOrNull { it.id == mediaId } ?: return null
-        return PreparedMedia(media = found, headers = found.headers, positionMs = (found.position * 1000.0).toLong())
+        val rec = tabsById[tabId] ?: return null
+        return mediaManager.prepareMedia(tabId, rec.nativeTab, rec.url, mediaId)
     }
 
     override suspend fun refreshMediaHeaders(tabId: String, mediaId: String): Map<String, String>? =
-        mediaCoordinator.state.value[tabId]?.firstOrNull { it.id == mediaId }?.headers
+        mediaManager.refreshMediaHeaders(tabId, mediaId)
 
-    override fun restoreWebMedia(tabId: String) = Unit
+    override fun restoreWebMedia(tabId: String) =
+        mediaManager.restoreWebMedia(tabsById[tabId]?.nativeTab)
+
     override suspend fun contextImagePolicy(request: BrowserContextMenu): ContextImagePolicy? = null
     override suspend fun contextHeaders(request: BrowserContextMenu, url: String, imagePolicy: ContextImagePolicy?): Map<String, String>? = null
-    override suspend fun headersForMediaUrl(url: String, isPrivate: Boolean): Map<String, String> = emptyMap()
-    override suspend fun downloadHeaders(url: String, sourcePage: String?): Map<String, String>? = null
+    override suspend fun headersForMediaUrl(url: String, isPrivate: Boolean): Map<String, String> =
+        mediaManager.headersForMediaUrl(url, isPrivate)
+    override suspend fun downloadHeaders(url: String, sourcePage: String?): Map<String, String>? =
+        mediaManager.downloadHeaders(url, sourcePage)
     override fun downloadCurrentPage() = Unit
 
     override suspend fun clearBrowsingData(request: BrowsingDataClearRequest): BrowsingDataClearResult = withContext(Dispatchers.Main.immediate) {
@@ -377,13 +418,15 @@ class ChromiumEngineController(
                 record.canGoForward = canGoForward
                 record.loading = isLoading
                 if (!isLoading) record.progress = 100
-                if (previousUrl != record.url && record.url.startsWith("http")) {
+                val navigated = previousUrl.substringBefore('#') != record.url.substringBefore('#')
+                if (navigated && record.url.startsWith("http")) {
                     tabBlockedCounts[record.id] = 0
+                    mediaManager.onNavigation(record.id)
                 }
                 if (!record.isPrivate && !isLoading && record.url.startsWith("http")) {
                     recordHistoryVisit(record)
                 }
-                publishState()
+                publishState(pageNeedsReload = if (navigated) false else adblockState.value.pageNeedsReload)
             }
 
             override fun onProgressChanged(progress: Double) {
@@ -403,32 +446,59 @@ class ChromiumEngineController(
             }
 
             override fun onAdBlocked(blockedUrl: String) {
-                totalBlocked += 1L
+                val total = adblockManager.recordBlocked()
                 val count = (tabBlockedCounts[record.id] ?: 0) + 1
                 tabBlockedCounts[record.id] = count
                 if (mutableState.value.selectedTabId == record.id) {
                     adblockState.value = adblockState.value.copy(
                         blockedCount = count,
-                        totalBlockedCount = totalBlocked,
+                        totalBlockedCount = total,
                         badgeText = count.toString(),
                         badgeTabId = record.id,
                     )
                 }
             }
 
-            override fun onMediaDetected(url: String, kind: String, mimeType: String, contentLength: Long) {
-                if (MediaSnifferClassifier.classify(url, mimeType.ifEmpty { null }, contentLength.takeIf { it >= 0 }) != null ||
-                    kind.isNotEmpty()
-                ) {
-                    mediaCoordinator.onNetworkMedia(
-                        tabId = record.id,
-                        pageUrl = record.url,
-                        title = record.title,
-                        isPrivate = record.isPrivate,
-                        mediaUrl = url,
-                        contentType = mimeType.ifEmpty { null },
-                        contentLength = contentLength.takeIf { it >= 0 },
-                    )
+            override fun onMediaDetected(url: String, kind: String, mimeType: String, contentLength: Long, headersJson: String) {
+                mediaManager.onNetworkMedia(
+                    tabId = record.id,
+                    pageUrl = record.url,
+                    title = record.title,
+                    isPrivate = record.isPrivate,
+                    url = url,
+                    kind = kind,
+                    mimeType = mimeType,
+                    contentLength = contentLength,
+                    headersJson = headersJson,
+                )
+            }
+
+            override fun onFrameDomReady(isMainFrame: Boolean, frameUrl: String) {
+                record.nativeTab?.evaluateIsolatedJs(
+                    ChromiumPageScripts.pageAgentScript(webHoldEnabled, webHoldSpeed),
+                    !isMainFrame,
+                    null,
+                )
+                if (isMainFrame && adblockManager.state.value.pickerActive) {
+                    adblockManager.setPickerActive(false)
+                }
+            }
+
+            override fun onBridgeEvent(eventJson: String) {
+                if (eventJson.isBlank()) return
+                val obj = runCatching { JSONObject(eventJson) }.getOrNull() ?: return
+                when (obj.optString("kind")) {
+                    "dom_media" -> mediaManager.onDomMediaEvent(record.id, record.url, record.title, record.isPrivate, obj)
+                    "picker_confirm" -> {
+                        adblockManager.setPickerActive(false)
+                        val host = obj.optString("host").trim()
+                        val selector = obj.optString("selector").trim()
+                        if (selector.isNotEmpty()) {
+                            val rule = if (host.isNotEmpty()) "$host##$selector" else "##$selector"
+                            adblockManager.addCustomRule(rule)
+                        }
+                    }
+                    "picker_cancel" -> adblockManager.setPickerActive(false)
                 }
             }
 
@@ -466,16 +536,36 @@ class ChromiumEngineController(
     private fun publishState(
         selectedTabId: String? = mutableState.value.selectedTabId,
         ready: Boolean = mutableState.value.ready || initialized,
+        pageNeedsReload: Boolean = adblockState.value.pageNeedsReload,
     ) {
         val resolvedSelected = selectedTabId?.takeIf(tabsById::containsKey) ?: tabsById.keys.firstOrNull()
         val tabList = tabsById.values.map { it.toBrowserTab() }
         mutableState.value = BrowserSnapshot(tabs = tabList, selectedTabId = resolvedSelected, ready = ready)
-        val badgeCount = resolvedSelected?.let { tabBlockedCounts[it] } ?: 0
+        syncAdblockSnapshot(selectedTabId = resolvedSelected, pageNeedsReload = pageNeedsReload)
+    }
+
+    private fun syncAdblockSnapshot(
+        selectedTabId: String? = mutableState.value.selectedTabId,
+        pageNeedsReload: Boolean = adblockState.value.pageNeedsReload,
+    ) {
+        val rec = selectedTabId?.let(tabsById::get)
+        val host = rec?.url?.let(::extractHost).orEmpty()
+        val enabled = adblockManager.isEnabled
+        val siteBlocking = host.isEmpty() || !adblockManager.isSiteAllowed(host)
+        val badgeCount = selectedTabId?.let { tabBlockedCounts[it] } ?: 0
         adblockState.value = adblockState.value.copy(
+            status = if (!initialized) AdblockStatus.STARTING else if (enabled) AdblockStatus.READY else AdblockStatus.DISABLED,
+            installed = true,
+            enabled = enabled,
+            version = "adblock-rust",
             blockedCount = badgeCount,
-            totalBlockedCount = totalBlocked,
+            totalBlockedCount = adblockManager.totalBlocked,
             badgeText = if (badgeCount > 0) badgeCount.toString() else "",
-            badgeTabId = resolvedSelected,
+            badgeTabId = selectedTabId,
+            nativeControlsAvailable = true,
+            siteBlockingEnabled = siteBlocking,
+            backend = AdblockBackendKind.NATIVE_RUST,
+            pageNeedsReload = pageNeedsReload,
         )
     }
 
@@ -495,6 +585,9 @@ class ChromiumEngineController(
         fullScreen = fullScreen,
         showToolbarAsExpanded = showToolbarAsExpanded,
     )
+
+    private fun extractHost(rawUrl: String): String =
+        runCatching { URI(rawUrl).host.orEmpty() }.getOrDefault("")
 
     private fun normalizeUrlInput(raw: String): String {
         val trimmed = raw.trim()

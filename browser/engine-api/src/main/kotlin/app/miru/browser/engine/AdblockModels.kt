@@ -44,6 +44,17 @@ data class AdblockFilterList(
     val builtIn: Boolean = true,
 )
 
+/** Native UI state powering Miru's shield sheet, filter list toggles, exceptions, and custom rules. */
+data class NativeAdblockState(
+    val enabled: Boolean = true,
+    val engineVersion: String = "adblock-rust",
+    val updatingLists: Boolean = false,
+    val filterLists: List<AdblockFilterList> = emptyList(),
+    val allowedHosts: List<String> = emptyList(),
+    val customRules: List<String> = emptyList(),
+    val pickerActive: Boolean = false,
+)
+
 /** Outcome of evaluating a network request against native adblock-rust rules. */
 data class AdblockMatchResult(
     val blocked: Boolean,

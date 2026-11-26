@@ -82,14 +82,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.miru.bookmarks.BookmarkEditDialog
 import app.miru.bookmarks.BookmarksScreen
 import app.miru.browser.engine.BrowserEngineController
-import app.miru.browser.engine.BrowserPopupSession
 import app.miru.browser.engine.BrowserTab
 import app.miru.browser.engine.NEW_TAB_URL
 import app.miru.adblock.AdblockPhase
 import app.miru.adblock.AdblockUiState
-import app.miru.adblock.AdblockScreen
-import app.miru.adblock.AdblockSheet
-import app.miru.adblock.AdblockPopupSheet
 import app.miru.media.MediaSheet
 import app.miru.media.DetectedMedia
 import app.miru.player.PlaybackRequests
@@ -265,6 +261,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
     val downloadItems by downloads.downloads.collectAsStateWithLifecycle()
     val offlineItems by container.offline.items.collectAsStateWithLifecycle()
     val adblock by controller.adblock.collectAsStateWithLifecycle()
+    val nativeAdblock by controller.nativeAdblock.collectAsStateWithLifecycle()
     val adblockPopup by controller.adblockPopup.collectAsStateWithLifecycle()
     val mediaByTab by controller.media.collectAsStateWithLifecycle()
     val contextMenu by controller.contextMenus.state.collectAsStateWithLifecycle()
@@ -868,7 +865,14 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                             Route.DOWNLOADS -> DownloadsScreen(downloads, onBack = { route = Route.BROWSER }, snackbarHostState = snackbars,
                                 offline = container.offline, onOpenOffline = ::openOffline)
                             Route.DOWNLOAD_SETTINGS -> DownloadSettingsScreen(downloads, onBack = { route = Route.SETTINGS })
-                            Route.ADBLOCK -> AdblockScreen(adblockUi, { route = Route.SETTINGS }, controller::setAdblockEnabled, controller::retryAdblock, { openAdblockDashboard(true) }, { openAdblockDashboard() })
+                            Route.ADBLOCK -> MiruAdblockRouteScreen(
+                                adblock = adblock,
+                                nativeState = nativeAdblock,
+                                adblockUi = adblockUi,
+                                controller = controller,
+                                onBack = { route = Route.SETTINGS },
+                                onOpenLegacyDashboard = { exceptions -> openAdblockDashboard(exceptions) },
+                            )
                             Route.SETTINGS -> SettingsScreen(
                                 settings, { route = Route.BROWSER }, { scope.launch { container.settings.setTheme(it) } },
                                 { scope.launch { container.settings.setDynamicColor(it) } },
@@ -889,6 +893,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                                 onClearDataOnExit = { enabled -> scope.launch { container.settings.setClearDataOnExit(enabled) } },
                                 onClearOnExitTypes = { types -> scope.launch { container.settings.setClearOnExitTypes(types) } },
                                 onSiteSettings = { route = Route.SITE_SETTINGS },
+                                nativeAdblock = adblock.nativeControlsAvailable,
                             )
                             Route.CLEAR_DATA -> ClearBrowsingDataScreen(container.browsingDataClearer, onBack = { route = Route.SETTINGS })
                             Route.SITE_SETTINGS -> SiteSettingsScreen(
@@ -899,7 +904,7 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                                 onBack = { route = Route.SETTINGS },
                             )
                             Route.PLAYER_SETTINGS -> PlayerSettingsScreen(container.playerPreferences, snackbars, onBack = { route = Route.SETTINGS })
-                            Route.ABOUT -> AboutScreen(BuildConfig.VERSION_NAME, { route = Route.SETTINGS }, { navigate(it, newTab = true) }, adblockVersion = adblock.version.takeIf { adblock.installed })
+                            Route.ABOUT -> AboutScreen(BuildConfig.VERSION_NAME, { route = Route.SETTINGS }, { navigate(it, newTab = true) }, adblockVersion = adblock.version.takeIf { adblock.installed }, nativeAdblock = adblock.nativeControlsAvailable)
                         }
                     }
                 }
@@ -1070,18 +1075,17 @@ private fun MiruApp(container: AppContainer, incoming: Pair<Long, String>?, inco
                     scope.launch { library.bookmarks.update(bookmark.id, title, url, folderId) }
                 }
             }
-            if (adblockPanel && adblockPopup == null) AdblockSheet(
-                host = AddressResolver.display(tab?.url.orEmpty()), count = adblock.blockedCount, state = adblockUi,
-                onDismiss = { adblockPanel = false }, onRetry = controller::retryAdblock,
-                onOpenSiteControls = { if(controller.openAdblockPopup()) adblockPanel = false },
-                onOpenDashboard = { openAdblockDashboard() },
-                onReload = { adblockPanel = false; controller.reload() },
+            if (adblockPanel || adblockPopup != null) MiruAdblockSheetHost(
+                host = AddressResolver.display(tab?.url.orEmpty()),
+                adblock = adblock,
+                nativeState = nativeAdblock,
+                adblockUi = adblockUi,
+                adblockPopup = adblockPopup,
+                controller = controller,
+                onDismissPanel = { adblockPanel = false },
+                onOpenRulesRoute = { route = Route.ADBLOCK },
+                onOpenLegacyDashboard = { openAdblockDashboard() },
             )
-            adblockPopup?.let { popup ->
-                AdblockPopupSheet(AddressResolver.display(tab?.url.orEmpty()), adblock.blockedCount, { controller.closeAdblockPopup(); controller.reload() }, { openAdblockDashboard() }, pageNeedsReload = adblock.pageNeedsReload) {
-                    AdblockPopupContent(popup)
-                }
-            }
             pendingDownload?.let { request -> key(System.identityHashCode(request)) {
                 DownloadConfirmSheet(request,
                     onDismiss = {
@@ -1129,22 +1133,6 @@ private fun routeTransition(
     val exit = fadeOut(tween(MiruMotion.medium2, easing = MiruMotion.emphasized)) +
         slideOutHorizontally(tween(MiruMotion.medium2, easing = MiruMotion.emphasized)) { -direction * horizontalTravel }
     return enter togetherWith exit
-}
-
-@Composable private fun AdblockPopupContent(popup: BrowserPopupSession) {
-    val context = LocalContext.current
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val view = remember(popup) { popup.createView(context) }
-    DisposableEffect(view, lifecycle) {
-        var started = false
-        fun start() { if(!started) { view.onStart(); view.onResume(); started = true } }
-        fun stop() { if(started) { view.onPause(); view.onStop(); started = false } }
-        val observer = LifecycleEventObserver { _, event -> when(event) { Lifecycle.Event.ON_START -> start(); Lifecycle.Event.ON_STOP -> stop(); else -> Unit } }
-        lifecycle.addObserver(observer)
-        if(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) start()
-        onDispose { lifecycle.removeObserver(observer); stop() }
-    }
-    AndroidView(factory = { view.asView() }, modifier = Modifier.fillMaxSize())
 }
 
 private data class HistoryMatches(val query: String,val items: List<HistoryEntry>)

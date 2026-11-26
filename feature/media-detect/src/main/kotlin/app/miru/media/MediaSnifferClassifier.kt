@@ -108,6 +108,7 @@ class MediaSnifferCoordinator(private val index: MediaIndex = MediaIndex()) {
             bucket.byKey.clear()
         }
         val existing = bucket.byKey[key]
+        val sanitizedHeaders = MediaSnifferClassifier.sanitizeCaptureHeaders(headers)
         val entry = DetectedMedia(
             id = key,
             tabId = tabId,
@@ -116,7 +117,7 @@ class MediaSnifferCoordinator(private val index: MediaIndex = MediaIndex()) {
             title = title.ifBlank { existing?.title.orEmpty() },
             kind = kind,
             mimeType = contentType?.substringBefore(';')?.trim() ?: existing?.mimeType,
-            headers = MediaSnifferClassifier.sanitizeCaptureHeaders(headers),
+            headers = if (sanitizedHeaders.isEmpty() && existing != null) existing.headers else sanitizedHeaders,
             duration = existing?.duration ?: 0.0,
             position = existing?.position ?: 0.0,
             width = existing?.width ?: 0,

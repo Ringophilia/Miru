@@ -60,6 +60,7 @@ class ChromiumEngineIntegrationTest {
             chromium.closePrivateTabsPermanently()
             createdTabIds.forEach { chromium.closeTab(it) }
             createdTabIds.clear()
+            chromium.restoreDefaultAdblockRules()
         }
     }
 

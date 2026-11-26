@@ -16,9 +16,11 @@
     <string name="security_dns_save">Save</string>
     <string name="adblock">Ad blocking</string>
     <string name="adblock_detail">uBlock Origin, trusted sites and filters</string>
+    <string name="adblock_detail_native">Native adblock-rust engine, filter lists and custom rules</string>
     <string name="downloads">Download settings</string>
     <string name="downloads_detail">Storage, simultaneous downloads and threads</string>
     <string name="ublock_version">uBlock Origin %1$s</string>
+    <string name="native_adblock_version">Miru native adblock (%1$s)</string>
     <string name="ublock_license">uBlock Origin · GPL-3.0 · View source</string>
     <string name="settings_title">Settings</string>
     <string name="back">Back</string>
@@ -58,9 +60,12 @@
     <string name="third_party_notices">Full third-party components and license information</string>
     <string name="version">Version %1$s · Development preview</string>
     <string name="preview_detail">This preview includes browsing, uBlock Origin, file downloads, web video detection and native playback. Advanced playback features are still in development.</string>
+    <string name="native_preview_detail">This preview includes de-Googled Chromium browsing, native adblock-rust filtering, file downloads, and native web video playback.</string>
     <string name="privacy_detail">No account, telemetry uploads or crash uploads. Regular tabs are saved locally. Private tabs are excluded from session files.</string>
     <string name="open_source">Open source licenses</string>
     <string name="mozilla_license">Mozilla GeckoView / Android Components · MPL-2.0</string>
+    <string name="chromium_license">Chromium Project (de-Googled build) · BSD-3-Clause</string>
+    <string name="adblock_rust_license">adblock-rust · MPL-2.0</string>
     <string name="mpl">Mozilla Public License</string>
     <string name="android_license">AndroidX / Kotlin · Apache-2.0</string>
     <string name="search_suggestions">Online search suggestions</string>

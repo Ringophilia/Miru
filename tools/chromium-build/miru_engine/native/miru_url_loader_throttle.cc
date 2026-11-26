@@ -3,14 +3,20 @@
 
 #include "miru_engine/native/miru_url_loader_throttle.h"
 
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "base/functional/bind.h"
+#include "base/json/json_writer.h"
+#include "base/values.h"
 #include "miru_core.h"
 #include "miru_engine/native/miru_content_browser_client.h"
 #include "miru_engine/native/miru_tab.h"
 #include "net/base/net_errors.h"
+#include "net/http/http_request_headers.h"
+#include "net/http/http_response_headers.h"
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/mojom/fetch_api.mojom-shared.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
@@ -48,6 +54,37 @@ const char* MiruDestinationToRequestType(
   }
 }
 
+std::string MiruSerializeRequestHeadersJson(
+    const network::ResourceRequest& request) {
+  base::DictValue dict;
+  if (auto v = request.headers.GetHeaderView(net::HttpRequestHeaders::kReferer);
+      v && !v->empty()) {
+    dict.Set("Referer", std::string(*v));
+  } else if (request.referrer.is_valid() &&
+             request.referrer.SchemeIsHTTPOrHTTPS()) {
+    dict.Set("Referer", request.referrer.spec());
+  }
+  if (auto v = request.headers.GetHeaderView(net::HttpRequestHeaders::kOrigin);
+      v && !v->empty()) {
+    dict.Set("Origin", std::string(*v));
+  } else if (request.request_initiator.has_value() &&
+             (request.request_initiator->scheme() == "http" ||
+              request.request_initiator->scheme() == "https")) {
+    dict.Set("Origin", request.request_initiator->Serialize());
+  }
+  if (auto v =
+          request.headers.GetHeaderView(net::HttpRequestHeaders::kUserAgent);
+      v && !v->empty()) {
+    dict.Set("User-Agent", std::string(*v));
+  }
+  if (auto v = request.headers.GetHeaderView(
+          net::HttpRequestHeaders::kAuthorization);
+      v && !v->empty()) {
+    dict.Set("Authorization", std::string(*v));
+  }
+  return base::WriteJson(dict).value_or("{}");
+}
+
 MiruUrlLoaderThrottle::MiruUrlLoaderThrottle(
     base::WeakPtr<MiruTab> tab,
     scoped_refptr<base::SequencedTaskRunner> ui_task_runner,
@@ -59,15 +96,19 @@ MiruUrlLoaderThrottle::MiruUrlLoaderThrottle(
 MiruUrlLoaderThrottle::~MiruUrlLoaderThrottle() = default;
 
 void MiruUrlLoaderThrottle::WillStartRequest(network::ResourceRequest* request,
-                                             bool* defer) {
+                                             bool* /*defer*/) {
+  if (!request || !request->url.SchemeIsHTTPOrHTTPS()) {
+    return;
+  }
+  headers_json_ = MiruSerializeRequestHeadersJson(*request);
+
   auto* client = MiruContentBrowserClient::Get();
   auto adblock_ref = client ? client->GetAdblockRef() : nullptr;
   MiruAdblockHandle* adblock = adblock_ref ? adblock_ref->ptr : nullptr;
-  if (!adblock || !request->url.SchemeIsHTTPOrHTTPS()) {
+  if (!adblock) {
     return;
   }
 
-  // Sub-resource requests should evaluate against the owning tab or initiator URL.
   std::string source_url = page_url_;
   if (source_url.empty() && request->request_initiator.has_value()) {
     source_url = request->request_initiator->Serialize();
@@ -77,7 +118,6 @@ void MiruUrlLoaderThrottle::WillStartRequest(network::ResourceRequest* request,
     source_url = target_url;
   }
   if (request->destination == network::mojom::RequestDestination::kDocument) {
-    // Allow top-level document navigations unless strict user rules apply later.
     return;
   }
 
@@ -96,14 +136,20 @@ void MiruUrlLoaderThrottle::WillStartRequest(network::ResourceRequest* request,
 void MiruUrlLoaderThrottle::WillProcessResponse(
     const GURL& response_url,
     network::mojom::URLResponseHead* response_head,
-    bool* defer) {
+    bool* /*defer*/) {
   if (!response_head || !response_url.SchemeIsHTTPOrHTTPS()) {
     return;
   }
+  const int64_t len =
+      response_head->content_length >= 0
+          ? response_head->content_length
+          : (response_head->headers
+                 ? response_head->headers->GetInt64HeaderValue("Content-Length")
+                       .value_or(-1)
+                 : -1);
   const std::string url = response_url.spec();
   char* kind_ptr = miru_media_classify(
-      url.c_str(), response_head->mime_type.c_str(),
-      static_cast<int64_t>(response_head->content_length));
+      url.c_str(), response_head->mime_type.c_str(), len);
   if (!kind_ptr) {
     return;
   }
@@ -114,8 +160,7 @@ void MiruUrlLoaderThrottle::WillProcessResponse(
     ui_task_runner_->PostTask(
         FROM_HERE,
         base::BindOnce(&MiruTab::NotifyMediaDetected, tab_, url, std::move(kind),
-                       response_head->mime_type,
-                       static_cast<int64_t>(response_head->content_length)));
+                       response_head->mime_type, len, headers_json_));
   }
 }
 

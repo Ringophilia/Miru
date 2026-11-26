@@ -13,6 +13,10 @@ import org.jni_zero.CalledByNative;
 import org.jni_zero.JNINamespace;
 import org.jni_zero.NativeMethods;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
+
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.components.embedder_support.view.ContentView;
@@ -42,13 +46,17 @@ public final class MiruChromiumTab {
         void onScrollChanged(int scrollOffsetY);
         void onFullscreenChanged(boolean fullscreen);
         void onAdBlocked(String blockedUrl);
-        void onMediaDetected(String url, String kind, String mimeType, long contentLength);
+        void onMediaDetected(String url, String kind, String mimeType, long contentLength, String headersJson);
+        void onFrameDomReady(boolean isMainFrame, String frameUrl);
+        void onBridgeEvent(String eventJson);
         void onFindResult(int activeOrdinal, int matchCount, boolean finalUpdate);
     }
 
     private final Context mContext;
     private final boolean mIsPrivate;
     private final Listener mListener;
+    private final AtomicLong mNextJsRequestId = new AtomicLong(1L);
+    private final ConcurrentHashMap<Long, Consumer<String>> mIsolatedJsCallbacks = new ConcurrentHashMap<>();
     private long mNativeTab;
     private @Nullable WebContents mWebContents;
     private @Nullable NavigationController mNavigationController;
@@ -224,6 +232,19 @@ public final class MiruChromiumTab {
         }
     }
 
+    public void evaluateIsolatedJs(String script, boolean allFrames, @Nullable Consumer<String> callback) {
+        if (mNativeTab == 0) {
+            if (callback != null) callback.accept("");
+            return;
+        }
+        long reqId = 0L;
+        if (callback != null) {
+            reqId = mNextJsRequestId.getAndIncrement();
+            mIsolatedJsCallbacks.put(reqId, callback);
+        }
+        MiruChromiumTabJni.get().evaluateIsolatedJs(mNativeTab, script, allFrames, reqId);
+    }
+
     public boolean isPrivate() {
         return mIsPrivate;
     }
@@ -267,8 +288,26 @@ public final class MiruChromiumTab {
     }
 
     @CalledByNative
-    private void onNativeMediaDetected(String url, String kind, String mimeType, long contentLength) {
-        mListener.onMediaDetected(url, kind, mimeType, contentLength);
+    private void onNativeMediaDetected(String url, String kind, String mimeType, long contentLength, String headersJson) {
+        mListener.onMediaDetected(url, kind, mimeType, contentLength, headersJson != null ? headersJson : "{}");
+    }
+
+    @CalledByNative
+    private void onNativeFrameDomReady(boolean isMainFrame, String frameUrl) {
+        mListener.onFrameDomReady(isMainFrame, frameUrl != null ? frameUrl : "");
+    }
+
+    @CalledByNative
+    private void onNativeBridgeEvent(String eventJson) {
+        mListener.onBridgeEvent(eventJson != null ? eventJson : "");
+    }
+
+    @CalledByNative
+    private void onNativeIsolatedJsResult(long requestId, String resultJson) {
+        Consumer<String> cb = mIsolatedJsCallbacks.remove(requestId);
+        if (cb != null) {
+            cb.accept(resultJson != null ? resultJson : "");
+        }
     }
 
     @CalledByNative
@@ -286,6 +325,7 @@ public final class MiruChromiumTab {
         long createTab(MiruChromiumTab caller, boolean offTheRecord);
         void findAll(long nativeMiruTab, String query, boolean forward);
         void clearFind(long nativeMiruTab);
+        void evaluateIsolatedJs(long nativeMiruTab, String script, boolean allFrames, long requestId);
         void destroyTab(long nativeMiruTab);
     }
 }

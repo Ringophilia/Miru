@@ -13,12 +13,21 @@
 #include "third_party/blink/public/common/loader/url_loader_throttle.h"
 #include "url/gurl.h"
 
+namespace network {
+struct ResourceRequest;
+}  // namespace network
+
 namespace miru {
 
 class MiruTab;
 
 const char* MiruDestinationToRequestType(
     network::mojom::RequestDestination dest);
+
+/// Extracts sanitized `Referer`, `Origin`, `User-Agent`, and `Authorization`
+/// headers as an in-memory JSON object string for process-only media handoff.
+std::string MiruSerializeRequestHeadersJson(
+    const network::ResourceRequest& request);
 
 /// Network throttle calling `libmiru_core` directly in C++ (zero per-request JNI).
 class MiruUrlLoaderThrottle : public blink::URLLoaderThrottle {
@@ -40,6 +49,7 @@ class MiruUrlLoaderThrottle : public blink::URLLoaderThrottle {
   base::WeakPtr<MiruTab> tab_;
   scoped_refptr<base::SequencedTaskRunner> ui_task_runner_;
   std::string page_url_;
+  std::string headers_json_;
 };
 
 }  // namespace miru

@@ -6,9 +6,11 @@
 
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
+#include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ptr_exclusion.h"
 #include "base/synchronization/lock.h"
@@ -84,10 +86,15 @@ class MiruContentBrowserClient : public content::ContentBrowserClient {
   bool SetAdblockSnapshot(const uint8_t* data, size_t len);
   void SetAdblockEnabled(bool enabled);
   void SetSiteAdblockAllowed(const std::string& host, bool allowed);
+  void GetCookiesForUrl(bool off_the_record,
+                        const std::string& url,
+                        base::OnceCallback<void(std::string)> callback);
 
  private:
   raw_ptr<MiruBrowserMainParts, DanglingUntriaged> main_parts_ = nullptr;
   mutable base::Lock adblock_lock_;
+  bool adblock_enabled_ = true;
+  std::set<std::string> allowed_hosts_;
   std::shared_ptr<MiruAdblockRef> adblock_ref_;
 };
 

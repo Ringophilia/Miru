@@ -58,6 +58,16 @@ class MediaSnifferClassifierTest {
         assertEquals("https://cdn.example.com/ep1/index.m3u8?sign=fresh", tabMedia.single().url)
         assertEquals(setOf("Cookie", "Referer"), tabMedia.single().headers.keys)
 
+        coordinator.onNetworkMedia(
+            tabId = "tab-1",
+            pageUrl = "https://watch.example.com/ep1",
+            title = "Episode 1",
+            isPrivate = false,
+            mediaUrl = "https://cdn.example.com/ep1/index.m3u8?sign=fresh",
+            headers = emptyMap(),
+        )
+        assertEquals(setOf("Cookie", "Referer"), coordinator.state.value["tab-1"].orEmpty().single().headers.keys)
+
         coordinator.onNavigation("tab-1")
         assertTrue(coordinator.state.value["tab-1"].isNullOrEmpty())
     }

@@ -29,6 +29,7 @@ class MiruBrowserMainParts : public content::BrowserMainParts {
   void PostMainMessageLoopRun() override;
 
   MiruBrowserContext* normal_context() { return normal_context_.get(); }
+  MiruBrowserContext* off_the_record_context() { return otr_context_.get(); }
   MiruBrowserContext* GetOrCreateOffTheRecordContext();
   void DestroyOffTheRecordContext();
 

@@ -13,8 +13,10 @@ import app.miru.data.BrowsingLibrary
 import app.miru.media.DetectedMedia
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 interface BrowserPermissionsController {
     val prompt: StateFlow<SitePermissionPrompt?>
@@ -141,6 +143,11 @@ interface BrowserEngineController {
     fun openAdblockLogger(): Boolean
     fun setSiteAdblockEnabled(host: String, enabled: Boolean): Boolean = false
     fun startAdblockElementPicker(): Boolean = false
+    val nativeAdblock: StateFlow<NativeAdblockState> get() = DefaultNativeAdblockState.flow
+    fun toggleAdblockFilterList(id: String, enabled: Boolean) = Unit
+    fun refreshAdblockLists() = Unit
+    fun addAdblockCustomRule(rule: String): Boolean = false
+    fun removeAdblockCustomRule(rule: String): Boolean = false
 
     // Media & context headers (process memory only; never persisted to disk)
     suspend fun prepareMedia(tabId: String, mediaId: String): PreparedMedia?
@@ -179,4 +186,8 @@ interface BrowserEngineFactory {
         securitySettings: Flow<BrowserSecuritySettings>,
         webZoomPercent: Flow<Int>,
     ): BrowserEngineController
+}
+
+private object DefaultNativeAdblockState {
+    val flow: StateFlow<NativeAdblockState> = MutableStateFlow(NativeAdblockState()).asStateFlow()
 }
