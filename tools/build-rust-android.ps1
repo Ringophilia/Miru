@@ -123,7 +123,7 @@ if (-not $SkipAndroid) {
 
         [Environment]::SetEnvironmentVariable("CARGO_TARGET_$($cfg.EnvPrefix)_LINKER", $cfg.Clang)
         [Environment]::SetEnvironmentVariable("CARGO_TARGET_$($cfg.EnvPrefix)_AR", $llvmAr)
-        [Environment]::SetEnvironmentVariable("CARGO_TARGET_$($cfg.EnvPrefix)_RUSTFLAGS", "-C link-arg=-Wl,-z,max-page-size=16384")
+        [Environment]::SetEnvironmentVariable("CARGO_TARGET_$($cfg.EnvPrefix)_RUSTFLAGS", "-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-soname,libmiru_core.so")
 
         Write-Host "[miru-rust] Building Android ABI=$abi target=$($cfg.Target)..."
         & cargo build --manifest-path $manifestPath -p miru-core --release --target $cfg.Target

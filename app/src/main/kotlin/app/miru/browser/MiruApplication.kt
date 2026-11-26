@@ -5,11 +5,11 @@ package app.miru.browser
 
 import android.app.Application
 import android.app.ActivityManager
+import android.content.Context
 import android.os.Build
 import android.os.Process
 import app.miru.browser.engine.BrowserEngineController
 import app.miru.browser.engine.BrowserEngineDataTypes
-import app.miru.browser.engine.GeckoBrowserEngineFactory
 import app.miru.browser.engine.SearchSuggestionClient
 import app.miru.data.BrowsingLibrary
 import app.miru.data.SettingsRepository
@@ -44,7 +44,7 @@ class AppContainer(private val application: Application) {
     val library = BrowsingLibrary(application)
     internal var searchSuggestions = SearchSuggestionClient()
     val downloads = DownloadCoordinator.get(application)
-    val browser: BrowserEngineController = GeckoBrowserEngineFactory.create(
+    val browser: BrowserEngineController = EngineBootstrap.createEngine(
         context = application,
         applicationScope = scope,
         library = library,
@@ -128,6 +128,11 @@ class AppContainer(private val application: Application) {
 class MiruApplication : Application() {
     lateinit var container: AppContainer
         private set
+
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        EngineBootstrap.attachBaseContext(this)
+    }
 
     override fun onCreate() {
         super.onCreate()

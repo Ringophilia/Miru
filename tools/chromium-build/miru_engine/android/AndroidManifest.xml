@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (c) 2026 Ringophilia and xiaomao | SPDX-License-Identifier: MPL-2.0 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="app.miru.chromium.engine">
+
+    <application
+        android:zygotePreloadName="org.chromium.content_public.app.ZygotePreload">
+        <meta-data
+            android:name="org.chromium.content.browser.NUM_SANDBOXED_SERVICES"
+            android:value="10" />
+        <service
+            android:name="org.chromium.content.app.SandboxedProcessService0"
+            android:process=":sandboxed_process0"
+            android:useAppZygote="true"
+            android:isolatedProcess="true"
+            android:exported="false" />
+        <service
+            android:name="org.chromium.content.app.SandboxedProcessService1"
+            android:process=":sandboxed_process1"
+            android:isolatedProcess="true"
+            android:exported="false" />
+        <service
+            android:name="org.chromium.content.app.SandboxedProcessService2"
+            android:process=":sandboxed_process2"
+            android:isolatedProcess="true"
+            android:exported="false" />
+        <service
+            android:name="org.chromium.content.app.SandboxedProcessService3"
+            android:process=":sandboxed_process3"
+            android:isolatedProcess="true"
+            android:exported="false" />
+        <service
+            android:name="org.chromium.content.app.SandboxedProcessService4"
+            android:process=":sandboxed_process4"
+            android:isolatedProcess="true"
+            android:exported="false" />
+        <service
+            android:name="org.chromium.content.app.SandboxedProcessService5"
+            android:process=":sandboxed_process5"
+            android:isolatedProcess="true"
+            android:exported="false" />
+        <service
+            android:name="org.chromium.content.app.SandboxedProcessService6"
+            android:process=":sandboxed_process6"
+            android:isolatedProcess="true"
+            android:exported="false" />
+        <service
+            android:name="org.chromium.content.app.SandboxedProcessService7"
+            android:process=":sandboxed_process7"
+            android:isolatedProcess="true"
+            android:exported="false" />
+        <service
+            android:name="org.chromium.content.app.SandboxedProcessService8"
+            android:process=":sandboxed_process8"
+            android:isolatedProcess="true"
+            android:exported="false" />
+        <service
+            android:name="org.chromium.content.app.SandboxedProcessService9"
+            android:process=":sandboxed_process9"
+            android:isolatedProcess="true"
+            android:exported="false" />
+
+        <meta-data
+            android:name="org.chromium.content.browser.NUM_PRIVILEGED_SERVICES"
+            android:value="3" />
+        <service
+            android:name="org.chromium.content.app.PrivilegedProcessService0"
+            android:process=":privileged_process0"
+            android:isolatedProcess="false"
+            android:exported="false" />
+        <service
+            android:name="org.chromium.content.app.PrivilegedProcessService1"
+            android:process=":privileged_process1"
+            android:isolatedProcess="false"
+            android:exported="false" />
+        <service
+            android:name="org.chromium.content.app.PrivilegedProcessService2"
+            android:process=":privileged_process2"
+            android:isolatedProcess="false"
+            android:exported="false" />
+    </application>
+</manifest>

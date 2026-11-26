@@ -1,45 +1,26 @@
-# Miru Phase C1 de-Googled Chromium Android GN args template (ARM64 Release)
-# Target host: Linux x86_64 (Ubuntu 22.04/24.04), >= 64 GB RAM (128 GB rec.), >= 250 GB NVMe SSD.
-# See tools/chromium-build/README.md for Cromite patch application & libmiru_core.a linkage.
+# Miru Phase C1 verified de-Googled Chromium 159.0.8154.33 GN arguments (ARM64 Release)
+# Host: Linux x86_64 (Ubuntu 22.04/24.04 or WSL2), >= 64 GB RAM, >= 250 GB NVMe/ext4 SSD.
+# Links dynamically against Miru's single shared Rust core (libmiru_core.so, DT_SONAME).
+# See tools/chromium-build/README.md for //miru_engine:miru_chromium_engine_aar build & packaging.
 
 target_os = "android"
 target_cpu = "arm64"
-
 is_debug = false
-is_official_build = true
+is_official_build = false
 is_component_build = false
+dcheck_always_on = false
 symbol_level = 0
 blink_symbol_level = 0
 v8_symbol_level = 0
-android_default_version_name = "2.0.0-c1"
-
-# Strict de-Googling: disable Google APIs, Sync, UMA/Metrics, Crashpad upload, RLZ, FieldTrials, SafeBrowsing telemetry
-google_api_key = ""
-google_default_client_id = ""
-google_default_client_secret = ""
-use_official_google_api_keys = false
-enable_reporting = false
-enable_rlz = false
-enable_google_now = false
-safe_browsing_mode = 0
-enable_supervised_users = false
-enable_hangout_services_extension = false
-enable_mdns = false
-enable_service_discovery = false
-enable_remoting = false
-enable_vr = false
-enable_arcore = false
-enable_cardboard = false
-enable_openxr = false
-
-# Size optimization towards < 150 MB single-ABI ARM64 APK gate
+optimize_for_size = true
+is_cfi = false
+use_thin_lto = false
 enable_pdf = false
 enable_print_preview = false
-enable_basic_printing = false
-enable_nacl = false
-use_thin_lto = true
+enable_remoting = false
+safe_browsing_mode = 0
+enable_reporting = false
+enable_rlz = false
 proprietary_codecs = true
 ffmpeg_branding = "Chrome"
-android_channel = "stable"
 icu_use_data_file = true
-exclude_unwind_tables = true

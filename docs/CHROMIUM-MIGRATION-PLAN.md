@@ -81,7 +81,7 @@
 ### 3.2 原生 `adblock-rust` 广告拦截
 
 - **核心库**：引入 Brave 维护的 `adblock-rust`（MPL-2.0），支持标准 ABP / uBlock Origin 网络过滤语法、`$important`、`$redirect`、Cosmetic 元素隐藏与 Scriptlet 规则。
-- **网络层同步拦截**：将 `adblock-rust` 编译为 Rust 静态库（`aarch64-linux-android` / `x86_64-linux-android`）链接进 Chromium 原生库，在 `URLLoaderThrottle` / `NavigationThrottle` 中直接判定是否拦截或重定向，**启动即就绪、零冷启动竞态**。
+- **网络层同步拦截**：将 `adblock-rust` 编译进统一 Rust 核心（`aarch64-linux-android` / `x86_64-linux-android`）并通过 `DT_SONAME: libmiru_core.so` 动态链接进 `libmiru_chromium.so`（规避静态链接 `libmiru_core.a` 与 Chromium 内部 `libstd_std.rlib` 在 `mold` 中的 `rust_eh_personality` 符号冲突，同时 APK 内仍只打包一份 Rust 运行时），在 `URLLoaderFactory` / `URLLoaderThrottle` / `NavigationThrottle` 中直接判定是否拦截或重定向，**启动即就绪、零冷启动竞态**。
 - **渲染层外观隐藏与脚本注入**：页面加载提交（commit）时按当前域名查询命中的 CSS 隐藏选择器与 Scriptlet，注入到目标框架；同时保留无痕模式一致生效。
 - **默认规则列表**：随包内置一份首启即用的默认规则快照，后台按周期静默更新（EasyList、EasyPrivacy、uBO 内置列表、Peter Lowe、按系统语言启用中文区域列表如 AdGuard Chinese / EasyList China，以及 Cookie 提示等 Annoyances 列表）。
 - **原生 UI 与元素拾取**：彻底替换 uBO 网页弹窗，使用 Miru 原生 Material 3 盾牌面板控制本站开关、查看本页/累计拦截数、管理过滤列表与例外站点；元素拾取由轻量 DOM 高亮脚本回传 CSS 选择器，写入用户自定义规则列表并立即生效。
@@ -103,7 +103,7 @@
 | 历史/书签检索与地址栏补全索引（`miru-storage`） | **Rust（`libmiru_core`）** | 内存索引与前缀/中文关键词排序（Phase C0 已先落地并接入生产地址栏，Phase C3 按需接 FTS5），消除 Kotlin 5000 条正则遍历与主线程 GC 抖动 |
 | 多分段下载与校验核心（`miru-download`，Phase C3） | **Rust 核心 + Android 原生服务壳** | `tokio` + `rustls` 高吞吐零拷贝分块写入 Android SAF/MediaStore `fd`；通知、网络监听与系统生命周期仍归 Kotlin |
 | 浏览器外壳、手势、弹簧动效与无障碍 | **Kotlin + Jetpack Compose（iOS 用 SwiftUI/UIKit）** | 保持系统级帧同步、IME 键盘协调、TalkBack 无障碍与原生手势物理手感，绝不降级为自绘跨端壳 |
-| 网页内核渲染与合成 | **Chromium C++（去 Google 化）** | 复用 Blink / V8 / Skia / Viz 成熟移动能力，通过极薄 `extern "C"` 静态链接 `libmiru_core.a` |
+| 网页内核渲染与合成 | **Chromium C++（去 Google 化）** | 复用 Blink / V8 / Skia / Viz 成熟移动能力，通过极薄 `extern "C"` 动态链接同一份 `libmiru_core.so` |
 | 视频硬解、音频焦点、PiP 与 GPU 超分 | **Media3 `MediaCodec` + OpenGL ES 3.0 GLSL（iOS 用 AVPlayer + Metal）** | 零拷贝 GPU Surface 渲染链路，视频帧严禁经过 JNI/FFI 内存拷贝 |
 
 ---
@@ -135,26 +135,26 @@
   - Windows 上 `:app:assembleDebug`、Debug/Release Lint（0 错误）与全模块 JVM 单元测试全绿；
   - 冻结的 Gecko 后端在模拟器上通过核心烟雾检查，证明解耦过程未破坏现有可用基线。
 
-### Phase C1 · Linux 构建机 / CI 最小 Chromium `.aar` 与内核壳（外部前提：Linux 构建机 / CI）
+### Phase C1 · Linux 构建机 / CI 最小 Chromium `.aar` 与内核壳（2026-11-26 阶段达成）
 
 **目标**：打通去 Google 化 Chromium 可复现编译流水线，并在 Miru 内跑起最小可用浏览外壳。
 
-- 在 Linux x86_64 构建机或 CI 建立可复现的 Chromium + Cromite 去 Google 化构建脚本（固定上游提交、补丁集、`gn args`、SHA-256 清单），产出 ARM64（及可选 x86_64）预构建 `.aar`。
-- 新建 `:browser:engine-chromium` 实现 `:browser:engine-api` 基础浏览契约：
-  - 单共享 Chromium 进程初始化（严格限制主进程容器装配，防渲染子进程重复初始化）、多标签与导航栈恢复
-  - `OTRProfile` 无痕浏览（零磁盘残留 + `FLAG_SECURE` + 关闭全部无痕标签时销毁 Profile）
-  - `BrowserControls` 原生跟手隐藏顶/底工具栏、下拉刷新、网页缩放、页内查找、桌面版 UA、网站图标
-  - 历史与书签接入现有 `:core:data` SQLite `BrowsingLibrary`
-- **阶段门（C1 Exit Gate）**：
-  - Windows 本地 Gradle 仅消费预构建 `.aar` 即可编出 Chromium 变体 APK；
-  - 冷启动到 Compose 新标签页可交互 `< 800 ms`，多标签/无痕/工具栏联动与主流站点浏览在真实 ARM64 设备（或 x86_64 模拟器）跑通；
-  - 抓包/代码审计确认零 Google 遥测、零 GMS、零 Sync 网络请求。
+- 已在本地 WSL2（`Ubuntu-24.04`，Chromium `159.0.8154.33` + `tools/chromium-build/` 脚本与 `args-arm64.gn` / `args-x64.gn`）打通去 Google 化编译并编出 `arm64-v8a` + `x86_64` 双架构引擎，通过 `package-aar.py` 发布带 `SHA256SUMS` 与零压缩启动资产的本地 Maven AAR（`424,456,168 B`，SHA-256 `22d13420ca375c6d2aac1e818dba32635492dcfe07973c431515faca48569ed3`）；剔除 GMS/Firebase 类及 `play-services-*.properties` 元数据。
+- 已落地 `:browser:engine-chromium` 与 `:app` 的 `chromium`/`gecko` 构建风味拆分：
+  - 单共享 Chromium 进程初始化、`MiruChromiumTab`（`WebContents` + `ContentView` + C++ `MiruTab`）与多标签管理
+  - `OTRProfile` 无痕浏览（独立沙箱 + 关闭全部无痕标签时销毁 `OTRProfile`）
+  - 原生滚动通知、全屏切换、页内查找、桌面版 UA、网页缩放、`BrowsingLibrary` 历史/书签接入
+  - C++ `MiruURLLoaderFactory` + `MiruTab::DidFinishNavigation` 前置接入 `libmiru_core.so` `adblock-rust`
+- **阶段门（C1 Exit Gate）核对结论**：
+  - Windows 本地 Gradle 直接消费本地 Maven AAR 编出 `app-chromium-release.apk`（ARM64 单 ABI）：**`91,055,934 B`（`86.84 MiB` < `150 MB` 红线）**，SHA-256 `4b07251ebf5003b87ba5b7375e41d1c8dde07782c693caea81c13ed69a29cac6`，只含 `arm64-v8a` 原生库与零压缩核心资产，零 Gecko/Mozilla/uBO/GMS 条目；冻结 `gecko` 风味保持可编译。
+  - Android 15 `x86_64` 模拟器实测通过多标签与普通历史入库、`OTRProfile` 隔离/销毁、`Chrome/159.0` UA、广告脚本零服务端命中与元素隐藏（`2/2` 用例通过；全套首跑曾出现一次页面提交瞬间元素隐藏样式竞争波动，独立复跑与整套复跑均通过），并在 Miru 原生壳中实时截取 `example.com` 渲染画面核对通过。
+  - **外部硬件余项**：实体 ARM64 真机冒烟及真机冷启动 `< 800 ms` 实测待连接物理手机后补测；Phase C2 同步将元素隐藏注入时机由 `DidFinishNavigation` 加固至 `DOMContentLoaded` 阶段。
 
 ### Phase C2 · 原生 `adblock-rust` 与 C++ 网络层视频嗅探
 
 **目标**：让 Miru 两个核心差异化能力（开箱即用广告拦截 + 网页视频一键原生播放）在 Chromium 上达到甚至超过 v1.0 体验。
 
-- 将统一 Rust 核心 `libmiru_core.a` 静态链接进 Chromium C++ `URLLoaderThrottle` / `NavigationThrottle`，在单次网络回调中零 JNI 往返同时执行 `miru-adblock` 拦截判定与 `miru-media` 视频嗅探分类；接入默认过滤列表内置快照与后台定时更新。
+- 在已在 Chromium C++ 网络层（`URLLoaderFactory` / `URLLoaderThrottle`）与 `libmiru_core.so` 打通的 FFI 通道上，接入默认过滤列表内置快照与后台定时更新，并将元素隐藏注入时机由导航提交加固至 DOM 就绪阶段，同时完成 `miru-media` 零 JNI 往返视频嗅探分类。
 - 对接原生 Compose 盾牌面板（本页计数、累计统计、本站开关与自动刷新、例外管理、过滤列表开关、原生元素拾取）。
 - 将 Chromium C++ 网络层视频嗅探、Rust 流头清晰度解析（`miru-media`）与轻量页面脚本接入 `:feature:media-detect`，直连现有 `:feature:player`（暂停网页视频、续接时间点、内存请求头传递、401/403 刷新 Cookie 重试、网页内长按倍速）。
 - **阶段门（C2 Exit Gate）**：

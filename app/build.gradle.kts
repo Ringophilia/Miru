@@ -25,6 +25,14 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
+    flavorDimensions += "engine"
+    productFlavors {
+        create("gecko") { dimension = "engine" }
+        create("chromium") { dimension = "engine" }
+    }
+    androidResources {
+        noCompress += listOf("pak", "dat", "bin")
+    }
     sourceSets["main"].jniLibs.srcDir(rootProject.file("native/android-jniLibs"))
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     // 发布签名读取未提交的 keystore.properties；缺省时用调试密钥，仅供本机安装。
@@ -52,13 +60,17 @@ android {
         }
     }
     // Preserve license texts when multiple dependency JARs provide the same resource.
-    packaging { resources.merges += listOf("META-INF/AL2.0", "META-INF/LGPL2.1") }
+    packaging {
+        resources.merges += listOf("META-INF/AL2.0", "META-INF/LGPL2.1")
+        resources.excludes += listOf("play-services-*.properties")
+    }
     bundle { abi { enableSplit = true } }
 }
 // 发布 APK 压缩 so（libxul 未压缩约 150 MB），安装时解压到 nativeLibraryDir。
 androidComponents {
     onVariants(selector().withBuildType("release")) { it.packaging.jniLibs.useLegacyPackaging.set(true) }
     onVariants { variant ->
+        if (variant.flavorName != "gecko") return@onVariants
         // Resolve the AAR actually selected by this variant. Updating Gecko without its
         // corresponding reviewed snapshot fails closed instead of overlaying stale code.
         val geckoAars = configurations.named("${variant.name}RuntimeClasspath").map { configuration ->
@@ -87,7 +99,8 @@ dependencies {
     implementation(project(":core:native-core"))
     implementation(project(":browser:adblock-rust"))
     implementation(project(":browser:engine-api"))
-    implementation(project(":browser:engine-gecko"))
+    "geckoImplementation"(project(":browser:engine-gecko"))
+    "chromiumImplementation"(project(":browser:engine-chromium"))
     implementation(project(":browser:toolbar"))
     implementation(project(":feature:ntp"))
     implementation(project(":feature:tabs"))
@@ -115,7 +128,7 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
     // Only for legacy GeckoView recording-observer instrumentation test (frozen v1.0 baseline).
-    androidTestImplementation("org.mozilla.components:concept-engine:${libs.versions.mozilla.get()}")
+    "androidTestGeckoImplementation"("org.mozilla.components:concept-engine:${libs.versions.mozilla.get()}")
     androidTestImplementation("androidx.room:room-runtime:2.8.5")
     // Independent P11 sample-index capability probe; no production mapper/UI change.
     androidTestImplementation("androidx.media3:media3-extractor:1.11.1") {

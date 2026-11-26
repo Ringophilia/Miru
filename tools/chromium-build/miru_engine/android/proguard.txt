@@ -1,0 +1,25 @@
+# Copyright (c) 2026 Ringophilia and xiaomao
+# SPDX-License-Identifier: MPL-2.0
+
+-keep class app.miru.chromium.engine.** { *; }
+-keep class J.N { *; }
+-keep class org.jni_zero.** { *; }
+-keep class org.chromium.build.NativeLibraries { *; }
+-keep class org.chromium.build.BuildConfig { *; }
+-keep @org.jni_zero.JNINamespace class * { *; }
+-keepclasseswithmembers class * {
+    @org.jni_zero.CalledByNative <methods>;
+}
+-keepclasseswithmembers class * {
+    @org.jni_zero.CalledByNative <fields>;
+}
+-keep class org.chromium.content.app.SandboxedProcessService* { *; }
+-keep class org.chromium.content.app.PrivilegedProcessService* { *; }
+-keep class org.chromium.content_public.app.ZygotePreload { *; }
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn org.checkerframework.**
+-dontwarn javax.annotation.**
+-dontwarn com.google.android.gms.**
+-dontwarn com.google.firebase.**
+-dontwarn com.google.android.play.**
+-dontwarn org.chromium.**
