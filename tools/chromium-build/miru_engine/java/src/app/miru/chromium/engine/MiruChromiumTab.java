@@ -52,6 +52,16 @@ public final class MiruChromiumTab {
         void onBridgeEvent(String eventJson);
         void onFindResult(int activeOrdinal, int matchCount, boolean finalUpdate);
         void onSecurityStateChanged(boolean isSecure, byte @Nullable [] certDer);
+        default void onJavaScriptDialog(long dialogId, int dialogType, String origin, String message, String defaultPrompt) {}
+        default void onBeforeUnloadDialog(long dialogId, String origin, boolean isReload) {}
+        default void onDialogsCancelled(long dialogId, boolean resetState) {}
+        default void onHttpAuthRequest(long authId, String url, String challenger, String realm, String scheme, boolean isProxy, boolean previousFailed) {}
+        default void onHttpAuthCancelled(long authId) {}
+        default void onRepostDialog() {}
+        default boolean onCheckPopupAllowed(String openerUrl, String targetUrl, boolean userGesture, boolean openerSuppressed) { return false; }
+        default void onAdoptPopupTab(long adoptId, String targetUrl) {}
+        default void onExternalProtocol(String url, boolean hasUserGesture) {}
+        default void onContextMenu(int mediaType, String linkUrl, String linkText, String srcUrl, String titleText, String pageUrl, String frameUrl, String referrerPolicy) {}
     }
 
     private final Context mContext;
@@ -74,6 +84,13 @@ public final class MiruChromiumTab {
         mIsPrivate = isPrivate;
         mListener = listener;
         mNativeTab = MiruChromiumTabJni.get().createTab(this, isPrivate);
+    }
+
+    public MiruChromiumTab(Context context, boolean isPrivate, long adoptId, Listener listener) {
+        mContext = context;
+        mIsPrivate = isPrivate;
+        mListener = listener;
+        mNativeTab = MiruChromiumTabJni.get().createAdoptedTab(this, adoptId);
     }
 
     @CalledByNative
@@ -258,6 +275,28 @@ public final class MiruChromiumTab {
         MiruChromiumTabJni.get().captureThumbnail(mNativeTab, maxWidth, reqId);
     }
 
+    public void resolveJsDialog(long dialogId, boolean accept, String input) {
+        if (mNativeTab != 0) {
+            MiruChromiumTabJni.get().resolveJsDialog(mNativeTab, dialogId, accept, input);
+        }
+    }
+
+    public static void resolveHttpAuth(long authId, boolean submit, String username, String password) {
+        MiruChromiumTabJni.get().resolveHttpAuth(authId, submit, username, password);
+    }
+
+    public void resolveRepostDialog(boolean resubmit) {
+        if (mNativeTab != 0) {
+            MiruChromiumTabJni.get().resolveRepostDialog(mNativeTab, resubmit);
+        }
+    }
+
+    public void notifyContextMenuClosed() {
+        if (mNativeTab != 0) {
+            MiruChromiumTabJni.get().notifyContextMenuClosed(mNativeTab);
+        }
+    }
+
     public boolean isPrivate() {
         return mIsPrivate;
     }
@@ -346,13 +385,68 @@ public final class MiruChromiumTab {
         }
     }
 
+    @CalledByNative
+    private void onNativeJavaScriptDialog(long dialogId, int dialogType, String origin, String message, String defaultPrompt) {
+        mListener.onJavaScriptDialog(dialogId, dialogType, origin, message, defaultPrompt);
+    }
+
+    @CalledByNative
+    private void onNativeBeforeUnloadDialog(long dialogId, String origin, boolean isReload) {
+        mListener.onBeforeUnloadDialog(dialogId, origin, isReload);
+    }
+
+    @CalledByNative
+    private void onNativeDialogsCancelled(long dialogId, boolean resetState) {
+        mListener.onDialogsCancelled(dialogId, resetState);
+    }
+
+    @CalledByNative
+    private void onNativeHttpAuthRequest(long authId, String url, String challenger, String realm, String scheme, boolean isProxy, boolean previousFailed) {
+        mListener.onHttpAuthRequest(authId, url, challenger, realm, scheme, isProxy, previousFailed);
+    }
+
+    @CalledByNative
+    private void onNativeHttpAuthCancelled(long authId) {
+        mListener.onHttpAuthCancelled(authId);
+    }
+
+    @CalledByNative
+    private void onNativeRepostDialog() {
+        mListener.onRepostDialog();
+    }
+
+    @CalledByNative
+    private boolean onNativeCheckPopupAllowed(String openerUrl, String targetUrl, boolean userGesture, boolean openerSuppressed) {
+        return mListener.onCheckPopupAllowed(openerUrl, targetUrl, userGesture, openerSuppressed);
+    }
+
+    @CalledByNative
+    private void onNativeAdoptPopupTab(long adoptId, String targetUrl) {
+        mListener.onAdoptPopupTab(adoptId, targetUrl);
+    }
+
+    @CalledByNative
+    private void onNativeExternalProtocol(String url, boolean hasUserGesture) {
+        mListener.onExternalProtocol(url, hasUserGesture);
+    }
+
+    @CalledByNative
+    private void onNativeContextMenu(int mediaType, String linkUrl, String linkText, String srcUrl, String titleText, String pageUrl, String frameUrl, String referrerPolicy) {
+        mListener.onContextMenu(mediaType, linkUrl, linkText, srcUrl, titleText, pageUrl, frameUrl, referrerPolicy);
+    }
+
     @NativeMethods
     interface Natives {
         long createTab(MiruChromiumTab caller, boolean offTheRecord);
+        long createAdoptedTab(MiruChromiumTab caller, long adoptId);
         void findAll(long nativeMiruTab, String query, boolean forward);
         void clearFind(long nativeMiruTab);
         void evaluateIsolatedJs(long nativeMiruTab, String script, boolean allFrames, long requestId);
         void captureThumbnail(long nativeMiruTab, int maxWidth, long requestId);
+        void resolveJsDialog(long nativeMiruTab, long dialogId, boolean accept, String input);
+        void resolveHttpAuth(long authId, boolean submit, String username, String password);
+        void resolveRepostDialog(long nativeMiruTab, boolean resubmit);
+        void notifyContextMenuClosed(long nativeMiruTab);
         void destroyTab(long nativeMiruTab);
     }
 }

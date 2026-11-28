@@ -9,6 +9,8 @@ import app.miru.chromium.engine.MiruChromiumTab
 import app.miru.data.BrowserSecuritySettings
 import app.miru.data.BrowsingDataClearRequest
 import app.miru.data.BrowsingDataClearResult
+import app.miru.data.BrowsingDataRange
+import app.miru.data.BrowsingDataType
 import app.miru.data.BrowsingLibrary
 import app.miru.media.DetectedMedia
 import kotlinx.coroutines.CoroutineScope
@@ -24,7 +26,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import java.io.File
 import java.net.URI
 import java.util.UUID
@@ -62,7 +63,7 @@ class ChromiumEngineController internal constructor(
 
     private val applicationContext = context.applicationContext
     private val sessionStore = ChromiumSessionStore(File(applicationContext.filesDir, "chromium_session.json"))
-    private val tabsById = linkedMapOf<String, TabRecord>()
+    private val tabsById = linkedMapOf<String, ChromiumTabRecord>()
     private val tabBlockedCounts = ConcurrentHashMap<String, Int>()
     private val scrollFlow = MutableSharedFlow<Float>(replay = 1, extraBufferCapacity = 32)
     private val downloadChannel = Channel<BrowserDownloadRequest>(Channel.UNLIMITED)
@@ -75,34 +76,53 @@ class ChromiumEngineController internal constructor(
     private var webHoldSpeed = 2f
     private var initialized = false
 
-    private data class TabRecord(
-        val id: String,
-        val isPrivate: Boolean,
-        var nativeTab: MiruChromiumTab? = null,
-        var url: String = NEW_TAB_URL,
-        var title: String = "",
-        var loading: Boolean = false,
-        var progress: Int = 0,
-        var canGoBack: Boolean = false,
-        var canGoForward: Boolean = false,
-        var desktopMode: Boolean = false,
-        var secure: Boolean = false,
-        var certificate: CertificateDetails? = null,
-        var fullScreen: Boolean = false,
-        var findCurrent: Int = 0,
-        var findTotal: Int = 0,
-        var lastFindQuery: String = "",
-        var showToolbarAsExpanded: Boolean = false,
-        var lastRecordedUrl: String? = null,
-        var lastRecordedTitle: String? = null,
-    ) {
-        fun toSavedState() = ChromiumSessionStore.SavedTabState(id, url, title, desktopMode)
-    }
+    private val tabBridge = ChromiumTabBridge(
+        object : ChromiumTabBridge.Host {
+            override val applicationContext: Context get() = this@ChromiumEngineController.applicationContext
+            override val applicationScope: CoroutineScope get() = this@ChromiumEngineController.applicationScope
+            override val tabsById get() = this@ChromiumEngineController.tabsById
+            override val selectedTabId get() = mutableState.value.selectedTabId
+            override val isInitialized get() = initialized
+            override val zoomPercent get() = zoomPercentValue
+            override val webHoldEnabled get() = this@ChromiumEngineController.webHoldEnabled
+            override val webHoldSpeed get() = this@ChromiumEngineController.webHoldSpeed
+            override val adblockManager get() = this@ChromiumEngineController.adblockManager
+            override val mediaManager get() = this@ChromiumEngineController.mediaManager
+            override val library get() = this@ChromiumEngineController.library
+            override val currentPageNeedsReload get() = adblockState.value.pageNeedsReload
+            override fun openPopupTab(targetUrl: String, isPrivate: Boolean) {
+                newTab(targetUrl, isPrivate)
+            }
+            override fun setActiveNativeTab(tab: MiruChromiumTab?) {
+                activeNativeTabFlow.value = tab
+            }
+            override fun emitScroll(offsetY: Float) {
+                scrollFlow.tryEmit(offsetY)
+            }
+            override fun recordTabAdBlocked(tabId: String) = this@ChromiumEngineController.handleAdBlocked(tabId)
+            override fun resetTabBlockedCount(tabId: String) {
+                tabBlockedCounts[tabId] = 0
+            }
+            override suspend fun refreshMediaHeaders(tabId: String, mediaId: String) =
+                this@ChromiumEngineController.refreshMediaHeaders(tabId, mediaId)
+            override suspend fun headersForMediaUrl(url: String, isPrivate: Boolean) =
+                this@ChromiumEngineController.headersForMediaUrl(url, isPrivate)
+            override fun publishState(selectedTabId: String?, pageNeedsReload: Boolean?) =
+                this@ChromiumEngineController.publishState(
+                    selectedTabId = selectedTabId ?: mutableState.value.selectedTabId,
+                    pageNeedsReload = pageNeedsReload ?: adblockState.value.pageNeedsReload,
+                )
+        },
+    )
+
+    private val promptsController get() = tabBridge.prompts
+    private val externalLinksController get() = tabBridge.externalLinks
+    private val contextMenusController get() = tabBridge.contextMenus
 
     override val websiteIcons: WebsiteIconLoader = ChromiumWebsiteIcons()
-    override val externalLinks: BrowserExternalLinksController = ChromiumExternalLinksController()
-    override val contextMenus: BrowserContextMenusController = ChromiumContextMenusController()
-    override val prompts: BrowserPromptsController = ChromiumPromptsController()
+    override val externalLinks: BrowserExternalLinksController = externalLinksController
+    override val contextMenus: BrowserContextMenusController = contextMenusController
+    override val prompts: BrowserPromptsController = promptsController
     override val uploads: BrowserFileUploadsController = ChromiumFileUploadsController()
     override val permissions: BrowserPermissionsController = ChromiumPermissionsController()
     override val webNotifications: BrowserNotificationsController = ChromiumNotificationsController()
@@ -126,11 +146,11 @@ class ChromiumEngineController internal constructor(
     override val adblockPopup: StateFlow<BrowserPopupSession?> = MutableStateFlow<BrowserPopupSession?>(null).asStateFlow()
 
     private val initialId = UUID.randomUUID().toString().also { id ->
-        tabsById[id] = TabRecord(id = id, isPrivate = false, url = NEW_TAB_URL)
+        tabsById[id] = ChromiumTabRecord(id = id, isPrivate = false, url = NEW_TAB_URL)
     }
     private val mutableState = MutableStateFlow(
         BrowserSnapshot(
-            tabs = tabsById.values.map { it.toBrowserTab() },
+            tabs = tabsById.values.map { it.toBrowserTab(null) },
             selectedTabId = initialId,
             ready = false,
         ),
@@ -175,7 +195,7 @@ class ChromiumEngineController internal constructor(
             ) {
                 tabsById.clear()
                 restoredSnapshot.tabs.forEach { saved ->
-                    tabsById[saved.id] = TabRecord(
+                    tabsById[saved.id] = ChromiumTabRecord(
                         id = saved.id,
                         isPrivate = false,
                         url = saved.url,
@@ -226,7 +246,7 @@ class ChromiumEngineController internal constructor(
 
     override fun newTab(url: String, isPrivate: Boolean): String {
         val id = UUID.randomUUID().toString()
-        val record = TabRecord(id = id, isPrivate = isPrivate, url = url)
+        val record = ChromiumTabRecord(id = id, isPrivate = isPrivate, url = url)
         tabsById[id] = record
         if (!url.equals(NEW_TAB_URL, ignoreCase = true)) automaticNewTabId = null
         if (initialized && url != NEW_TAB_URL) {
@@ -240,12 +260,23 @@ class ChromiumEngineController internal constructor(
     override fun navigate(url: String) {
         val selected = currentTab() ?: return
         val normalized = normalizeUrlInput(url)
-        selected.url = normalized
+        selected.attemptGeneration++
+        promptsController.onNavigationAttempt(selected.id)
+        externalLinksController.syncState()
+        contextMenusController.dismiss(null)
+        val keepCommittedUrl = initialized && selected.nativeTab != null &&
+            selected.url != NEW_TAB_URL && normalized != NEW_TAB_URL
+        if (!keepCommittedUrl) {
+            selected.url = normalized
+        }
         selected.showToolbarAsExpanded = false
         if (selected.id == automaticNewTabId && normalized != NEW_TAB_URL) automaticNewTabId = null
         tabBlockedCounts[selected.id] = 0
         mediaManager.onNavigation(selected.id)
         if (normalized == NEW_TAB_URL) {
+            selected.hardGeneration++
+            promptsController.invalidateTab(selected.id)
+            contextMenusController.invalidateTab(selected.id)
             selected.nativeTab?.stopLoading()
             selected.title = ""
             selected.loading = false
@@ -274,6 +305,8 @@ class ChromiumEngineController internal constructor(
         val index = tabsById.keys.indexOf(id).takeIf { it >= 0 } ?: return
         val wasSelected = mutableState.value.selectedTabId == id
         val removed = tabsById.remove(id) ?: return
+        promptsController.invalidateTab(id)
+        contextMenusController.invalidateTab(id)
         if (!removed.isPrivate && !removed.url.equals(NEW_TAB_URL, ignoreCase = true)) {
             sessionStore.recordClosedNormalTabs(
                 listOf(ChromiumSessionStore.SavedTabEntry(removed.toSavedState(), index)),
@@ -286,7 +319,7 @@ class ChromiumEngineController internal constructor(
         tabBlockedCounts.remove(id)
         if (tabsById.isEmpty()) {
             val replacementId = UUID.randomUUID().toString()
-            tabsById[replacementId] = TabRecord(id = replacementId, isPrivate = false, url = NEW_TAB_URL)
+            tabsById[replacementId] = ChromiumTabRecord(id = replacementId, isPrivate = false, url = NEW_TAB_URL)
             automaticNewTabId = replacementId
         } else if (id == automaticNewTabId) {
             automaticNewTabId = null
@@ -323,6 +356,8 @@ class ChromiumEngineController internal constructor(
 
     private fun removeTabsAndSelectFallback(ids: List<String>, destroyOtr: Boolean) {
         ids.forEach { id ->
+            promptsController.invalidateTab(id)
+            contextMenusController.invalidateTab(id)
             tabsById.remove(id)?.let { rec ->
                 sessionStore.removeThumbnail(id)
                 rec.nativeTab?.destroy()
@@ -332,7 +367,7 @@ class ChromiumEngineController internal constructor(
         }
         if (tabsById.isEmpty() || tabsById.values.all { it.isPrivate }) {
             val replacementId = UUID.randomUUID().toString()
-            tabsById[replacementId] = TabRecord(id = replacementId, isPrivate = false, url = NEW_TAB_URL)
+            tabsById[replacementId] = ChromiumTabRecord(id = replacementId, isPrivate = false, url = NEW_TAB_URL)
             automaticNewTabId = replacementId
         }
         mediaManager.retainTabs(tabsById.keys.toSet())
@@ -355,7 +390,7 @@ class ChromiumEngineController internal constructor(
         automaticNewTabId = null
         batch.tabs.sortedBy { it.index }.forEach { entry ->
             if (existing.any { it.id == entry.state.id }) return@forEach
-            val restored = TabRecord(
+            val restored = ChromiumTabRecord(
                 id = entry.state.id,
                 isPrivate = false,
                 url = entry.state.url,
@@ -381,15 +416,27 @@ class ChromiumEngineController internal constructor(
     }
 
     override fun goBack(): Boolean {
-        val tab = currentTab()?.nativeTab ?: return false
+        val rec = currentTab() ?: return false
+        val tab = rec.nativeTab ?: return false
         if (!tab.canGoBack()) return false
+        rec.attemptGeneration++
+        promptsController.onNavigationAttempt(rec.id)
+        externalLinksController.syncState()
+        contextMenusController.dismiss(null)
         tab.goBack()
         return true
     }
 
     override fun goForward() {
-        val tab = currentTab()?.nativeTab ?: return
-        if (tab.canGoForward()) tab.goForward()
+        val rec = currentTab() ?: return
+        val tab = rec.nativeTab ?: return
+        if (tab.canGoForward()) {
+            rec.attemptGeneration++
+            promptsController.onNavigationAttempt(rec.id)
+            externalLinksController.syncState()
+            contextMenusController.dismiss(null)
+            tab.goForward()
+        }
     }
 
     override fun exitWebFullScreen(): Boolean {
@@ -407,8 +454,15 @@ class ChromiumEngineController internal constructor(
     }
 
     override fun reload() {
+        val rec = currentTab()
+        if (rec != null) {
+            rec.attemptGeneration++
+            promptsController.onNavigationAttempt(rec.id)
+            externalLinksController.syncState()
+            contextMenusController.dismiss(null)
+        }
         syncAdblockSnapshot(pageNeedsReload = false)
-        currentTab()?.nativeTab?.reload()
+        rec?.nativeTab?.reload()
     }
 
     override fun stopLoading() { currentTab()?.nativeTab?.stopLoading() }
@@ -492,8 +546,10 @@ class ChromiumEngineController internal constructor(
     override fun restoreWebMedia(tabId: String) =
         mediaManager.restoreWebMedia(tabsById[tabId]?.nativeTab)
 
-    override suspend fun contextImagePolicy(request: BrowserContextMenu): ContextImagePolicy? = null
-    override suspend fun contextHeaders(request: BrowserContextMenu, url: String, imagePolicy: ContextImagePolicy?): Map<String, String>? = null
+    override suspend fun contextImagePolicy(request: BrowserContextMenu): ContextImagePolicy? =
+        contextMenusController.contextImagePolicy(request)
+    override suspend fun contextHeaders(request: BrowserContextMenu, url: String, imagePolicy: ContextImagePolicy?): Map<String, String>? =
+        contextMenusController.contextHeaders(request, url, imagePolicy)
     override suspend fun headersForMediaUrl(url: String, isPrivate: Boolean): Map<String, String> =
         mediaManager.headersForMediaUrl(url, isPrivate)
     override suspend fun downloadHeaders(url: String, sourcePage: String?): Map<String, String>? =
@@ -525,14 +581,35 @@ class ChromiumEngineController internal constructor(
             request = request,
             initialized = initialized,
             hasPrivateTabs = tabsById.values.any { it.isPrivate },
-        ) {
-            websiteIcons.clearMemory()
-            sessionStore.clearThumbnails()
+            onClearMemoryCaches = {
+                websiteIcons.clearMemory()
+                sessionStore.clearThumbnails()
+            },
+            onClearSiteSettings = {
+                promptsController.clearPopupPermissions()
+                tabsById.values.filter { it.nativeTab != null && siteOrigin(it.url) != null }.forEach { tab ->
+                    tab.attemptGeneration++
+                    promptsController.onNavigationAttempt(tab.id)
+                    tab.nativeTab?.reload()
+                }
+            },
+        )
+
+    override suspend fun listSavedSites(): List<SavedSiteEntry> =
+        promptsController.savedPopupOrigins().sorted().map { origin ->
+            SavedSiteEntry(origin = origin, permissions = emptyMap(), autoplay = null, allowPopups = true)
         }
 
-    override suspend fun listSavedSites(): List<SavedSiteEntry> = emptyList()
-    override suspend fun resetSavedSite(origin: String) = Unit
-    override suspend fun resetAllSavedSites(): BrowsingDataClearResult = BrowsingDataClearResult(emptySet(), emptySet())
+    override suspend fun resetSavedSite(origin: String) {
+        siteOrigin(origin)?.let { promptsController.clearPopupOrigin(it) }
+    }
+
+    override suspend fun resetAllSavedSites(): BrowsingDataClearResult = clearBrowsingData(
+        BrowsingDataClearRequest(
+            types = setOf(BrowsingDataType.SITE_SETTINGS),
+            range = BrowsingDataRange.ALL_TIME,
+        ),
+    )
 
     override fun findAll(query: String) {
         currentTab()?.let { rec ->
@@ -590,138 +667,28 @@ class ChromiumEngineController internal constructor(
     }
     override fun createSurfaceHost(context: Context): BrowserSurfaceHost = ChromiumSurfaceHost(context, this, applicationScope)
 
-    private fun ensureNativeTab(record: TabRecord): MiruChromiumTab {
+    private fun ensureNativeTab(record: ChromiumTabRecord): MiruChromiumTab {
         record.nativeTab?.let { return it }
-        val nativeTab = MiruChromiumTab(applicationContext, record.isPrivate, object : MiruChromiumTab.Listener {
-            override fun onNavigationChanged(url: String, title: String, canGoBack: Boolean, canGoForward: Boolean, isLoading: Boolean) {
-                val previousUrl = record.url
-                if (url.isNotBlank()) record.url = url
-                if (title.isNotBlank()) record.title = title
-                record.canGoBack = canGoBack
-                record.canGoForward = canGoForward
-                record.loading = isLoading
-                if (!isLoading) record.progress = 100
-                val navigated = previousUrl.substringBefore('#') != record.url.substringBefore('#')
-                if (navigated && record.url.startsWith("http")) {
-                    tabBlockedCounts[record.id] = 0
-                    mediaManager.onNavigation(record.id)
-                }
-                if (!record.isPrivate && !isLoading && record.url.startsWith("http")) {
-                    recordHistoryVisit(record)
-                }
-                publishState(pageNeedsReload = if (navigated) false else adblockState.value.pageNeedsReload)
-            }
-
-            override fun onProgressChanged(progress: Double) {
-                record.progress = (progress * 100.0).toInt().coerceIn(0, 100)
-                publishState()
-            }
-
-            override fun onScrollChanged(scrollOffsetY: Int) {
-                if (mutableState.value.selectedTabId == record.id) {
-                    scrollFlow.tryEmit(scrollOffsetY.toFloat())
-                }
-            }
-
-            override fun onFullscreenChanged(fullscreen: Boolean) {
-                record.fullScreen = fullscreen
-                publishState()
-            }
-
-            override fun onAdBlocked(blockedUrl: String) {
-                val total = adblockManager.recordBlocked()
-                val count = (tabBlockedCounts[record.id] ?: 0) + 1
-                tabBlockedCounts[record.id] = count
-                if (mutableState.value.selectedTabId == record.id) {
-                    adblockState.value = adblockState.value.copy(
-                        blockedCount = count,
-                        totalBlockedCount = total,
-                        badgeText = count.toString(),
-                        badgeTabId = record.id,
-                    )
-                }
-            }
-
-            override fun onMediaDetected(url: String, kind: String, mimeType: String, contentLength: Long, headersJson: String) {
-                mediaManager.onNetworkMedia(
-                    tabId = record.id,
-                    pageUrl = record.url,
-                    title = record.title,
-                    isPrivate = record.isPrivate,
-                    url = url,
-                    kind = kind,
-                    mimeType = mimeType,
-                    contentLength = contentLength,
-                    headersJson = headersJson,
-                )
-            }
-
-            override fun onFrameDomReady(isMainFrame: Boolean, frameUrl: String) {
-                record.nativeTab?.evaluateIsolatedJs(
-                    ChromiumPageScripts.pageAgentScript(webHoldEnabled, webHoldSpeed),
-                    !isMainFrame,
-                    null,
-                )
-                if (isMainFrame && adblockManager.state.value.pickerActive) {
-                    adblockManager.setPickerActive(false)
-                }
-            }
-
-            override fun onBridgeEvent(eventJson: String) {
-                if (eventJson.isBlank()) return
-                val obj = runCatching { JSONObject(eventJson) }.getOrNull() ?: return
-                when (obj.optString("kind")) {
-                    "dom_media" -> mediaManager.onDomMediaEvent(record.id, record.url, record.title, record.isPrivate, obj)
-                    "picker_confirm" -> {
-                        adblockManager.setPickerActive(false)
-                        val host = obj.optString("host").trim()
-                        val selector = obj.optString("selector").trim()
-                        if (selector.isNotEmpty()) {
-                            val rule = if (host.isNotEmpty()) "$host##$selector" else "##$selector"
-                            adblockManager.addCustomRule(rule)
-                        }
-                    }
-                    "picker_cancel" -> adblockManager.setPickerActive(false)
-                }
-            }
-
-            override fun onFindResult(activeOrdinal: Int, matchCount: Int, finalUpdate: Boolean) {
-                record.findCurrent = activeOrdinal
-                record.findTotal = matchCount
-                publishState()
-            }
-
-            override fun onSecurityStateChanged(isSecure: Boolean, certDer: ByteArray?) {
-                val currentUrl = record.nativeTab?.url?.takeIf { it.isNotBlank() } ?: record.url
-                record.secure = isSecure
-                record.certificate = ChromiumSecurityHelper.parseCertificateDetails(currentUrl, isSecure, certDer)
-                publishState()
-            }
-        })
-        nativeTab.setZoomPercent(zoomPercentValue)
+        val nativeTab = tabBridge.createNativeTab(record.id, record.isPrivate)
         record.nativeTab = nativeTab
         return nativeTab
     }
 
-    private fun recordHistoryVisit(record: TabRecord) {
-        val url = record.url
-        val title = record.title
-        if (url != record.lastRecordedUrl) {
-            record.lastRecordedUrl = url
-            record.lastRecordedTitle = title
-            applicationScope.launch(Dispatchers.IO) {
-                library.history.recordVisit(url)
-                if (title.isNotBlank()) library.history.updateTitle(url, title)
-            }
-        } else if (title.isNotBlank() && title != record.lastRecordedTitle) {
-            record.lastRecordedTitle = title
-            applicationScope.launch(Dispatchers.IO) {
-                library.history.updateTitle(url, title)
-            }
+    private fun handleAdBlocked(tabId: String) {
+        val total = adblockManager.recordBlocked()
+        val count = (tabBlockedCounts[tabId] ?: 0) + 1
+        tabBlockedCounts[tabId] = count
+        if (mutableState.value.selectedTabId == tabId) {
+            adblockState.value = adblockState.value.copy(
+                blockedCount = count,
+                totalBlockedCount = total,
+                badgeText = count.toString(),
+                badgeTabId = tabId,
+            )
         }
     }
 
-    private fun currentTab(): TabRecord? = mutableState.value.selectedTabId?.let(tabsById::get)
+    private fun currentTab(): ChromiumTabRecord? = mutableState.value.selectedTabId?.let(tabsById::get)
 
     private fun publishState(
         selectedTabId: String? = mutableState.value.selectedTabId,
@@ -729,8 +696,13 @@ class ChromiumEngineController internal constructor(
         pageNeedsReload: Boolean = adblockState.value.pageNeedsReload,
     ) {
         val resolvedSelected = selectedTabId?.takeIf(tabsById::containsKey) ?: tabsById.keys.firstOrNull()
-        val tabList = tabsById.values.map { it.toBrowserTab() }
+        val tabList = tabsById.values.map { tab ->
+            tab.toBrowserTab(if (tab.isPrivate) null else sessionStore.getThumbnail(tab.id))
+        }
         mutableState.value = BrowserSnapshot(tabs = tabList, selectedTabId = resolvedSelected, ready = ready)
+        promptsController.syncState()
+        externalLinksController.syncState()
+        contextMenusController.syncState()
         syncAdblockSnapshot(selectedTabId = resolvedSelected, pageNeedsReload = pageNeedsReload)
     }
 
@@ -758,25 +730,6 @@ class ChromiumEngineController internal constructor(
             pageNeedsReload = pageNeedsReload,
         )
     }
-
-    private fun TabRecord.toBrowserTab(): BrowserTab = BrowserTab(
-        id = id,
-        url = url,
-        title = title,
-        isPrivate = isPrivate,
-        loading = loading,
-        progress = progress,
-        canGoBack = canGoBack,
-        canGoForward = canGoForward,
-        desktopMode = desktopMode,
-        secure = secure && url.startsWith("https://", ignoreCase = true),
-        certificate = certificate,
-        thumbnail = if (isPrivate) null else sessionStore.getThumbnail(id),
-        findCurrent = findCurrent,
-        findTotal = findTotal,
-        fullScreen = fullScreen,
-        showToolbarAsExpanded = showToolbarAsExpanded,
-    )
 
     private fun extractHost(rawUrl: String): String =
         runCatching { URI(rawUrl).host.orEmpty() }.getOrDefault("")

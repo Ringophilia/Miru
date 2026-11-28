@@ -17,6 +17,12 @@
 #include "base/memory/raw_ptr_exclusion.h"
 #include "base/synchronization/lock.h"
 #include "content/public/browser/content_browser_client.h"
+#include "content/public/browser/login_delegate.h"
+#include "content/public/common/window_container_type.mojom-forward.h"
+#include "services/network/public/mojom/web_sandbox_flags.mojom-forward.h"
+#include "third_party/blink/public/mojom/window_features/window_features.mojom-forward.h"
+#include "ui/base/page_transition_types.h"
+#include "ui/base/window_open_disposition.h"
 
 struct MiruAdblockHandle;
 
@@ -87,6 +93,48 @@ class MiruContentBrowserClient : public content::ContentBrowserClient {
   std::string GetUserAgent() override;
   std::vector<base::FilePath> GetNetworkContextsParentDirectory() override;
   void OnWebContentsCreated(content::WebContents* web_contents) override;
+  bool CanCreateWindow(content::RenderFrameHost* opener,
+                       const GURL& opener_url,
+                       const GURL& opener_top_level_frame_url,
+                       const url::Origin& source_origin,
+                       content::mojom::WindowContainerType container_type,
+                       const GURL& target_url,
+                       const content::Referrer& referrer,
+                       const std::string& frame_name,
+                       WindowOpenDisposition disposition,
+                       const blink::mojom::WindowFeatures& features,
+                       bool user_gesture,
+                       bool opener_suppressed,
+                       bool* no_javascript_access) override;
+  std::unique_ptr<content::LoginDelegate> CreateLoginDelegate(
+      const net::AuthChallengeInfo& auth_info,
+      content::WebContents* web_contents,
+      content::BrowserContext* browser_context,
+      const content::GlobalRequestID& request_id,
+      bool is_request_for_primary_main_frame_navigation,
+      bool is_request_for_navigation,
+      const GURL& url,
+      scoped_refptr<net::HttpResponseHeaders> response_headers,
+      bool first_auth_attempt,
+      bool do_not_prompt_for_login,
+      content::GuestPageHolder* guest_page_holder,
+      content::LoginDelegate::LoginAuthRequiredCallback
+          auth_required_callback) override;
+  bool HandleExternalProtocol(
+      const GURL& url,
+      base::RepeatingCallback<content::WebContents*()> web_contents_getter,
+      content::FrameTreeNodeId frame_tree_node_id,
+      content::NavigationUIData* navigation_data,
+      bool is_primary_main_frame,
+      bool is_in_fenced_frame_tree,
+      network::mojom::WebSandboxFlags sandbox_flags,
+      ui::PageTransition page_transition,
+      bool has_user_gesture,
+      const std::optional<url::Origin>& initiating_origin,
+      content::RenderFrameHost* initiator_document,
+      const net::IsolationInfo& isolation_info,
+      mojo::PendingRemote<network::mojom::URLLoaderFactory>* out_factory)
+      override;
 
   MiruBrowserContext* normal_context();
   MiruBrowserContext* GetOrCreateOffTheRecordContext();

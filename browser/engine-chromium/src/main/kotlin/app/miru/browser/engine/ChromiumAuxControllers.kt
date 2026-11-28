@@ -74,30 +74,6 @@ internal class ChromiumPermissionsController : BrowserPermissionsController {
     override fun setAutoplayForSite(token: Long, choice: SiteAutoplayChoice) = Unit
 }
 
-internal class ChromiumPromptsController : BrowserPromptsController {
-    override val prompt: StateFlow<BrowserPromptState?> = MutableStateFlow<BrowserPromptState?>(null).asStateFlow()
-    override val blockedPopup: StateFlow<BlockedPopup?> = MutableStateFlow<BlockedPopup?>(null).asStateFlow()
-    override val popupSite: StateFlow<PopupSiteState?> = MutableStateFlow<PopupSiteState?>(null).asStateFlow()
-    override val clientCertificateResults: SharedFlow<ClientCertificateResult> = MutableSharedFlow<ClientCertificateResult>().asSharedFlow()
-    override fun allowPopup(token: Long) = Unit
-    override fun dismissPopup(token: Long) = Unit
-    override fun setPopupAllowed(site: PopupSiteState, allowed: Boolean) = Unit
-    override fun acknowledgeAlert(token: Long, allowMoreDialogs: Boolean) = Unit
-    override fun prepareClientCertificate(token: Long): ClientCertificateSelection? = null
-    override fun completeClientCertificate(token: Long, alias: String?, unavailable: Boolean) = Unit
-    override fun answerConfirm(token: Long, button: BrowserPromptButton, allowMoreDialogs: Boolean) = Unit
-    override fun answerText(token: Long, text: String, allowMoreDialogs: Boolean) = Unit
-    override fun answerBeforeUnload(token: Long, leave: Boolean) = Unit
-    override fun answerRepost(token: Long, resubmit: Boolean) = Unit
-    override fun authenticate(token: Long, userName: String, password: String) = Unit
-    override fun answerChoice(token: Long, selectedIds: Set<String>) = Unit
-    override fun answerDate(token: Long, value: String) = Unit
-    override fun clearDate(token: Long) = Unit
-    override fun answerColor(token: Long, value: String) = Unit
-    override fun answerFolderUpload(token: Long, allow: Boolean) = Unit
-    override fun dismiss(token: Long, allowMoreDialogs: Boolean) = Unit
-}
-
 internal class ChromiumFileUploadsController : BrowserFileUploadsController {
     override val state: StateFlow<BrowserUploadState> = MutableStateFlow(BrowserUploadState()).asStateFlow()
     override val errors: Flow<BrowserUploadError> = emptyFlow()
@@ -111,21 +87,6 @@ internal class ChromiumFileUploadsController : BrowserFileUploadsController {
     override fun onPermissionsResult(token: String, requestCode: Int, permissions: Array<out String>, results: IntArray): Boolean = false
     override fun onActivityResult(token: String, requestCode: Int, resultCode: Int, data: Intent?): Boolean = false
     override fun captureSources(mimeTypes: List<String>): Set<BrowserUploadSource> = emptySet()
-}
-
-internal class ChromiumContextMenusController : BrowserContextMenusController {
-    override val state: StateFlow<BrowserContextMenu?> = MutableStateFlow<BrowserContextMenu?>(null).asStateFlow()
-    override fun dismiss(token: Long?) = Unit
-    override fun beginTouchGesture() = Unit
-    override fun isCurrent(request: BrowserContextMenu): Boolean = false
-    override fun isOwnerCurrent(request: BrowserContextMenu): Boolean = false
-    override fun close() = Unit
-}
-
-internal class ChromiumExternalLinksController : BrowserExternalLinksController {
-    override val prompt: StateFlow<ExternalLinkPrompt?> = MutableStateFlow<ExternalLinkPrompt?>(null).asStateFlow()
-    override fun dismiss(token: Long) = Unit
-    override fun open(token: Long, activity: Activity): Boolean = false
 }
 
 internal class ChromiumNotificationsController : BrowserNotificationsController {

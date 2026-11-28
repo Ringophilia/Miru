@@ -25,6 +25,8 @@ class WebContents;
 
 namespace miru {
 
+class MiruJavaScriptDialogManager;
+
 /// Owns one `content::WebContents` and bridges native C++ network/cosmetic hooks to Java `MiruChromiumTab`.
 class MiruTab : public content::WebContentsDelegate,
                 public content::WebContentsObserver {
@@ -32,6 +34,8 @@ class MiruTab : public content::WebContentsDelegate,
   static MiruTab* FromWebContents(content::WebContents* web_contents);
 
   MiruTab(const base::android::JavaRef<jobject>& java_tab, bool off_the_record);
+  MiruTab(const base::android::JavaRef<jobject>& java_tab,
+          std::unique_ptr<content::WebContents> adopted_contents);
   MiruTab(const MiruTab&) = delete;
   MiruTab& operator=(const MiruTab&) = delete;
   ~MiruTab() override;
@@ -46,6 +50,28 @@ class MiruTab : public content::WebContentsDelegate,
                            int64_t content_length,
                            const std::string& headers_json);
   void NotifyIsolatedJsResult(jlong request_id, const std::string& result_json);
+  void OnJavaScriptDialog(int64_t dialog_id,
+                          int dialog_type,
+                          const std::string& origin,
+                          const std::string& message,
+                          const std::string& default_prompt);
+  void OnBeforeUnloadDialog(int64_t dialog_id,
+                            const std::string& origin,
+                            bool is_reload);
+  void OnDialogsCancelled(int64_t dialog_id, bool reset_state);
+  void OnHttpAuthRequest(int64_t auth_id,
+                         const std::string& url,
+                         const std::string& challenger,
+                         const std::string& realm,
+                         const std::string& scheme,
+                         bool is_proxy,
+                         bool previous_failed);
+  void OnHttpAuthCancelled(int64_t auth_id);
+  bool CheckPopupAllowed(const std::string& opener_url,
+                         const std::string& target_url,
+                         bool user_gesture,
+                         bool opener_suppressed);
+  void OnExternalProtocol(const std::string& url, bool has_user_gesture);
 
   void FindAll(JNIEnv* env, const jni_zero::JavaRef<jstring>& jquery, bool forward);
   void FindAll(const std::u16string& query, bool forward);
@@ -55,6 +81,12 @@ class MiruTab : public content::WebContentsDelegate,
                           bool all_frames,
                           jlong request_id);
   void CaptureThumbnail(JNIEnv* env, jint max_width, jlong request_id);
+  void ResolveJsDialog(JNIEnv* env,
+                       jlong dialog_id,
+                       jboolean accept,
+                       const jni_zero::JavaRef<jstring>& jinput);
+  void ResolveRepostDialog(JNIEnv* env, jboolean resubmit);
+  void NotifyContextMenuClosed(JNIEnv* env);
   void DestroyTab(JNIEnv* env);
 
   // content::WebContentsObserver:
@@ -80,6 +112,19 @@ class MiruTab : public content::WebContentsDelegate,
       const content::OpenURLParams& params,
       base::OnceCallback<void(content::NavigationHandle&)>
           navigation_handle_callback) override;
+  content::WebContents* AddNewContents(
+      content::WebContents* source,
+      std::unique_ptr<content::WebContents> new_contents,
+      const GURL& target_url,
+      WindowOpenDisposition disposition,
+      const blink::mojom::WindowFeatures& window_features,
+      bool user_gesture,
+      bool* was_blocked) override;
+  bool HandleContextMenu(content::RenderFrameHost& render_frame_host,
+                         const content::ContextMenuParams& params) override;
+  void ShowRepostFormWarningDialog(content::WebContents* source) override;
+  content::JavaScriptDialogManager* GetJavaScriptDialogManager(
+      content::WebContents* source) override;
   void CloseContents(content::WebContents* source) override;
   void EnterFullscreenModeForTab(
       content::RenderFrameHost* requesting_frame,
@@ -89,12 +134,14 @@ class MiruTab : public content::WebContentsDelegate,
       const content::WebContents* web_contents) override;
 
  private:
+  void AttachWebContents();
   void InjectCosmeticRules(content::RenderFrameHost* rfh,
                            const std::string& url);
   void NotifySecurityState();
 
   base::android::ScopedJavaGlobalRef<jobject> java_tab_;
   std::unique_ptr<content::WebContents> web_contents_;
+  std::unique_ptr<MiruJavaScriptDialogManager> js_dialog_manager_;
   std::string bridge_nonce_;
   bool is_fullscreen_ = false;
   std::u16string last_find_query_;

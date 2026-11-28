@@ -26,6 +26,7 @@
 #include "miru_engine/native/miru_browser_main_parts.h"
 #include "miru_engine/native/miru_descriptors.h"
 #include "miru_engine/native/miru_https_only_throttle.h"
+#include "miru_engine/native/miru_login_delegate.h"
 #include "miru_engine/native/miru_tab.h"
 #include "miru_engine/native/miru_url_loader_factory.h"
 #include "miru_engine/native/miru_url_loader_throttle.h"
@@ -226,6 +227,86 @@ void MiruContentBrowserClient::OnWebContentsCreated(
           performance_manager::PerformanceManagerRegistry::GetInstance()) {
     registry->MaybeCreatePageNodeForWebContents(web_contents);
   }
+}
+
+bool MiruContentBrowserClient::CanCreateWindow(
+    content::RenderFrameHost* opener,
+    const GURL& opener_url,
+    const GURL& opener_top_level_frame_url,
+    const url::Origin& /*source_origin*/,
+    content::mojom::WindowContainerType /*container_type*/,
+    const GURL& target_url,
+    const content::Referrer& /*referrer*/,
+    const std::string& /*frame_name*/,
+    WindowOpenDisposition /*disposition*/,
+    const blink::mojom::WindowFeatures& /*features*/,
+    bool user_gesture,
+    bool opener_suppressed,
+    bool* /*no_javascript_access*/) {
+  content::WebContents* wc =
+      opener ? content::WebContents::FromRenderFrameHost(opener) : nullptr;
+  MiruTab* tab = wc ? MiruTab::FromWebContents(wc) : nullptr;
+  if (!tab) {
+    return false;
+  }
+  const std::string effective_opener =
+      opener_top_level_frame_url.is_valid()
+          ? opener_top_level_frame_url.spec()
+          : (wc->GetLastCommittedURL().is_valid()
+                 ? wc->GetLastCommittedURL().spec()
+                 : opener_url.spec());
+  return tab->CheckPopupAllowed(effective_opener, target_url.spec(),
+                                user_gesture, opener_suppressed);
+}
+
+std::unique_ptr<content::LoginDelegate>
+MiruContentBrowserClient::CreateLoginDelegate(
+    const net::AuthChallengeInfo& auth_info,
+    content::WebContents* web_contents,
+    content::BrowserContext* /*browser_context*/,
+    const content::GlobalRequestID& /*request_id*/,
+    bool /*is_request_for_primary_main_frame_navigation*/,
+    bool /*is_request_for_navigation*/,
+    const GURL& url,
+    scoped_refptr<net::HttpResponseHeaders> /*response_headers*/,
+    bool first_auth_attempt,
+    bool do_not_prompt_for_login,
+    content::GuestPageHolder* /*guest_page_holder*/,
+    content::LoginDelegate::LoginAuthRequiredCallback auth_required_callback) {
+  if (do_not_prompt_for_login || !web_contents) {
+    return nullptr;
+  }
+  MiruTab* tab = MiruTab::FromWebContents(web_contents);
+  if (!tab) {
+    return nullptr;
+  }
+  return std::make_unique<MiruLoginDelegate>(
+      tab->AsWeakPtr(), auth_info, url, first_auth_attempt,
+      std::move(auth_required_callback));
+}
+
+bool MiruContentBrowserClient::HandleExternalProtocol(
+    const GURL& url,
+    base::RepeatingCallback<content::WebContents*()> web_contents_getter,
+    content::FrameTreeNodeId /*frame_tree_node_id*/,
+    content::NavigationUIData* /*navigation_data*/,
+    bool is_primary_main_frame,
+    bool is_in_fenced_frame_tree,
+    network::mojom::WebSandboxFlags /*sandbox_flags*/,
+    ui::PageTransition /*page_transition*/,
+    bool has_user_gesture,
+    const std::optional<url::Origin>& /*initiating_origin*/,
+    content::RenderFrameHost* /*initiator_document*/,
+    const net::IsolationInfo& /*isolation_info*/,
+    mojo::PendingRemote<network::mojom::URLLoaderFactory>* /*out_factory*/) {
+  if (is_primary_main_frame && !is_in_fenced_frame_tree &&
+      web_contents_getter) {
+    content::WebContents* wc = web_contents_getter.Run();
+    if (MiruTab* tab = wc ? MiruTab::FromWebContents(wc) : nullptr) {
+      tab->OnExternalProtocol(url.spec(), has_user_gesture);
+    }
+  }
+  return true;
 }
 
 MiruBrowserContext* MiruContentBrowserClient::normal_context() {

@@ -27,6 +27,7 @@
 #include "base/values.h"
 #include "components/viz/common/frame_sinks/copy_output_result.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/context_menu_params.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/navigation_handle.h"
@@ -40,9 +41,13 @@
 #include "miru_engine/miru_engine_jni/MiruChromiumTab_jni.h"
 #include "miru_engine/native/miru_browser_context.h"
 #include "miru_engine/native/miru_content_browser_client.h"
+#include "miru_engine/native/miru_js_dialog_manager.h"
+#include "miru_engine/native/miru_login_delegate.h"
 #include "net/cert/cert_status_flags.h"
 #include "net/cert/x509_certificate.h"
 #include "net/cert/x509_util.h"
+#include "services/network/public/mojom/referrer_policy.mojom.h"
+#include "third_party/blink/public/mojom/context_menu/context_menu.mojom.h"
 #include "third_party/blink/public/mojom/frame/find_in_page.mojom.h"
 #include "third_party/jni_zero/jni_zero.h"
 #include "ui/gfx/android/java_bitmap.h"
@@ -59,6 +64,43 @@ base::flat_map<const content::WebContents*, MiruTab*>& TabRegistry() {
   static base::NoDestructor<base::flat_map<const content::WebContents*, MiruTab*>>
       registry;
   return *registry;
+}
+
+base::flat_map<int64_t, std::unique_ptr<content::WebContents>>&
+PendingAdoptions() {
+  static base::NoDestructor<
+      base::flat_map<int64_t, std::unique_ptr<content::WebContents>>>
+      map;
+  return *map;
+}
+
+int64_t& NextAdoptId() {
+  static int64_t next = 1;
+  return next;
+}
+
+const char* ReferrerPolicyToString(network::mojom::ReferrerPolicy policy) {
+  switch (policy) {
+    case network::mojom::ReferrerPolicy::kAlways:
+      return "unsafe-url";
+    case network::mojom::ReferrerPolicy::kNoReferrerWhenDowngrade:
+      return "no-referrer-when-downgrade";
+    case network::mojom::ReferrerPolicy::kNever:
+      return "no-referrer";
+    case network::mojom::ReferrerPolicy::kOrigin:
+      return "origin";
+    case network::mojom::ReferrerPolicy::kOriginWhenCrossOrigin:
+      return "origin-when-cross-origin";
+    case network::mojom::ReferrerPolicy::kStrictOriginWhenCrossOrigin:
+      return "strict-origin-when-cross-origin";
+    case network::mojom::ReferrerPolicy::kSameOrigin:
+      return "same-origin";
+    case network::mojom::ReferrerPolicy::kStrictOrigin:
+      return "strict-origin";
+    case network::mojom::ReferrerPolicy::kDefault:
+      return "";
+  }
+  return "";
 }
 
 std::string SanitizeJsonForJsLiteral(const char* raw_json) {
@@ -116,6 +158,21 @@ MiruTab::MiruTab(const base::android::JavaRef<jobject>& java_tab,
   CHECK(context);
   content::WebContents::CreateParams params(context);
   web_contents_ = content::WebContents::Create(params);
+  AttachWebContents();
+}
+
+MiruTab::MiruTab(const base::android::JavaRef<jobject>& java_tab,
+                 std::unique_ptr<content::WebContents> adopted_contents)
+    : java_tab_(java_tab),
+      web_contents_(std::move(adopted_contents)),
+      bridge_nonce_(base::HexEncodeLower(base::RandBytesAsVector(16))) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK(web_contents_);
+  AttachWebContents();
+}
+
+void MiruTab::AttachWebContents() {
+  js_dialog_manager_ = std::make_unique<MiruJavaScriptDialogManager>(this);
   web_contents_->SetDelegate(this);
   Observe(web_contents_.get());
   TabRegistry()[web_contents_.get()] = this;
@@ -133,6 +190,7 @@ MiruTab::~MiruTab() {
     web_contents_->SetDelegate(nullptr);
     web_contents_.reset();
   }
+  js_dialog_manager_.reset();
 }
 
 void MiruTab::NotifyAdBlocked(const std::string& blocked_url) {
@@ -320,6 +378,120 @@ void MiruTab::DestroyTab(JNIEnv*) {
   delete this;
 }
 
+void MiruTab::OnJavaScriptDialog(int64_t dialog_id,
+                                 int dialog_type,
+                                 const std::string& origin,
+                                 const std::string& message,
+                                 const std::string& default_prompt) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumTab_onNativeJavaScriptDialog(
+      env, java_tab_, static_cast<jlong>(dialog_id),
+      static_cast<jint>(dialog_type),
+      base::android::ConvertUTF8ToJavaString(env, origin),
+      base::android::ConvertUTF8ToJavaString(env, message),
+      base::android::ConvertUTF8ToJavaString(env, default_prompt));
+}
+
+void MiruTab::OnBeforeUnloadDialog(int64_t dialog_id,
+                                   const std::string& origin,
+                                   bool is_reload) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumTab_onNativeBeforeUnloadDialog(
+      env, java_tab_, static_cast<jlong>(dialog_id),
+      base::android::ConvertUTF8ToJavaString(env, origin),
+      is_reload ? JNI_TRUE : JNI_FALSE);
+}
+
+void MiruTab::OnDialogsCancelled(int64_t dialog_id, bool reset_state) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumTab_onNativeDialogsCancelled(
+      env, java_tab_, static_cast<jlong>(dialog_id),
+      reset_state ? JNI_TRUE : JNI_FALSE);
+}
+
+void MiruTab::OnHttpAuthRequest(int64_t auth_id,
+                                const std::string& url,
+                                const std::string& challenger,
+                                const std::string& realm,
+                                const std::string& scheme,
+                                bool is_proxy,
+                                bool previous_failed) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumTab_onNativeHttpAuthRequest(
+      env, java_tab_, static_cast<jlong>(auth_id),
+      base::android::ConvertUTF8ToJavaString(env, url),
+      base::android::ConvertUTF8ToJavaString(env, challenger),
+      base::android::ConvertUTF8ToJavaString(env, realm),
+      base::android::ConvertUTF8ToJavaString(env, scheme),
+      is_proxy ? JNI_TRUE : JNI_FALSE,
+      previous_failed ? JNI_TRUE : JNI_FALSE);
+}
+
+void MiruTab::OnHttpAuthCancelled(int64_t auth_id) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumTab_onNativeHttpAuthCancelled(
+      env, java_tab_, static_cast<jlong>(auth_id));
+}
+
+bool MiruTab::CheckPopupAllowed(const std::string& opener_url,
+                                const std::string& target_url,
+                                bool user_gesture,
+                                bool opener_suppressed) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  jboolean allowed = Java_MiruChromiumTab_onNativeCheckPopupAllowed(
+      env, java_tab_,
+      base::android::ConvertUTF8ToJavaString(env, opener_url),
+      base::android::ConvertUTF8ToJavaString(env, target_url),
+      user_gesture ? JNI_TRUE : JNI_FALSE,
+      opener_suppressed ? JNI_TRUE : JNI_FALSE);
+  return allowed != JNI_FALSE;
+}
+
+void MiruTab::OnExternalProtocol(const std::string& url, bool has_user_gesture) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumTab_onNativeExternalProtocol(
+      env, java_tab_, base::android::ConvertUTF8ToJavaString(env, url),
+      has_user_gesture ? JNI_TRUE : JNI_FALSE);
+}
+
+void MiruTab::ResolveJsDialog(JNIEnv* env,
+                              jlong dialog_id,
+                              jboolean accept,
+                              const jni_zero::JavaRef<jstring>& jinput) {
+  if (!js_dialog_manager_) {
+    return;
+  }
+  const std::u16string input =
+      jinput.is_null() ? std::u16string()
+                       : base::android::ConvertJavaStringToUTF16(env, jinput);
+  js_dialog_manager_->ResolveDialog(static_cast<int64_t>(dialog_id),
+                                    accept != JNI_FALSE, input);
+}
+
+void MiruTab::ResolveRepostDialog(JNIEnv*, jboolean resubmit) {
+  if (!web_contents_) {
+    return;
+  }
+  if (resubmit != JNI_FALSE) {
+    web_contents_->GetController().ContinuePendingReload();
+  } else {
+    web_contents_->GetController().CancelPendingReload();
+  }
+}
+
+void MiruTab::NotifyContextMenuClosed(JNIEnv*) {
+  if (web_contents_) {
+    web_contents_->NotifyContextMenuClosed(GURL());
+  }
+}
+
 void MiruTab::DidFinishNavigation(
     content::NavigationHandle* navigation_handle) {
   if (!navigation_handle->HasCommitted() ||
@@ -461,6 +633,82 @@ content::WebContents* MiruTab::OpenURLFromTab(
   return source;
 }
 
+content::WebContents* MiruTab::AddNewContents(
+    content::WebContents* /*source*/,
+    std::unique_ptr<content::WebContents> new_contents,
+    const GURL& target_url,
+    WindowOpenDisposition /*disposition*/,
+    const blink::mojom::WindowFeatures& /*window_features*/,
+    bool /*user_gesture*/,
+    bool* was_blocked) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  if (!new_contents) {
+    if (was_blocked) {
+      *was_blocked = true;
+    }
+    return nullptr;
+  }
+  content::WebContents* raw_wc = new_contents.get();
+  const int64_t adopt_id = NextAdoptId()++;
+  PendingAdoptions()[adopt_id] = std::move(new_contents);
+
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumTab_onNativeAdoptPopupTab(
+      env, java_tab_, static_cast<jlong>(adopt_id),
+      base::android::ConvertUTF8ToJavaString(
+          env, target_url.is_valid() ? target_url.spec() : std::string()));
+
+  if (PendingAdoptions().erase(adopt_id) > 0) {
+    if (was_blocked) {
+      *was_blocked = true;
+    }
+    return nullptr;
+  }
+  return raw_wc;
+}
+
+bool MiruTab::HandleContextMenu(content::RenderFrameHost& /*render_frame_host*/,
+                                const content::ContextMenuParams& params) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  const bool has_link = params.link_url.is_valid();
+  const bool is_image =
+      params.media_type == blink::mojom::ContextMenuDataMediaType::kImage;
+  const bool is_video =
+      params.media_type == blink::mojom::ContextMenuDataMediaType::kVideo;
+  if (!has_link && !is_image && !is_video) {
+    return false;
+  }
+  const int media_kind = is_image ? 1 : (is_video ? 2 : 0);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumTab_onNativeContextMenu(
+      env, java_tab_, static_cast<jint>(media_kind),
+      base::android::ConvertUTF8ToJavaString(
+          env, has_link ? params.link_url.spec() : std::string()),
+      base::android::ConvertUTF16ToJavaString(env, params.link_text),
+      base::android::ConvertUTF8ToJavaString(
+          env, params.src_url.is_valid() ? params.src_url.spec() : std::string()),
+      base::android::ConvertUTF16ToJavaString(
+          env, params.title_text.empty() ? params.alt_text : params.title_text),
+      base::android::ConvertUTF8ToJavaString(
+          env, params.page_url.is_valid() ? params.page_url.spec() : std::string()),
+      base::android::ConvertUTF8ToJavaString(
+          env, params.frame_url.is_valid() ? params.frame_url.spec() : std::string()),
+      base::android::ConvertUTF8ToJavaString(
+          env, ReferrerPolicyToString(params.referrer_policy)));
+  return true;
+}
+
+void MiruTab::ShowRepostFormWarningDialog(content::WebContents* /*source*/) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumTab_onNativeRepostDialog(env, java_tab_);
+}
+
+content::JavaScriptDialogManager* MiruTab::GetJavaScriptDialogManager(
+    content::WebContents* /*source*/) {
+  return js_dialog_manager_.get();
+}
+
 void MiruTab::CloseContents(content::WebContents* /*source*/) {}
 
 void MiruTab::EnterFullscreenModeForTab(
@@ -501,6 +749,34 @@ static jlong JNI_MiruChromiumTab_CreateTab(
     jboolean off_the_record) {
   auto* tab = new MiruTab(jcaller, off_the_record != JNI_FALSE);
   return reinterpret_cast<jlong>(tab);
+}
+
+static jlong JNI_MiruChromiumTab_CreateAdoptedTab(
+    JNIEnv*,
+    const base::android::JavaRef<jobject>& jcaller,
+    jlong adopt_id) {
+  auto it = PendingAdoptions().find(static_cast<int64_t>(adopt_id));
+  CHECK(it != PendingAdoptions().end());
+  std::unique_ptr<content::WebContents> wc = std::move(it->second);
+  PendingAdoptions().erase(it);
+  auto* tab = new MiruTab(jcaller, std::move(wc));
+  return reinterpret_cast<jlong>(tab);
+}
+
+static void JNI_MiruChromiumTab_ResolveHttpAuth(
+    JNIEnv* env,
+    jlong auth_id,
+    jboolean submit,
+    const base::android::JavaRef<jstring>& jusername,
+    const base::android::JavaRef<jstring>& jpassword) {
+  const std::u16string username =
+      jusername.is_null() ? std::u16string()
+                          : base::android::ConvertJavaStringToUTF16(env, jusername);
+  const std::u16string password =
+      jpassword.is_null() ? std::u16string()
+                          : base::android::ConvertJavaStringToUTF16(env, jpassword);
+  MiruLoginDelegate::Resolve(static_cast<int64_t>(auth_id), submit != JNI_FALSE,
+                             username, password);
 }
 
 }  // namespace miru

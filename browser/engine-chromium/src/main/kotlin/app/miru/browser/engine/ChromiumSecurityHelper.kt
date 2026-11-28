@@ -68,10 +68,12 @@ internal object ChromiumSecurityHelper {
         initialized: Boolean,
         hasPrivateTabs: Boolean,
         onClearMemoryCaches: () -> Unit,
+        onClearSiteSettings: () -> Unit = {},
     ): BrowsingDataClearResult = withContext(Dispatchers.Main.immediate) {
         val selected = request.types.intersect(BrowserEngineDataTypes.ENGINE_TYPES)
         if (!request.isValid) return@withContext BrowsingDataClearResult(failed = selected)
         if (BrowsingDataType.WEB_CACHE in selected) onClearMemoryCaches()
+        if (BrowsingDataType.SITE_SETTINGS in selected) onClearSiteSettings()
         if (initialized && !hasPrivateTabs && (BrowsingDataType.COOKIES in selected || BrowsingDataType.SITE_DATA in selected)) {
             MiruChromiumRuntime.destroyOffTheRecordProfile()
         }
