@@ -12,6 +12,10 @@
 #include "components/performance_manager/embedder/performance_manager_registry.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/browsing_data_remover.h"
+#include "content/public/browser/navigation_handle.h"
+#include "content/public/browser/navigation_throttle_registry.h"
+#include "content/public/browser/network_service_instance.h"
 #include "content/public/browser/posix_file_descriptor_info.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/storage_partition.h"
@@ -21,14 +25,22 @@
 #include "miru_engine/native/miru_browser_context.h"
 #include "miru_engine/native/miru_browser_main_parts.h"
 #include "miru_engine/native/miru_descriptors.h"
+#include "miru_engine/native/miru_https_only_throttle.h"
 #include "miru_engine/native/miru_tab.h"
 #include "miru_engine/native/miru_url_loader_factory.h"
 #include "miru_engine/native/miru_url_loader_throttle.h"
+#include "net/base/url_util.h"
 #include "net/cookies/canonical_cookie.h"
 #include "net/cookies/cookie_options.h"
 #include "net/cookies/cookie_partition_key_collection.h"
+#include "net/dns/public/dns_over_https_config.h"
+#include "net/dns/public/secure_dns_mode.h"
 #include "services/network/public/cpp/url_loader_factory_builder.h"
+#include "services/network/public/mojom/clear_data_filter.mojom.h"
 #include "services/network/public/mojom/cookie_manager.mojom.h"
+#include "services/network/public/mojom/host_resolver.mojom.h"
+#include "services/network/public/mojom/network_context.mojom.h"
+#include "services/network/public/mojom/network_service.mojom.h"
 #include "url/gurl.h"
 #include "url/url_constants.h"
 
@@ -145,6 +157,40 @@ void MiruContentBrowserClient::WillCreateURLLoaderFactory(
   MiruURLLoaderFactory::Create(
       std::move(proxy_receiver), std::move(target_remote),
       tab ? tab->AsWeakPtr() : nullptr, std::move(page_url));
+}
+
+void MiruContentBrowserClient::CreateThrottlesForNavigation(
+    content::NavigationThrottleRegistry& registry) {
+  if (!https_only_.load(std::memory_order_acquire)) {
+    return;
+  }
+  content::NavigationHandle& handle = registry.GetNavigationHandle();
+  if (handle.IsInPrimaryMainFrame() &&
+      handle.GetURL().SchemeIs(url::kHttpScheme) &&
+      !net::IsLocalhost(handle.GetURL())) {
+    registry.AddThrottle(
+        std::make_unique<MiruHttpsOnlyNavigationThrottle>(registry));
+  }
+}
+
+void MiruContentBrowserClient::ConfigureNetworkContextParams(
+    content::BrowserContext* context,
+    bool in_memory,
+    const base::FilePath& relative_partition_path,
+    network::mojom::NetworkContextParams* network_context_params,
+    cert_verifier::mojom::CertVerifierCreationParams*
+        cert_verifier_creation_params) {
+  ContentBrowserClient::ConfigureNetworkContextParams(
+      context, in_memory, relative_partition_path, network_context_params,
+      cert_verifier_creation_params);
+  if (network_context_params) {
+    if (!network_context_params->cookie_manager_params) {
+      network_context_params->cookie_manager_params =
+          network::mojom::CookieManagerParams::New();
+    }
+    network_context_params->cookie_manager_params->block_third_party_cookies =
+        block_third_party_cookies_.load(std::memory_order_acquire);
+  }
 }
 
 void MiruContentBrowserClient::GetAdditionalMappedFilesForChildProcess(
@@ -282,6 +328,139 @@ void MiruContentBrowserClient::GetCookiesForUrl(
             std::move(cb).Run(net::CanonicalCookie::BuildCookieLine(cookies));
           },
           std::move(callback)));
+}
+
+void MiruContentBrowserClient::ApplySecuritySettings(
+    bool block_third_party_cookies,
+    bool https_only,
+    int secure_dns_mode,
+    const std::string& custom_dns_url) {
+  block_third_party_cookies_.store(block_third_party_cookies,
+                                   std::memory_order_release);
+  https_only_.store(https_only, std::memory_order_release);
+
+  auto apply_cookie_policy = [block_third_party_cookies](MiruBrowserContext* ctx) {
+    if (!ctx) {
+      return;
+    }
+    auto* partition = ctx->GetDefaultStoragePartition();
+    auto* cookie_manager =
+        partition ? partition->GetCookieManagerForBrowserProcess() : nullptr;
+    if (cookie_manager) {
+      cookie_manager->BlockThirdPartyCookies(block_third_party_cookies);
+    }
+  };
+  apply_cookie_policy(normal_context());
+  apply_cookie_policy(main_parts_ ? main_parts_->off_the_record_context()
+                                  : nullptr);
+
+  net::SecureDnsMode mode = net::SecureDnsMode::kAutomatic;
+  net::DnsOverHttpsConfig doh;
+  if (secure_dns_mode == 0) {
+    mode = net::SecureDnsMode::kOff;
+  } else if (secure_dns_mode == 2) {
+    auto parsed = net::DnsOverHttpsConfig::FromString(custom_dns_url);
+    if (parsed && !parsed->servers().empty()) {
+      mode = net::SecureDnsMode::kSecure;
+      doh = *parsed;
+    }
+  }
+  if (auto* network_service = content::GetNetworkService()) {
+    network_service->ConfigureStubHostResolver(
+        net::InsecureDnsMode::kEnabledBuiltIn,
+        /*happy_eyeballs_v3_enabled=*/false, mode, doh,
+        /*additional_dns_types_enabled=*/true,
+        /*fallback_doh_nameservers=*/{});
+  }
+}
+
+namespace {
+
+class MiruClearDataObserver final
+    : public content::BrowsingDataRemover::Observer {
+ public:
+  MiruClearDataObserver(content::BrowsingDataRemover* remover,
+                        base::OnceCallback<void(uint32_t)> callback)
+      : remover_(remover), callback_(std::move(callback)) {
+    remover_->AddObserver(this);
+  }
+
+  void OnBrowsingDataRemoverDone(uint64_t failed_data_types) override {
+    if (remover_) {
+      remover_->RemoveObserver(this);
+      remover_ = nullptr;
+    }
+    uint32_t failed_miru = 0;
+    if (failed_data_types & content::BrowsingDataRemover::DATA_TYPE_COOKIES) {
+      failed_miru |= 1u;
+    }
+    if (failed_data_types &
+        content::BrowsingDataRemover::DATA_TYPE_DOM_STORAGE) {
+      failed_miru |= 2u;
+    }
+    if (failed_data_types & content::BrowsingDataRemover::DATA_TYPE_CACHE) {
+      failed_miru |= 4u;
+    }
+    std::move(callback_).Run(failed_miru);
+    delete this;
+  }
+
+ private:
+  ~MiruClearDataObserver() override = default;
+
+  raw_ptr<content::BrowsingDataRemover> remover_;
+  base::OnceCallback<void(uint32_t)> callback_;
+};
+
+}  // namespace
+
+void MiruContentBrowserClient::ClearBrowsingData(
+    uint32_t miru_mask,
+    int64_t since_ms,
+    base::OnceCallback<void(uint32_t)> callback) {
+  MiruBrowserContext* ctx = normal_context();
+  if (!ctx) {
+    std::move(callback).Run(miru_mask);
+    return;
+  }
+  const base::Time begin_time =
+      since_ms > 0 ? base::Time::FromMillisecondsSinceUnixEpoch(since_ms)
+                   : base::Time();
+  if (miru_mask & 8u) {
+    if (auto* partition = ctx->GetDefaultStoragePartition()) {
+      if (auto* net_ctx = partition->GetNetworkContext()) {
+        net_ctx->ClearHttpAuthCache(begin_time, base::Time::Max(), nullptr,
+                                    base::DoNothing());
+      }
+    }
+  }
+  uint64_t remove_mask = 0;
+  if (miru_mask & 1u) {
+    remove_mask |= content::BrowsingDataRemover::DATA_TYPE_COOKIES;
+  }
+  if (miru_mask & 2u) {
+    remove_mask |= content::BrowsingDataRemover::DATA_TYPE_DOM_STORAGE |
+                   content::BrowsingDataRemover::DATA_TYPE_MEDIA_LICENSES |
+                   content::BrowsingDataRemover::DATA_TYPE_PRIVACY_SANDBOX;
+  }
+  if (miru_mask & 4u) {
+    remove_mask |= content::BrowsingDataRemover::DATA_TYPE_CACHE;
+  }
+  if (remove_mask == 0) {
+    std::move(callback).Run(0u);
+    return;
+  }
+  content::BrowsingDataRemover* remover = ctx->GetBrowsingDataRemover();
+  if (!remover) {
+    std::move(callback).Run(miru_mask & 7u);
+    return;
+  }
+  auto* observer = new MiruClearDataObserver(remover, std::move(callback));
+  remover->RemoveAndReply(
+      begin_time, base::Time::Max(), remove_mask,
+      content::BrowsingDataRemover::ORIGIN_TYPE_UNPROTECTED_WEB |
+          content::BrowsingDataRemover::ORIGIN_TYPE_PROTECTED_WEB,
+      observer);
 }
 
 }  // namespace miru

@@ -36,8 +36,24 @@ public final class MiruChromiumRuntime {
     private static final AtomicLong sNextRequestId = new AtomicLong(1L);
     private static final ConcurrentHashMap<Long, Consumer<String>> sCookieCallbacks =
             new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Long, Consumer<Integer>> sClearCallbacks =
+            new ConcurrentHashMap<>();
+    private static volatile @Nullable DownloadListener sDownloadListener;
     private static boolean sAttached;
     private static boolean sStarted;
+
+    public interface DownloadListener {
+        void onDownloadRequest(
+                String url,
+                String fileName,
+                String mimeType,
+                long contentLength,
+                String sourcePage,
+                String userAgent,
+                String cookieHeader,
+                boolean isPrivate,
+                String tempPath);
+    }
 
     private MiruChromiumRuntime() {}
 
@@ -117,11 +133,72 @@ public final class MiruChromiumRuntime {
         return MiruChromiumRuntimeJni.get().getUserAgent();
     }
 
+    public static void applySecuritySettings(
+            boolean blockThirdPartyCookies,
+            boolean httpsOnly,
+            int secureDnsMode,
+            String customDnsUrl) {
+        if (!sStarted) return;
+        MiruChromiumRuntimeJni.get().applySecuritySettings(
+                blockThirdPartyCookies,
+                httpsOnly,
+                secureDnsMode,
+                customDnsUrl != null ? customDnsUrl : "");
+    }
+
+    public static void clearBrowsingData(int miruMask, long sinceMs, Consumer<Integer> callback) {
+        if (!sStarted) {
+            callback.accept(miruMask);
+            return;
+        }
+        long id = sNextRequestId.getAndIncrement();
+        sClearCallbacks.put(id, callback);
+        MiruChromiumRuntimeJni.get().clearBrowsingData(miruMask, sinceMs, id);
+    }
+
+    public static void setDownloadListener(@Nullable DownloadListener listener) {
+        sDownloadListener = listener;
+    }
+
     @CalledByNative
     private static void onNativeCookiesResult(long requestId, String cookieHeader) {
         Consumer<String> cb = sCookieCallbacks.remove(requestId);
         if (cb != null) {
             cb.accept(cookieHeader != null ? cookieHeader : "");
+        }
+    }
+
+    @CalledByNative
+    private static void onNativeBrowsingDataCleared(long requestId, int failedMask) {
+        Consumer<Integer> cb = sClearCallbacks.remove(requestId);
+        if (cb != null) {
+            cb.accept(failedMask);
+        }
+    }
+
+    @CalledByNative
+    private static void onNativeDownloadRequest(
+            String url,
+            String fileName,
+            String mimeType,
+            long contentLength,
+            String sourcePage,
+            String userAgent,
+            String cookieHeader,
+            boolean isPrivate,
+            String tempPath) {
+        DownloadListener listener = sDownloadListener;
+        if (listener != null) {
+            listener.onDownloadRequest(
+                    url != null ? url : "",
+                    fileName != null ? fileName : "",
+                    mimeType != null ? mimeType : "",
+                    contentLength,
+                    sourcePage != null ? sourcePage : "",
+                    userAgent != null ? userAgent : "",
+                    cookieHeader != null ? cookieHeader : "",
+                    isPrivate,
+                    tempPath != null ? tempPath : "");
         }
     }
 
@@ -134,5 +211,7 @@ public final class MiruChromiumRuntime {
         void destroyOffTheRecordProfile();
         void getCookiesForUrl(boolean offTheRecord, String url, long requestId);
         String getUserAgent();
+        void applySecuritySettings(boolean blockThirdPartyCookies, boolean httpsOnly, int secureDnsMode, String customDnsUrl);
+        void clearBrowsingData(int miruMask, long sinceMs, long requestId);
     }
 }

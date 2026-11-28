@@ -23,6 +23,7 @@ import org.chromium.ui.OverscrollRefreshHandler
 import org.chromium.ui.base.ActivityWindowAndroid
 import org.chromium.ui.base.IntentRequestTracker
 import org.chromium.ui.base.WindowAndroid
+import java.util.WeakHashMap
 import kotlin.math.roundToInt
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
@@ -205,10 +206,10 @@ internal class ChromiumSurfaceHost(
         if (tabCollector == null) {
             tabCollector = scope.launch(Dispatchers.Main.immediate) {
                 controller.activeNativeTab.collect { tab ->
-                    currentTab?.setOverscrollRefreshHandler(null)
+                    currentTab?.let { detachOverscroll(it) }
                     currentTab = tab
                     viewport.attachTab(tab)
-                    tab?.setOverscrollRefreshHandler(overscrollHandler)
+                    tab?.let { attachOverscroll(it) }
                 }
             }
         }
@@ -217,7 +218,7 @@ internal class ChromiumSurfaceHost(
     override fun stop() {
         tabCollector?.cancel()
         tabCollector = null
-        currentTab?.setOverscrollRefreshHandler(null)
+        currentTab?.let { detachOverscroll(it) }
         viewport.setSurfaceVisibility(false)
     }
 
@@ -232,5 +233,36 @@ internal class ChromiumSurfaceHost(
         windowAndroid = null
     }
 
+    private fun attachOverscroll(tab: MiruChromiumTab) {
+        val proxy = installedOverscrollProxies.getOrPut(tab) {
+            TabOverscrollProxy().also { tab.setOverscrollRefreshHandler(it) }
+        }
+        proxy.delegate = overscrollHandler
+    }
+
+    private fun detachOverscroll(tab: MiruChromiumTab) {
+        installedOverscrollProxies[tab]?.let { proxy ->
+            if (proxy.delegate === overscrollHandler) {
+                proxy.delegate = null
+            }
+        }
+        overscrollHandler.reset()
+    }
+
     override fun captureThumbnail() = controller.captureThumbnail()
+
+    private class TabOverscrollProxy : OverscrollRefreshHandler {
+        @Volatile var delegate: OverscrollRefreshHandler? = null
+        override fun start(type: Int, initiatingEdge: Int): Boolean = delegate?.start(type, initiatingEdge) ?: false
+        override fun pull(xDelta: Float, yDelta: Float) { delegate?.pull(xDelta, yDelta) }
+        override fun release(status: Int) { delegate?.release(status) }
+        override fun reset() { delegate?.reset() }
+        override fun setEnabled(enabled: Boolean) { delegate?.setEnabled(enabled) }
+    }
+
+    private companion object {
+        // Attach at most one C++ OverscrollRefreshHandler per MiruChromiumTab to avoid freeing a
+        // raw handler pointer while a speculative/swapped RenderWidgetHostViewAndroid still holds it.
+        val installedOverscrollProxies = WeakHashMap<MiruChromiumTab, TabOverscrollProxy>()
+    }
 }

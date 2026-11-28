@@ -94,6 +94,67 @@ JNI_MiruChromiumRuntime_GetUserAgent(JNIEnv* env) {
   return base::android::ConvertUTF8ToJavaString(env, ua);
 }
 
+static void JNI_MiruChromiumRuntime_ApplySecuritySettings(
+    JNIEnv* env,
+    jboolean block_third_party_cookies,
+    jboolean https_only,
+    jint secure_dns_mode,
+    const base::android::JavaRef<jstring>& jcustom_dns_url) {
+  auto* client = MiruContentBrowserClient::Get();
+  if (!client) {
+    return;
+  }
+  client->ApplySecuritySettings(
+      block_third_party_cookies != JNI_FALSE, https_only != JNI_FALSE,
+      static_cast<int>(secure_dns_mode),
+      base::android::ConvertJavaStringToUTF8(env, jcustom_dns_url));
+}
+
+static void JNI_MiruChromiumRuntime_ClearBrowsingData(JNIEnv*,
+                                                      jint miru_mask,
+                                                      jlong since_ms,
+                                                      jlong request_id) {
+  auto* client = MiruContentBrowserClient::Get();
+  if (!client) {
+    JNIEnv* cb_env = base::android::AttachCurrentThread();
+    Java_MiruChromiumRuntime_onNativeBrowsingDataCleared(cb_env, request_id,
+                                                         miru_mask);
+    return;
+  }
+  client->ClearBrowsingData(
+      static_cast<uint32_t>(miru_mask), static_cast<int64_t>(since_ms),
+      base::BindOnce(
+          [](jlong id, uint32_t failed_mask) {
+            JNIEnv* cb_env = base::android::AttachCurrentThread();
+            Java_MiruChromiumRuntime_onNativeBrowsingDataCleared(
+                cb_env, id, static_cast<jint>(failed_mask));
+          },
+          request_id));
+}
+
+void MiruContentBrowserClient::NotifyDownloadRequest(
+    const std::string& url,
+    const std::string& file_name,
+    const std::string& mime_type,
+    int64_t content_length,
+    const std::string& source_page,
+    const std::string& user_agent,
+    const std::string& cookie_header,
+    bool off_the_record,
+    const std::string& temp_path) {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumRuntime_onNativeDownloadRequest(
+      env, base::android::ConvertUTF8ToJavaString(env, url),
+      base::android::ConvertUTF8ToJavaString(env, file_name),
+      base::android::ConvertUTF8ToJavaString(env, mime_type),
+      static_cast<jlong>(content_length),
+      base::android::ConvertUTF8ToJavaString(env, source_page),
+      base::android::ConvertUTF8ToJavaString(env, user_agent),
+      base::android::ConvertUTF8ToJavaString(env, cookie_header),
+      off_the_record ? JNI_TRUE : JNI_FALSE,
+      base::android::ConvertUTF8ToJavaString(env, temp_path));
+}
+
 }  // namespace miru
 
 DEFINE_JNI(MiruChromiumRuntime)

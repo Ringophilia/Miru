@@ -9,7 +9,6 @@ import app.miru.chromium.engine.MiruChromiumTab
 import app.miru.data.BrowserSecuritySettings
 import app.miru.data.BrowsingDataClearRequest
 import app.miru.data.BrowsingDataClearResult
-import app.miru.data.BrowsingDataType
 import app.miru.data.BrowsingLibrary
 import app.miru.media.DetectedMedia
 import kotlinx.coroutines.CoroutineScope
@@ -26,6 +25,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.File
 import java.net.URI
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -61,11 +61,15 @@ class ChromiumEngineController internal constructor(
     )
 
     private val applicationContext = context.applicationContext
+    private val sessionStore = ChromiumSessionStore(File(applicationContext.filesDir, "chromium_session.json"))
     private val tabsById = linkedMapOf<String, TabRecord>()
     private val tabBlockedCounts = ConcurrentHashMap<String, Int>()
     private val scrollFlow = MutableSharedFlow<Float>(replay = 1, extraBufferCapacity = 32)
     private val downloadChannel = Channel<BrowserDownloadRequest>(Channel.UNLIMITED)
+    @Volatile
+    var testDownloadInterceptor: ((BrowserDownloadRequest) -> Boolean)? = null
     private val activeNativeTabFlow = MutableStateFlow<MiruChromiumTab?>(null)
+    private var automaticNewTabId: String? = null
     private var zoomPercentValue = 100
     private var webHoldEnabled = true
     private var webHoldSpeed = 2f
@@ -82,6 +86,8 @@ class ChromiumEngineController internal constructor(
         var canGoBack: Boolean = false,
         var canGoForward: Boolean = false,
         var desktopMode: Boolean = false,
+        var secure: Boolean = false,
+        var certificate: CertificateDetails? = null,
         var fullScreen: Boolean = false,
         var findCurrent: Int = 0,
         var findTotal: Int = 0,
@@ -89,7 +95,9 @@ class ChromiumEngineController internal constructor(
         var showToolbarAsExpanded: Boolean = false,
         var lastRecordedUrl: String? = null,
         var lastRecordedTitle: String? = null,
-    )
+    ) {
+        fun toSavedState() = ChromiumSessionStore.SavedTabState(id, url, title, desktopMode)
+    }
 
     override val websiteIcons: WebsiteIconLoader = ChromiumWebsiteIcons()
     override val externalLinks: BrowserExternalLinksController = ChromiumExternalLinksController()
@@ -137,9 +145,58 @@ class ChromiumEngineController internal constructor(
         initialized = true
         applicationScope.launch(Dispatchers.Main.immediate) {
             MiruChromiumRuntime.ensureStarted(applicationContext)
-            // Compile/load bundled & cached adblock snapshot off the UI thread before any tab navigates.
-            withContext(Dispatchers.IO) { adblockManager.initializeSync() }
-            publishState(ready = true)
+            MiruChromiumRuntime.setDownloadListener { url, fileName, mimeType, contentLength, sourcePage, userAgent, cookieHeader, isPrivate, tempPath ->
+                ChromiumDownloadBridge.buildRequest(
+                    url = url,
+                    fileName = fileName,
+                    mimeType = mimeType,
+                    contentLength = contentLength,
+                    sourcePage = sourcePage,
+                    userAgent = userAgent,
+                    cookieHeader = cookieHeader,
+                    isPrivate = isPrivate,
+                    tempPath = tempPath,
+                )?.let { req ->
+                    if (testDownloadInterceptor?.invoke(req) != true) {
+                        downloadChannel.trySend(req)
+                    }
+                }
+            }
+            // Compile/load bundled & cached adblock snapshot + restore saved session off the UI thread before navigation.
+            val restoredSnapshot = withContext(Dispatchers.IO) {
+                adblockManager.initializeSync()
+                ChromiumDownloadBridge.cleanupStaleBlobTempDir(File(applicationContext.filesDir, "miru_chromium"))
+                sessionStore.load()
+            }
+            if (restoredSnapshot != null &&
+                tabsById.size == 1 &&
+                tabsById[initialId]?.url == NEW_TAB_URL &&
+                mutableState.value.selectedTabId == initialId
+            ) {
+                tabsById.clear()
+                restoredSnapshot.tabs.forEach { saved ->
+                    tabsById[saved.id] = TabRecord(
+                        id = saved.id,
+                        isPrivate = false,
+                        url = saved.url,
+                        title = saved.title,
+                        desktopMode = saved.desktopMode,
+                    )
+                }
+                val restoredSelected = restoredSnapshot.selectedTabId?.takeIf(tabsById::containsKey)
+                    ?: tabsById.keys.firstOrNull()
+                val selRec = restoredSelected?.let(tabsById::get)
+                if (selRec != null && !selRec.url.equals(NEW_TAB_URL, ignoreCase = true)) {
+                    ensureNativeTab(selRec).apply {
+                        if (selRec.desktopMode) setDesktopMode(true)
+                        loadUrl(selRec.url)
+                    }
+                }
+                activeNativeTabFlow.value = selRec?.nativeTab
+                publishState(selectedTabId = restoredSelected, ready = true)
+            } else {
+                publishState(ready = true)
+            }
             launch {
                 adblockManager.state.collect { syncAdblockSnapshot(pageNeedsReload = adblockState.value.pageNeedsReload) }
             }
@@ -152,6 +209,9 @@ class ChromiumEngineController internal constructor(
             }
             publishState(ready = true)
             launch {
+                securitySettings.distinctUntilChanged().collect { applySecuritySettingsNow(it) }
+            }
+            launch {
                 webZoomPercent.distinctUntilChanged().collect { zoom ->
                     zoomPercentValue = zoom
                     tabsById.values.forEach { it.nativeTab?.setZoomPercent(zoom) }
@@ -160,10 +220,15 @@ class ChromiumEngineController internal constructor(
         }
     }
 
+    fun applySecuritySettingsNow(settings: BrowserSecuritySettings) {
+        if (initialized) ChromiumSecurityHelper.applySecuritySettings(settings)
+    }
+
     override fun newTab(url: String, isPrivate: Boolean): String {
         val id = UUID.randomUUID().toString()
         val record = TabRecord(id = id, isPrivate = isPrivate, url = url)
         tabsById[id] = record
+        if (!url.equals(NEW_TAB_URL, ignoreCase = true)) automaticNewTabId = null
         if (initialized && url != NEW_TAB_URL) {
             ensureNativeTab(record).loadUrl(url)
         }
@@ -177,6 +242,7 @@ class ChromiumEngineController internal constructor(
         val normalized = normalizeUrlInput(url)
         selected.url = normalized
         selected.showToolbarAsExpanded = false
+        if (selected.id == automaticNewTabId && normalized != NEW_TAB_URL) automaticNewTabId = null
         tabBlockedCounts[selected.id] = 0
         mediaManager.onNavigation(selected.id)
         if (normalized == NEW_TAB_URL) {
@@ -184,6 +250,8 @@ class ChromiumEngineController internal constructor(
             selected.title = ""
             selected.loading = false
             selected.progress = 0
+            selected.secure = false
+            selected.certificate = null
             activeNativeTabFlow.value = null
             publishState(pageNeedsReload = false)
             return
@@ -203,16 +271,28 @@ class ChromiumEngineController internal constructor(
     }
 
     override fun closeTab(id: String) {
+        val index = tabsById.keys.indexOf(id).takeIf { it >= 0 } ?: return
+        val wasSelected = mutableState.value.selectedTabId == id
         val removed = tabsById.remove(id) ?: return
+        if (!removed.isPrivate && !removed.url.equals(NEW_TAB_URL, ignoreCase = true)) {
+            sessionStore.recordClosedNormalTabs(
+                listOf(ChromiumSessionStore.SavedTabEntry(removed.toSavedState(), index)),
+                selectedTabId = removed.id.takeIf { wasSelected },
+            )
+        }
+        sessionStore.removeThumbnail(id)
         removed.nativeTab?.destroy()
         removed.nativeTab = null
         tabBlockedCounts.remove(id)
         if (tabsById.isEmpty()) {
             val replacementId = UUID.randomUUID().toString()
             tabsById[replacementId] = TabRecord(id = replacementId, isPrivate = false, url = NEW_TAB_URL)
+            automaticNewTabId = replacementId
+        } else if (id == automaticNewTabId) {
+            automaticNewTabId = null
         }
         mediaManager.retainTabs(tabsById.keys.toSet())
-        val nextSelected = if (mutableState.value.selectedTabId == id) tabsById.keys.last() else mutableState.value.selectedTabId
+        val nextSelected = if (wasSelected) tabsById.keys.last() else mutableState.value.selectedTabId
         val activeRec = nextSelected?.let(tabsById::get)
         activeNativeTabFlow.value = if (activeRec?.url == NEW_TAB_URL) null else activeRec?.nativeTab
         if (removed.isPrivate && tabsById.values.none { it.isPrivate }) {
@@ -222,30 +302,83 @@ class ChromiumEngineController internal constructor(
     }
 
     override fun closeAllTabs(isPrivate: Boolean) {
-        tabsById.values.filter { it.isPrivate == isPrivate }.map { it.id }.forEach(::closeTab)
+        if (!isPrivate) {
+            val prevSelected = mutableState.value.selectedTabId
+            val normalEntries = tabsById.entries.mapIndexedNotNull { index, (_, rec) ->
+                rec.takeIf { !it.isPrivate && !it.url.equals(NEW_TAB_URL, ignoreCase = true) }
+                    ?.let { ChromiumSessionStore.SavedTabEntry(it.toSavedState(), index) }
+            }
+            if (normalEntries.isNotEmpty()) {
+                sessionStore.recordClosedNormalTabs(normalEntries, prevSelected?.takeIf { tabsById[it]?.isPrivate == false })
+            }
+        }
+        val toRemove = tabsById.values.filter { it.isPrivate == isPrivate }.map { it.id }
+        removeTabsAndSelectFallback(toRemove, destroyOtr = isPrivate)
     }
 
     override fun closePrivateTabsPermanently() {
-        tabsById.values.filter { it.isPrivate }.map { it.id }.forEach { id ->
+        val toRemove = tabsById.values.filter { it.isPrivate }.map { it.id }
+        removeTabsAndSelectFallback(toRemove, destroyOtr = true)
+    }
+
+    private fun removeTabsAndSelectFallback(ids: List<String>, destroyOtr: Boolean) {
+        ids.forEach { id ->
             tabsById.remove(id)?.let { rec ->
+                sessionStore.removeThumbnail(id)
                 rec.nativeTab?.destroy()
                 rec.nativeTab = null
                 tabBlockedCounts.remove(id)
             }
         }
-        if (tabsById.isEmpty()) {
+        if (tabsById.isEmpty() || tabsById.values.all { it.isPrivate }) {
             val replacementId = UUID.randomUUID().toString()
             tabsById[replacementId] = TabRecord(id = replacementId, isPrivate = false, url = NEW_TAB_URL)
+            automaticNewTabId = replacementId
         }
         mediaManager.retainTabs(tabsById.keys.toSet())
-        val nextSelected = mutableState.value.selectedTabId?.takeIf(tabsById::containsKey) ?: tabsById.keys.last()
+        val nextSelected = mutableState.value.selectedTabId?.takeIf(tabsById::containsKey)
+            ?: tabsById.values.lastOrNull { !it.isPrivate }?.id
+            ?: tabsById.keys.last()
         val activeRec = tabsById[nextSelected]
         activeNativeTabFlow.value = if (activeRec?.url == NEW_TAB_URL) null else activeRec?.nativeTab
-        if (initialized) MiruChromiumRuntime.destroyOffTheRecordProfile()
+        if (destroyOtr && initialized) MiruChromiumRuntime.destroyOffTheRecordProfile()
         publishState(selectedTabId = nextSelected, pageNeedsReload = false)
     }
 
-    override fun undoClose() = Unit
+    override fun undoClose() {
+        val batch = sessionStore.popUndoBatch() ?: return
+        val existing = tabsById.values.toMutableList()
+        automaticNewTabId?.let { autoId ->
+            existing.removeAll { it.id == autoId && it.url == NEW_TAB_URL }
+            tabsById.remove(autoId)
+        }
+        automaticNewTabId = null
+        batch.tabs.sortedBy { it.index }.forEach { entry ->
+            if (existing.any { it.id == entry.state.id }) return@forEach
+            val restored = TabRecord(
+                id = entry.state.id,
+                isPrivate = false,
+                url = entry.state.url,
+                title = entry.state.title,
+                desktopMode = entry.state.desktopMode,
+            )
+            existing.add(entry.index.coerceIn(0, existing.size), restored)
+        }
+        tabsById.clear()
+        existing.forEach { tabsById[it.id] = it }
+        val nextSelected = batch.selectedTabId?.takeIf(tabsById::containsKey)
+            ?: batch.tabs.lastOrNull()?.state?.id?.takeIf(tabsById::containsKey)
+            ?: mutableState.value.selectedTabId
+        val selectedRec = nextSelected?.let(tabsById::get)
+        if (initialized && selectedRec != null && !selectedRec.url.equals(NEW_TAB_URL, ignoreCase = true)) {
+            ensureNativeTab(selectedRec).apply {
+                if (selectedRec.desktopMode) setDesktopMode(true)
+                loadUrl(selectedRec.url)
+            }
+        }
+        activeNativeTabFlow.value = selectedRec?.nativeTab
+        publishState(selectedTabId = nextSelected, pageNeedsReload = false)
+    }
 
     override fun goBack(): Boolean {
         val tab = currentTab()?.nativeTab ?: return false
@@ -365,15 +498,37 @@ class ChromiumEngineController internal constructor(
         mediaManager.headersForMediaUrl(url, isPrivate)
     override suspend fun downloadHeaders(url: String, sourcePage: String?): Map<String, String>? =
         mediaManager.downloadHeaders(url, sourcePage)
-    override fun downloadCurrentPage() = Unit
-
-    override suspend fun clearBrowsingData(request: BrowsingDataClearRequest): BrowsingDataClearResult = withContext(Dispatchers.Main.immediate) {
-        if (initialized && (BrowsingDataType.COOKIES in request.types || BrowsingDataType.SITE_DATA in request.types)) {
-            MiruChromiumRuntime.destroyOffTheRecordProfile()
+    override fun downloadCurrentPage() {
+        val rec = currentTab() ?: return
+        if (!rec.url.startsWith("http://", ignoreCase = true) && !rec.url.startsWith("https://", ignoreCase = true)) {
+            return
         }
-        val cleared = request.types.intersect(BrowserEngineDataTypes.ENGINE_TYPES)
-        BrowsingDataClearResult(completed = cleared, failed = emptySet())
+        applicationScope.launch(Dispatchers.Main.immediate) {
+            val headers = mediaManager.headersForMediaUrl(rec.url, rec.isPrivate) + mapOf("Referer" to rec.url)
+            downloadChannel.trySend(
+                BrowserDownloadRequest(
+                    url = rec.url,
+                    fileName = null,
+                    mimeType = null,
+                    contentLength = null,
+                    headers = headers,
+                    sourcePage = rec.url,
+                    isPrivate = rec.isPrivate,
+                    bodyStream = null,
+                ),
+            )
+        }
     }
+
+    override suspend fun clearBrowsingData(request: BrowsingDataClearRequest): BrowsingDataClearResult =
+        ChromiumSecurityHelper.clearBrowsingData(
+            request = request,
+            initialized = initialized,
+            hasPrivateTabs = tabsById.values.any { it.isPrivate },
+        ) {
+            websiteIcons.clearMemory()
+            sessionStore.clearThumbnails()
+        }
 
     override suspend fun listSavedSites(): List<SavedSiteEntry> = emptyList()
     override suspend fun resetSavedSite(origin: String) = Unit
@@ -401,10 +556,38 @@ class ChromiumEngineController internal constructor(
         }
     }
 
-    override fun captureThumbnail() = Unit
-    override fun getThumbnail(id: String): Bitmap? = null
-    override fun saveSession() = Unit
-    override fun onTrimMemory(level: Int) { websiteIcons.clearMemory() }
+    override fun captureThumbnail() {
+        val rec = currentTab() ?: return
+        if (!initialized || rec.isPrivate || rec.url.equals(NEW_TAB_URL, ignoreCase = true)) return
+        val nativeTab = rec.nativeTab ?: return
+        val capturedId = rec.id
+        val capturedUrl = rec.url
+        nativeTab.captureThumbnail(480) { bmp ->
+            if (bmp == null) return@captureThumbnail
+            applicationScope.launch(Dispatchers.Main.immediate) {
+                val live = tabsById[capturedId]
+                if (live != null && !live.isPrivate && live.url == capturedUrl) {
+                    sessionStore.putThumbnail(capturedId, bmp)
+                    publishState()
+                }
+            }
+        }
+    }
+
+    override fun getThumbnail(id: String): Bitmap? =
+        tabsById[id]?.takeUnless { it.isPrivate }?.let { sessionStore.getThumbnail(id) }
+
+    override fun saveSession() {
+        if (!initialized) return
+        val normalTabs = tabsById.values.filter { !it.isPrivate }.map { it.toSavedState() }
+        val selectedNormal = mutableState.value.selectedTabId?.takeIf { id -> normalTabs.any { it.id == id } }
+        applicationScope.launch(Dispatchers.IO) { sessionStore.save(normalTabs, selectedNormal) }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        websiteIcons.clearMemory()
+        sessionStore.clearThumbnails()
+    }
     override fun createSurfaceHost(context: Context): BrowserSurfaceHost = ChromiumSurfaceHost(context, this, applicationScope)
 
     private fun ensureNativeTab(record: TabRecord): MiruChromiumTab {
@@ -507,6 +690,13 @@ class ChromiumEngineController internal constructor(
                 record.findTotal = matchCount
                 publishState()
             }
+
+            override fun onSecurityStateChanged(isSecure: Boolean, certDer: ByteArray?) {
+                val currentUrl = record.nativeTab?.url?.takeIf { it.isNotBlank() } ?: record.url
+                record.secure = isSecure
+                record.certificate = ChromiumSecurityHelper.parseCertificateDetails(currentUrl, isSecure, certDer)
+                publishState()
+            }
         })
         nativeTab.setZoomPercent(zoomPercentValue)
         record.nativeTab = nativeTab
@@ -579,7 +769,9 @@ class ChromiumEngineController internal constructor(
         canGoBack = canGoBack,
         canGoForward = canGoForward,
         desktopMode = desktopMode,
-        secure = url.startsWith("https://", ignoreCase = true),
+        secure = secure && url.startsWith("https://", ignoreCase = true),
+        certificate = certificate,
+        thumbnail = if (isPrivate) null else sessionStore.getThumbnail(id),
         findCurrent = findCurrent,
         findTotal = findTotal,
         fullScreen = fullScreen,

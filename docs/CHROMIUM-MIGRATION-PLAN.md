@@ -168,10 +168,14 @@
   - Android 15 `x86_64` `emulator-5554` 运行 `ChromiumEngineIntegrationTest,ChromiumPhaseC2IntegrationTest` 全部 **`4/4` 通过**（`288.352 s`），并在真机画面截取验证 `NativeAdblockSheet` 原生盾牌面板显示与交互正常。
   - **外部硬件与公网余项**：真实公网 `d3ward` 拦截率对照、真实公网站点视频抓流（HLS/DASH/反爬刷新）与连接物理 ARM64 手机的真机冷启动/手感实测，留待连接真机与公网实测阶段补齐。
 
-### Phase C3 · 功能对齐与隐私 / 安全闭环
+### Phase C3 · 功能对齐与隐私 / 安全闭环（按 4 批推进）
 
 **目标**：补齐所有日常浏览必需的引擎能力，达到可完全替代冻结 GeckoView 基线的状态。
 
+- **Batch C3.1 · 下载桥、隐私安全设置、数据清理、证书详情与会话恢复（2026-11-28 达成）**：
+  - C++ / Java 引擎升级至双 ABI AAR `424,592,972 B`（SHA-256 `f758514e699fcea3cbd9b4a9239f9dc35abe246ab2d8b013fadfac15c79e41cd`）：新增 `MiruDownloadManagerDelegate`（拦截 `http`/`https`/`data:` 及自清理 `blob_tmp` 临时文件）并按规范绑定/解绑 `DownloadManager` 生命周期消除 OTR 销毁 UAF；新增 `MiruHttpsOnlyNavigationThrottle`、`MiruContentBrowserClient::{ConfigureNetworkContextParams, ApplySecuritySettings, ClearBrowsingData}` 与 `MiruTab::{DidChangeVisibleSecurityState, CaptureThumbnail}`。
+  - Kotlin `:browser:engine-chromium` 新增 `ChromiumDownloadBridge`、`ChromiumSecurityHelper`、`ChromiumSessionStore` 与 `ChromiumSurfaceHost` 单次挂载 `TabOverscrollProxy`（根除 `RenderViewHostChanged` 期间 `OverscrollRefresh` 悬空指针 UAF）。
+  - 验证结果：**28/28** JVM 单测通过；`:app:lintChromiumDebug` **0 错误**（145 警告）；`:app:assembleGeckoDebug` 保持编过；`:app:assembleChromiumRelease` ARM64 单 ABI 包 **`91,139,367 B`（`86.92 MiB` < `150 MB`）**、SHA-256 `de17e1ceda61e37a2d4d78dbc8aecbf2ff4ecc13fceb20112c0ee116b568e601`、`Forbidden = 0`；Android 15 `x86_64` `emulator-5554` 运行 `ChromiumEngineIntegrationTest,ChromiumPhaseC2IntegrationTest,ChromiumPhaseC3Batch1IntegrationTest,CookieBridgeIntegrationTest` 全部 **`9/9` 通过（`20.226 s`）**。
 - 对接 Chromium `DownloadDelegate` 与 `CookieManager` 到下载引擎（普通/无痕 Cookie 严格隔离、认证头不落盘、`blob:`/`data:` 回退处理）；按实测基准推进 `miru-storage`（SQLite FTS5 地址栏/历史毫秒级检索）与 `miru-download`（`tokio` + `rustls` 多分段零拷贝下载核心 + Android `DownloadService` / SAF 文件描述符桥），在不牺牲系统后台通知与交互可靠性的前提下消除 JVM GC 压力。
 - 完整实现 B13 站点权限与网页提示：摄像头/麦克风/定位、通知、自动播放、受保护内容（Widevine）、文件与目录上传、表单单选/多选/日期时间/颜色、弹窗阻止与允许列表、外部 App 确认面板、客户端证书选择与证书查看。
 - 接入隐私与安全设置：阻止第三方 Cookie、仅 HTTPS 模式、安全 DNS（DoH 自动/关/自定义）、清除浏览数据（含按站点清理与退出时清理）、长按上下文菜单（链接/图片/视频）、无痕常驻通知。

@@ -13,6 +13,8 @@ class SimpleFactoryKey;
 
 namespace miru {
 
+class MiruDownloadManagerDelegate;
+
 class MiruBrowserContext : public content::BrowserContext {
  public:
   explicit MiruBrowserContext(bool off_the_record);
@@ -44,6 +46,7 @@ class MiruBrowserContext : public content::BrowserContext {
   const bool off_the_record_;
   base::FilePath path_;
   std::unique_ptr<SimpleFactoryKey> key_;
+  std::unique_ptr<MiruDownloadManagerDelegate> download_delegate_;
 };
 
 }  // namespace miru

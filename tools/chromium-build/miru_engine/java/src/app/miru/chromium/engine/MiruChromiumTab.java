@@ -6,6 +6,7 @@ package app.miru.chromium.engine;
 import static org.chromium.build.NullUtil.assumeNonNull;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
@@ -50,6 +51,7 @@ public final class MiruChromiumTab {
         void onFrameDomReady(boolean isMainFrame, String frameUrl);
         void onBridgeEvent(String eventJson);
         void onFindResult(int activeOrdinal, int matchCount, boolean finalUpdate);
+        void onSecurityStateChanged(boolean isSecure, byte @Nullable [] certDer);
     }
 
     private final Context mContext;
@@ -57,6 +59,7 @@ public final class MiruChromiumTab {
     private final Listener mListener;
     private final AtomicLong mNextJsRequestId = new AtomicLong(1L);
     private final ConcurrentHashMap<Long, Consumer<String>> mIsolatedJsCallbacks = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Consumer<@Nullable Bitmap>> mThumbnailCallbacks = new ConcurrentHashMap<>();
     private long mNativeTab;
     private @Nullable WebContents mWebContents;
     private @Nullable NavigationController mNavigationController;
@@ -245,6 +248,16 @@ public final class MiruChromiumTab {
         MiruChromiumTabJni.get().evaluateIsolatedJs(mNativeTab, script, allFrames, reqId);
     }
 
+    public void captureThumbnail(int maxWidth, Consumer<@Nullable Bitmap> callback) {
+        if (mNativeTab == 0) {
+            callback.accept(null);
+            return;
+        }
+        long reqId = mNextJsRequestId.getAndIncrement();
+        mThumbnailCallbacks.put(reqId, callback);
+        MiruChromiumTabJni.get().captureThumbnail(mNativeTab, maxWidth, reqId);
+    }
+
     public boolean isPrivate() {
         return mIsPrivate;
     }
@@ -320,12 +333,26 @@ public final class MiruChromiumTab {
         mListener.onFullscreenChanged(fullscreen);
     }
 
+    @CalledByNative
+    private void onNativeSecurityStateChanged(boolean isSecure, byte @Nullable [] certDer) {
+        mListener.onSecurityStateChanged(isSecure, certDer);
+    }
+
+    @CalledByNative
+    private void onNativeThumbnailResult(long requestId, @Nullable Bitmap bitmap) {
+        Consumer<@Nullable Bitmap> cb = mThumbnailCallbacks.remove(requestId);
+        if (cb != null) {
+            cb.accept(bitmap);
+        }
+    }
+
     @NativeMethods
     interface Natives {
         long createTab(MiruChromiumTab caller, boolean offTheRecord);
         void findAll(long nativeMiruTab, String query, boolean forward);
         void clearFind(long nativeMiruTab);
         void evaluateIsolatedJs(long nativeMiruTab, String script, boolean allFrames, long requestId);
+        void captureThumbnail(long nativeMiruTab, int maxWidth, long requestId);
         void destroyTab(long nativeMiruTab);
     }
 }

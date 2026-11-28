@@ -11,6 +11,7 @@
 #include "components/keyed_service/core/simple_factory_key.h"
 #include "components/keyed_service/core/simple_key_map.h"
 #include "content/public/browser/zoom_level_delegate.h"
+#include "miru_engine/native/miru_download_delegate.h"
 
 namespace miru {
 
@@ -53,7 +54,11 @@ bool MiruBrowserContext::IsOffTheRecord() {
 
 content::DownloadManagerDelegate*
 MiruBrowserContext::GetDownloadManagerDelegate() {
-  return nullptr;
+  if (!download_delegate_) {
+    download_delegate_ = std::make_unique<MiruDownloadManagerDelegate>(this);
+    download_delegate_->SetDownloadManager(GetDownloadManager());
+  }
+  return download_delegate_.get();
 }
 
 content::BrowserPluginGuestManager* MiruBrowserContext::GetGuestManager() {

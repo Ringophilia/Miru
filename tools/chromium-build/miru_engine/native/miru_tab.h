@@ -54,12 +54,14 @@ class MiruTab : public content::WebContentsDelegate,
                           const jni_zero::JavaRef<jstring>& jscript,
                           bool all_frames,
                           jlong request_id);
+  void CaptureThumbnail(JNIEnv* env, jint max_width, jlong request_id);
   void DestroyTab(JNIEnv* env);
 
   // content::WebContentsObserver:
   void DidFinishNavigation(
       content::NavigationHandle* navigation_handle) override;
   void DOMContentLoaded(content::RenderFrameHost* render_frame_host) override;
+  void DidChangeVisibleSecurityState() override;
   void DidReceiveFindReply(int request_id,
                            int number_of_matches,
                            const gfx::Rect& selection_rect,
@@ -89,6 +91,7 @@ class MiruTab : public content::WebContentsDelegate,
  private:
   void InjectCosmeticRules(content::RenderFrameHost* rfh,
                            const std::string& url);
+  void NotifySecurityState();
 
   base::android::ScopedJavaGlobalRef<jobject> java_tab_;
   std::unique_ptr<content::WebContents> web_contents_;

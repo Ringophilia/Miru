@@ -3,13 +3,17 @@
 
 #include "miru_engine/native/miru_tab.h"
 
+#include <algorithm>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "base/android/jni_android.h"
+#include "base/android/jni_array.h"
 #include "base/android/jni_string.h"
 #include "base/android/scoped_java_ref.h"
 #include "base/containers/flat_map.h"
+#include "base/containers/span.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/json/json_writer.h"
@@ -19,11 +23,16 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/time/time.h"
 #include "base/values.h"
+#include "components/viz/common/frame_sinks/copy_output_result.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/render_widget_host_view.h"
+#include "content/public/browser/ssl_status.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/isolated_world_ids.h"
 #include "content/public/common/stop_find_action.h"
@@ -31,8 +40,14 @@
 #include "miru_engine/miru_engine_jni/MiruChromiumTab_jni.h"
 #include "miru_engine/native/miru_browser_context.h"
 #include "miru_engine/native/miru_content_browser_client.h"
+#include "net/cert/cert_status_flags.h"
+#include "net/cert/x509_certificate.h"
+#include "net/cert/x509_util.h"
 #include "third_party/blink/public/mojom/frame/find_in_page.mojom.h"
 #include "third_party/jni_zero/jni_zero.h"
+#include "ui/gfx/android/java_bitmap.h"
+#include "ui/gfx/geometry/rect.h"
+#include "ui/gfx/geometry/size.h"
 
 namespace miru {
 
@@ -263,6 +278,44 @@ void MiruTab::EvaluateIsolatedJs(JNIEnv* env,
   }
 }
 
+void MiruTab::CaptureThumbnail(JNIEnv* env, jint max_width, jlong request_id) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  content::RenderWidgetHostView* rwhv =
+      web_contents_ ? web_contents_->GetRenderWidgetHostView() : nullptr;
+  if (!rwhv) {
+    Java_MiruChromiumTab_onNativeThumbnailResult(env, java_tab_, request_id,
+                                                 nullptr);
+    return;
+  }
+  const gfx::Size bounds = rwhv->GetViewBounds().size();
+  const int w = std::max(64, static_cast<int>(max_width));
+  const int h = bounds.width() > 0
+                    ? std::max(64, static_cast<int>(
+                                       static_cast<int64_t>(bounds.height()) *
+                                       w / bounds.width()))
+                    : (w * 16 / 9);
+  rwhv->CopyFromSurface(
+      gfx::Rect(), gfx::Size(w, h), base::Seconds(2),
+      base::BindOnce(
+          [](base::WeakPtr<MiruTab> weak_tab, jlong id,
+             const content::CopyFromSurfaceResult& result) {
+            if (!weak_tab) {
+              return;
+            }
+            JNIEnv* cb_env = base::android::AttachCurrentThread();
+            if (!result.has_value() || result->bitmap.drawsNothing()) {
+              Java_MiruChromiumTab_onNativeThumbnailResult(
+                  cb_env, weak_tab->java_tab_, id, nullptr);
+              return;
+            }
+            auto jbmp = gfx::ConvertToJavaBitmap(
+                result->bitmap, gfx::OomBehavior::kReturnNullOnOom);
+            Java_MiruChromiumTab_onNativeThumbnailResult(
+                cb_env, weak_tab->java_tab_, id, jbmp);
+          },
+          AsWeakPtr(), request_id));
+}
+
 void MiruTab::DestroyTab(JNIEnv*) {
   delete this;
 }
@@ -274,12 +327,43 @@ void MiruTab::DidFinishNavigation(
     return;
   }
   const GURL& url = navigation_handle->GetURL();
+  if (navigation_handle->IsInPrimaryMainFrame()) {
+    NotifySecurityState();
+  }
   if (!url.SchemeIsHTTPOrHTTPS()) {
     return;
   }
   if (auto* rfh = navigation_handle->GetRenderFrameHost()) {
     InjectCosmeticRules(rfh, url.spec());
   }
+}
+
+void MiruTab::DidChangeVisibleSecurityState() {
+  NotifySecurityState();
+}
+
+void MiruTab::NotifySecurityState() {
+  if (!web_contents_) {
+    return;
+  }
+  content::NavigationEntry* entry =
+      web_contents_->GetController().GetVisibleEntry();
+  const GURL url = entry ? entry->GetURL() : GURL();
+  const content::SSLStatus* ssl = entry ? &entry->GetSSL() : nullptr;
+  const bool is_secure = url.SchemeIsCryptographic() && ssl &&
+                         ssl->certificate &&
+                         !net::IsCertStatusError(ssl->cert_status);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  base::android::ScopedJavaLocalRef<jbyteArray> jcert;
+  if (ssl && ssl->certificate) {
+    std::string_view der =
+        net::x509_util::CryptoBufferAsStringPiece(ssl->certificate->cert_buffer());
+    if (!der.empty()) {
+      jcert = base::android::ToJavaByteArray(env, base::as_byte_span(der));
+    }
+  }
+  Java_MiruChromiumTab_onNativeSecurityStateChanged(
+      env, java_tab_, is_secure ? JNI_TRUE : JNI_FALSE, jcert);
 }
 
 void MiruTab::DOMContentLoaded(content::RenderFrameHost* render_frame_host) {

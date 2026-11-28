@@ -4,6 +4,8 @@
 #ifndef MIRU_ENGINE_NATIVE_MIRU_CONTENT_BROWSER_CLIENT_H_
 #define MIRU_ENGINE_NATIVE_MIRU_CONTENT_BROWSER_CLIENT_H_
 
+#include <atomic>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
@@ -68,6 +70,15 @@ class MiruContentBrowserClient : public content::ContentBrowserClient {
       network::mojom::URLLoaderFactoryOverridePtr* factory_override,
       scoped_refptr<base::SequencedTaskRunner> navigation_response_task_runner,
       bool is_for_network_service) override;
+  void CreateThrottlesForNavigation(
+      content::NavigationThrottleRegistry& registry) override;
+  void ConfigureNetworkContextParams(
+      content::BrowserContext* context,
+      bool in_memory,
+      const base::FilePath& relative_partition_path,
+      network::mojom::NetworkContextParams* network_context_params,
+      cert_verifier::mojom::CertVerifierCreationParams*
+          cert_verifier_creation_params) override;
   void GetAdditionalMappedFilesForChildProcess(
       const base::CommandLine& command_line,
       int child_process_id,
@@ -89,9 +100,27 @@ class MiruContentBrowserClient : public content::ContentBrowserClient {
   void GetCookiesForUrl(bool off_the_record,
                         const std::string& url,
                         base::OnceCallback<void(std::string)> callback);
+  void ApplySecuritySettings(bool block_third_party_cookies,
+                             bool https_only,
+                             int secure_dns_mode,
+                             const std::string& custom_dns_url);
+  void ClearBrowsingData(uint32_t miru_mask,
+                         int64_t since_ms,
+                         base::OnceCallback<void(uint32_t)> callback);
+  void NotifyDownloadRequest(const std::string& url,
+                             const std::string& file_name,
+                             const std::string& mime_type,
+                             int64_t content_length,
+                             const std::string& source_page,
+                             const std::string& user_agent,
+                             const std::string& cookie_header,
+                             bool off_the_record,
+                             const std::string& temp_path);
 
  private:
   raw_ptr<MiruBrowserMainParts, DanglingUntriaged> main_parts_ = nullptr;
+  std::atomic<bool> block_third_party_cookies_{true};
+  std::atomic<bool> https_only_{false};
   mutable base::Lock adblock_lock_;
   bool adblock_enabled_ = true;
   std::set<std::string> allowed_hosts_;
