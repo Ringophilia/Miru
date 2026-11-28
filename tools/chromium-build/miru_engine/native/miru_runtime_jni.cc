@@ -12,6 +12,10 @@
 #include "base/functional/bind.h"
 #include "miru_engine/miru_engine_jni/MiruChromiumRuntime_jni.h"
 #include "miru_engine/native/miru_content_browser_client.h"
+#include "miru_engine/native/miru_media_access_handler.h"
+#include "miru_engine/native/miru_permission_controller_delegate.h"
+#include "miru_engine/native/miru_platform_notification_service.h"
+#include "miru_engine/native/miru_runtime_bridges.h"
 #include "third_party/jni_zero/jni_zero.h"
 
 namespace miru {
@@ -153,6 +157,119 @@ void MiruContentBrowserClient::NotifyDownloadRequest(
       base::android::ConvertUTF8ToJavaString(env, cookie_header),
       off_the_record ? JNI_TRUE : JNI_FALSE,
       base::android::ConvertUTF8ToJavaString(env, temp_path));
+}
+
+int QuerySitePermissionBridge(const std::string& origin,
+                              bool off_the_record,
+                              int kind,
+                              int64_t tab_ptr) {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  return Java_MiruChromiumRuntime_onNativeQuerySitePermission(
+      env, base::android::ConvertUTF8ToJavaString(env, origin),
+      off_the_record ? JNI_TRUE : JNI_FALSE, static_cast<jint>(kind),
+      static_cast<jlong>(tab_ptr));
+}
+
+void RequestSitePermissionsBridge(int64_t request_id,
+                                  int64_t tab_ptr,
+                                  const std::string& origin,
+                                  const std::string& top_origin,
+                                  bool off_the_record,
+                                  int kinds_mask) {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumRuntime_onNativeRequestSitePermissions(
+      env, static_cast<jlong>(request_id), static_cast<jlong>(tab_ptr),
+      base::android::ConvertUTF8ToJavaString(env, origin),
+      base::android::ConvertUTF8ToJavaString(env, top_origin),
+      off_the_record ? JNI_TRUE : JNI_FALSE, static_cast<jint>(kinds_mask));
+}
+
+void RequestMediaAccessBridge(int64_t request_id,
+                              int64_t tab_ptr,
+                              const std::string& origin,
+                              const std::string& top_origin,
+                              bool off_the_record,
+                              int kinds_mask) {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumRuntime_onNativeRequestMediaAccess(
+      env, static_cast<jlong>(request_id), static_cast<jlong>(tab_ptr),
+      base::android::ConvertUTF8ToJavaString(env, origin),
+      base::android::ConvertUTF8ToJavaString(env, top_origin),
+      off_the_record ? JNI_TRUE : JNI_FALSE, static_cast<jint>(kinds_mask));
+}
+
+int QueryAutoplayPolicyBridge(const std::string& url, bool off_the_record) {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  return Java_MiruChromiumRuntime_onNativeQueryAutoplayPolicy(
+      env, base::android::ConvertUTF8ToJavaString(env, url),
+      off_the_record ? JNI_TRUE : JNI_FALSE);
+}
+
+void ShowNotificationBridge(const std::string& notification_id,
+                            const std::string& origin,
+                            bool is_private,
+                            bool is_persistent,
+                            const std::string& title,
+                            const std::string& body,
+                            const std::string& tag,
+                            bool silent,
+                            const std::string& actions_json) {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumRuntime_onNativeShowNotification(
+      env, base::android::ConvertUTF8ToJavaString(env, notification_id),
+      base::android::ConvertUTF8ToJavaString(env, origin),
+      is_private ? JNI_TRUE : JNI_FALSE, is_persistent ? JNI_TRUE : JNI_FALSE,
+      base::android::ConvertUTF8ToJavaString(env, title),
+      base::android::ConvertUTF8ToJavaString(env, body),
+      base::android::ConvertUTF8ToJavaString(env, tag),
+      silent ? JNI_TRUE : JNI_FALSE,
+      base::android::ConvertUTF8ToJavaString(env, actions_json));
+}
+
+void CloseNotificationBridge(const std::string& notification_id) {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumRuntime_onNativeCloseNotification(
+      env, base::android::ConvertUTF8ToJavaString(env, notification_id));
+}
+
+static void JNI_MiruChromiumRuntime_ResolveSitePermissions(JNIEnv*,
+                                                           jlong request_id,
+                                                           jboolean allowed) {
+  MiruPermissionControllerDelegate::Resolve(static_cast<int64_t>(request_id),
+                                            allowed != JNI_FALSE);
+}
+
+static void JNI_MiruChromiumRuntime_ResolveMediaAccess(JNIEnv*,
+                                                       jlong request_id,
+                                                       jboolean allowed) {
+  MiruMediaAccessHandler::Resolve(static_cast<int64_t>(request_id),
+                                   allowed != JNI_FALSE);
+}
+
+static void JNI_MiruChromiumRuntime_DispatchNotificationClick(
+    JNIEnv* env,
+    const base::android::JavaRef<jstring>& jid,
+    const base::android::JavaRef<jstring>& jorigin,
+    jboolean is_private,
+    jboolean is_persistent,
+    jint action_index) {
+  MiruPlatformNotificationService::DispatchClick(
+      base::android::ConvertJavaStringToUTF8(env, jid),
+      base::android::ConvertJavaStringToUTF8(env, jorigin),
+      is_private != JNI_FALSE, is_persistent != JNI_FALSE,
+      static_cast<int>(action_index));
+}
+
+static void JNI_MiruChromiumRuntime_DispatchNotificationClose(
+    JNIEnv* env,
+    const base::android::JavaRef<jstring>& jid,
+    const base::android::JavaRef<jstring>& jorigin,
+    jboolean is_private,
+    jboolean is_persistent) {
+  MiruPlatformNotificationService::DispatchClose(
+      base::android::ConvertJavaStringToUTF8(env, jid),
+      base::android::ConvertJavaStringToUTF8(env, jorigin),
+      is_private != JNI_FALSE, is_persistent != JNI_FALSE);
 }
 
 }  // namespace miru

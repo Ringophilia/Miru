@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MPL-2.0
 package app.miru.browser.engine
 
+import android.content.Context
+import android.content.ContextWrapper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,7 +26,26 @@ class ChromiumEngineContractTest {
     fun auxControllersExposeExpectedDefaults() {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         try {
-            val permissions = ChromiumPermissionsController()
+            val ctx = object : ContextWrapper(null) {
+                override fun getApplicationContext(): Context = this
+            }
+            val permissions = ChromiumPermissionsController(
+                context = ctx,
+                scope = scope,
+                selectedTabId = { null },
+                lookupTab = { null },
+                lookupTabByNativePtr = { null },
+                hasPrivateTabs = { false },
+                resolveSitePermissionsNative = { _, _ -> },
+                resolveMediaAccessNative = { _, _ -> },
+                onSiteChanged = { _, _ -> },
+                onAllSiteSettingsCleared = {},
+                store = ChromiumSitePermissionStore({ null }, { _, _ -> }, {}, { emptyMap() }),
+                autoplay = AutoplayPermissions({ null }, { _, _ -> }, {}, { emptyMap() }),
+                systemPermissionChecker = { false },
+                notificationsEnabledChecker = { false },
+                mainDispatcher = Dispatchers.Unconfined,
+            )
             val prompts = ChromiumPromptsController(
                 scope = scope,
                 selectedTabId = { null },

@@ -3,11 +3,13 @@
 package app.miru.browser.engine
 
 import android.content.Context
+import app.miru.chromium.engine.MiruChromiumRuntime
 import app.miru.chromium.engine.MiruChromiumTab
 import app.miru.data.BrowsingLibrary
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.chromium.ui.base.WindowAndroid
 import org.json.JSONObject
 import java.util.UUID
 
@@ -33,6 +35,7 @@ internal class ChromiumTabBridge(
         val library: BrowsingLibrary
         val currentPageNeedsReload: Boolean
         fun openPopupTab(targetUrl: String, isPrivate: Boolean)
+        fun selectOrOpenSite(origin: String, isPrivate: Boolean)
         fun setActiveNativeTab(tab: MiruChromiumTab?)
         fun emitScroll(offsetY: Float)
         fun recordTabAdBlocked(tabId: String)
@@ -119,6 +122,152 @@ internal class ChromiumTabBridge(
         fallbackHeaders = { url, isPrivate -> host.headersForMediaUrl(url, isPrivate) },
         notifyNativeClosed = { tabId -> host.tabsById[tabId]?.nativeTab?.notifyContextMenuClosed() },
     )
+
+    val permissions = ChromiumPermissionsController(
+        context = host.applicationContext,
+        scope = host.applicationScope,
+        selectedTabId = { host.selectedTabId },
+        lookupTab = { id ->
+            host.tabsById[id]?.let {
+                ChromiumPermissionsController.TabMeta(
+                    tabId = it.id,
+                    pageUrl = it.url,
+                    isPrivate = it.isPrivate,
+                    hardGeneration = it.hardGeneration,
+                    locationGeneration = it.locationGeneration,
+                )
+            }
+        },
+        lookupTabByNativePtr = { nativePtr ->
+            if (nativePtr == 0L) {
+                null
+            } else {
+                host.tabsById.values.firstOrNull { it.nativeTab?.nativeTabPtr == nativePtr }?.let {
+                    ChromiumPermissionsController.TabMeta(
+                        tabId = it.id,
+                        pageUrl = it.url,
+                        isPrivate = it.isPrivate,
+                        hardGeneration = it.hardGeneration,
+                        locationGeneration = it.locationGeneration,
+                    )
+                }
+            }
+        },
+        hasPrivateTabs = { host.tabsById.values.any { it.isPrivate } },
+        resolveSitePermissionsNative = { requestId, allowed ->
+            MiruChromiumRuntime.resolveSitePermissions(requestId, allowed)
+        },
+        resolveMediaAccessNative = { requestId, allowed ->
+            MiruChromiumRuntime.resolveMediaAccess(requestId, allowed)
+        },
+        onSiteChanged = { origin, isPrivate -> handleSiteChanged(origin, isPrivate) },
+        onAllSiteSettingsCleared = { handleAllSiteSettingsCleared() },
+    )
+
+    val webNotifications = ChromiumNotificationsController(
+        context = host.applicationContext,
+        isNotificationAllowed = { origin, isPrivate -> permissions.notificationAllowed(origin, isPrivate) },
+        openSite = { origin, isPrivate -> host.selectOrOpenSite(origin, isPrivate) },
+        dispatchNativeClick = { notificationId, origin, isPrivate, isPersistent, actionIndex ->
+            MiruChromiumRuntime.dispatchNotificationClick(notificationId, origin, isPrivate, isPersistent, actionIndex)
+        },
+        dispatchNativeClose = { notificationId, origin, isPrivate, isPersistent ->
+            MiruChromiumRuntime.dispatchNotificationClose(notificationId, origin, isPrivate, isPersistent)
+        },
+    )
+
+    private var attachedWindow: WindowAndroid? = null
+
+    fun attachWindowAndroid(window: WindowAndroid?) {
+        attachedWindow = window
+        val activeTab = host.selectedTabId?.let(host.tabsById::get)?.nativeTab
+        host.tabsById.values.mapNotNull { it.nativeTab }.forEach { tab ->
+            if (window == null || tab !== activeTab) {
+                tab.attachWindowOnly(window)
+            }
+        }
+    }
+
+    fun installRuntimeListeners() {
+        MiruChromiumRuntime.setPermissionListener(
+            object : MiruChromiumRuntime.PermissionListener {
+                override fun querySitePermission(origin: String, offTheRecord: Boolean, kind: Int, tabPtr: Long): Int =
+                    permissions.querySitePermission(origin, offTheRecord, kind, tabPtr)
+
+                override fun requestSitePermissions(
+                    requestId: Long,
+                    tabPtr: Long,
+                    origin: String,
+                    topOrigin: String,
+                    offTheRecord: Boolean,
+                    kindsMask: Int,
+                ) = permissions.onRequestSitePermissions(requestId, tabPtr, origin, topOrigin, offTheRecord, kindsMask)
+
+                override fun requestMediaAccess(
+                    requestId: Long,
+                    tabPtr: Long,
+                    origin: String,
+                    topOrigin: String,
+                    offTheRecord: Boolean,
+                    kindsMask: Int,
+                ) = permissions.onRequestMediaAccess(requestId, tabPtr, origin, topOrigin, offTheRecord, kindsMask)
+
+                override fun queryAutoplayPolicy(url: String, offTheRecord: Boolean): Int =
+                    permissions.queryAutoplayPolicy(url, offTheRecord)
+            },
+        )
+        MiruChromiumRuntime.setNotificationListener(
+            object : MiruChromiumRuntime.NotificationListener {
+                override fun onShowNotification(
+                    notificationId: String,
+                    origin: String,
+                    isPrivate: Boolean,
+                    isPersistent: Boolean,
+                    title: String,
+                    body: String,
+                    tag: String,
+                    silent: Boolean,
+                    actionsJson: String,
+                ) = webNotifications.onShowNotification(
+                    notificationId = notificationId,
+                    originUrl = origin,
+                    isPrivate = isPrivate,
+                    isPersistent = isPersistent,
+                    title = title,
+                    body = body,
+                    tag = tag,
+                    silent = silent,
+                    actionsJson = actionsJson,
+                )
+
+                override fun onCloseNotification(notificationId: String) =
+                    webNotifications.onNativeCloseNotification(notificationId)
+            },
+        )
+    }
+
+    private fun handleSiteChanged(origin: String, isPrivate: Boolean) {
+        webNotifications.cancelSite(origin, isPrivate)
+        host.tabsById.values.filter { tab ->
+            tab.isPrivate == isPrivate && siteOrigin(tab.url) == origin && tab.nativeTab != null
+        }.forEach { tab ->
+            tab.attemptGeneration++
+            prompts.onNavigationAttempt(tab.id)
+            tab.nativeTab?.reload()
+        }
+    }
+
+    private fun handleAllSiteSettingsCleared() {
+        webNotifications.cancelAll()
+        prompts.clearPopupPermissions()
+        host.tabsById.values.filter { tab ->
+            tab.nativeTab != null && siteOrigin(tab.url) != null
+        }.forEach { tab ->
+            tab.attemptGeneration++
+            prompts.onNavigationAttempt(tab.id)
+            tab.nativeTab?.reload()
+        }
+    }
 
     fun createNativeTab(
         tabId: String,
@@ -261,6 +410,7 @@ internal class ChromiumTabBridge(
             MiruChromiumTab(host.applicationContext, isPrivate, listener)
         }
         tabRef.setZoomPercent(host.zoomPercent)
+        attachedWindow?.let { tabRef.attachWindowOnly(it) }
         return tabRef
     }
 
@@ -282,8 +432,9 @@ internal class ChromiumTabBridge(
         if (!inserted) reordered[newId] = record
         host.tabsById.clear()
         host.tabsById.putAll(reordered)
-        host.setActiveNativeTab(nativeTab)
         host.publishState(selectedTabId = newId, pageNeedsReload = false)
+        permissions.syncState()
+        host.setActiveNativeTab(nativeTab)
     }
 
     private fun handleNavigationState(
@@ -313,6 +464,7 @@ internal class ChromiumTabBridge(
             record.locationGeneration++
             prompts.onLocationChange(tabId, preserveAuth = isLoading)
             externalLinks.onNavigation(tabId)
+            permissions.onNavigation(tabId)
             contextMenus.syncState()
         }
         if (navigated && record.url.startsWith("http")) {

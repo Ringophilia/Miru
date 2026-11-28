@@ -4,11 +4,17 @@
 #ifndef MIRU_ENGINE_NATIVE_MIRU_CONTENT_CLIENT_H_
 #define MIRU_ENGINE_NATIVE_MIRU_CONTENT_CLIENT_H_
 
+#include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "base/memory/ref_counted_memory.h"
 #include "content/public/common/content_client.h"
+
+namespace media {
+class MediaDrmBridgeClient;
+}
 
 namespace miru {
 
@@ -26,6 +32,10 @@ class MiruContentClient : public content::ContentClient {
   std::string GetDataResourceString(int resource_id) override;
   gfx::Image& GetNativeImageNamed(int resource_id) override;
   void AddAdditionalSchemes(Schemes* schemes) override;
+  void AddContentDecryptionModules(
+      std::vector<content::CdmInfo>* cdms,
+      std::vector<media::CdmHostFilePath>* cdm_host_file_paths) override;
+  media::MediaDrmBridgeClient* GetMediaDrmBridgeClient() override;
 };
 
 }  // namespace miru

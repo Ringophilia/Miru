@@ -7,6 +7,8 @@ import static org.chromium.build.NullUtil.assumeNonNull;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
@@ -67,10 +69,12 @@ public final class MiruChromiumTab {
     private final Context mContext;
     private final boolean mIsPrivate;
     private final Listener mListener;
+    private final Handler mUiHandler = new Handler(Looper.getMainLooper());
     private final AtomicLong mNextJsRequestId = new AtomicLong(1L);
     private final ConcurrentHashMap<Long, Consumer<String>> mIsolatedJsCallbacks = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Consumer<@Nullable Bitmap>> mThumbnailCallbacks = new ConcurrentHashMap<>();
     private long mNativeTab;
+    private @Nullable Runnable mPendingHideRunnable;
     private @Nullable WebContents mWebContents;
     private @Nullable NavigationController mNavigationController;
     private @Nullable ContentView mContentView;
@@ -117,6 +121,9 @@ public final class MiruChromiumTab {
             public void didStopLoading(GURL url, boolean isKnownValid) {
                 mLoading = false;
                 notifyNavChanged();
+                if (mContentView == null || mContentView.getParent() == null) {
+                    scheduleHideIfDetached(2_000L);
+                }
             }
 
             @Override
@@ -147,8 +154,28 @@ public final class MiruChromiumTab {
         }
     }
 
+    private void cancelPendingHide() {
+        if (mPendingHideRunnable != null) {
+            mUiHandler.removeCallbacks(mPendingHideRunnable);
+            mPendingHideRunnable = null;
+        }
+    }
+
+    private void scheduleHideIfDetached(long delayMs) {
+        cancelPendingHide();
+        Runnable task = () -> {
+            mPendingHideRunnable = null;
+            if (mWebContents != null && (mContentView == null || mContentView.getParent() == null)) {
+                mWebContents.updateWebContentsVisibility(Visibility.HIDDEN);
+            }
+        };
+        mPendingHideRunnable = task;
+        mUiHandler.postDelayed(task, delayMs);
+    }
+
     public void attachToWindow(@Nullable WindowAndroid windowAndroid, ViewGroup host) {
         if (mWebContents == null || mContentView == null) return;
+        cancelPendingHide();
         mWebContents.setTopLevelNativeWindow(windowAndroid);
         if (mContentView.getParent() != host) {
             if (mContentView.getParent() instanceof ViewGroup prev) {
@@ -168,7 +195,18 @@ public final class MiruChromiumTab {
             host.removeView(mContentView);
         }
         if (mWebContents != null) {
-            mWebContents.updateWebContentsVisibility(Visibility.HIDDEN);
+            scheduleHideIfDetached(300L);
+        }
+    }
+
+    public void attachWindowOnly(@Nullable WindowAndroid windowAndroid) {
+        if (mWebContents == null) return;
+        mWebContents.setTopLevelNativeWindow(windowAndroid);
+        if (windowAndroid != null && (mContentView == null || mContentView.getParent() == null)) {
+            if (mWebContents.getWidth() == 0) {
+                mWebContents.setSize(360, 640);
+            }
+            mWebContents.updateWebContentsVisibility(Visibility.VISIBLE);
         }
     }
 
@@ -301,6 +339,10 @@ public final class MiruChromiumTab {
         return mIsPrivate;
     }
 
+    public long getNativeTabPtr() {
+        return mNativeTab;
+    }
+
     public @Nullable WebContents getWebContents() {
         return mWebContents;
     }
@@ -316,6 +358,7 @@ public final class MiruChromiumTab {
     }
 
     public void destroy() {
+        cancelPendingHide();
         if (mObserver != null) {
             mObserver.observe(null);
             mObserver = null;

@@ -93,6 +93,12 @@ class ChromiumEngineController internal constructor(
             override fun openPopupTab(targetUrl: String, isPrivate: Boolean) {
                 newTab(targetUrl, isPrivate)
             }
+            override fun selectOrOpenSite(origin: String, isPrivate: Boolean) {
+                val existing = tabsById.values.firstOrNull {
+                    it.isPrivate == isPrivate && siteOrigin(it.url) == origin
+                }
+                if (existing != null) selectTab(existing.id) else newTab(origin, isPrivate)
+            }
             override fun setActiveNativeTab(tab: MiruChromiumTab?) {
                 activeNativeTabFlow.value = tab
             }
@@ -118,14 +124,16 @@ class ChromiumEngineController internal constructor(
     private val promptsController get() = tabBridge.prompts
     private val externalLinksController get() = tabBridge.externalLinks
     private val contextMenusController get() = tabBridge.contextMenus
+    private val permissionsController get() = tabBridge.permissions
+    private val notificationsController get() = tabBridge.webNotifications
 
     override val websiteIcons: WebsiteIconLoader = ChromiumWebsiteIcons()
     override val externalLinks: BrowserExternalLinksController = externalLinksController
     override val contextMenus: BrowserContextMenusController = contextMenusController
     override val prompts: BrowserPromptsController = promptsController
     override val uploads: BrowserFileUploadsController = ChromiumFileUploadsController()
-    override val permissions: BrowserPermissionsController = ChromiumPermissionsController()
-    override val webNotifications: BrowserNotificationsController = ChromiumNotificationsController()
+    override val permissions: BrowserPermissionsController = permissionsController
+    override val webNotifications: BrowserNotificationsController = notificationsController
     override val media: StateFlow<Map<String, List<DetectedMedia>>> = mediaManager.state
     override val mediaHints: Flow<Pair<String, Boolean>> = mediaManager.hints
     override val downloadRequests: Flow<BrowserDownloadRequest> = downloadChannel.receiveAsFlow()
@@ -165,6 +173,7 @@ class ChromiumEngineController internal constructor(
         initialized = true
         applicationScope.launch(Dispatchers.Main.immediate) {
             MiruChromiumRuntime.ensureStarted(applicationContext)
+            tabBridge.installRuntimeListeners()
             MiruChromiumRuntime.setDownloadListener { url, fileName, mimeType, contentLength, sourcePage, userAgent, cookieHeader, isPrivate, tempPath ->
                 ChromiumDownloadBridge.buildRequest(
                     url = url,
@@ -252,8 +261,9 @@ class ChromiumEngineController internal constructor(
         if (initialized && url != NEW_TAB_URL) {
             ensureNativeTab(record).loadUrl(url)
         }
-        activeNativeTabFlow.value = record.nativeTab
         publishState(selectedTabId = id, pageNeedsReload = false)
+        permissionsController.syncState()
+        activeNativeTabFlow.value = record.nativeTab
         return id
     }
 
@@ -263,6 +273,7 @@ class ChromiumEngineController internal constructor(
         selected.attemptGeneration++
         promptsController.onNavigationAttempt(selected.id)
         externalLinksController.syncState()
+        permissionsController.onNavigation(selected.id)
         contextMenusController.dismiss(null)
         val keepCommittedUrl = initialized && selected.nativeTab != null &&
             selected.url != NEW_TAB_URL && normalized != NEW_TAB_URL
@@ -276,6 +287,7 @@ class ChromiumEngineController internal constructor(
         if (normalized == NEW_TAB_URL) {
             selected.hardGeneration++
             promptsController.invalidateTab(selected.id)
+            permissionsController.invalidateTab(selected.id)
             contextMenusController.invalidateTab(selected.id)
             selected.nativeTab?.stopLoading()
             selected.title = ""
@@ -285,6 +297,7 @@ class ChromiumEngineController internal constructor(
             selected.certificate = null
             activeNativeTabFlow.value = null
             publishState(pageNeedsReload = false)
+            permissionsController.syncState()
             return
         }
         if (initialized) {
@@ -297,8 +310,9 @@ class ChromiumEngineController internal constructor(
 
     override fun selectTab(id: String) {
         val record = tabsById[id] ?: return
-        activeNativeTabFlow.value = if (record.url == NEW_TAB_URL) null else record.nativeTab
         publishState(selectedTabId = id, pageNeedsReload = false)
+        permissionsController.syncState()
+        activeNativeTabFlow.value = if (record.url == NEW_TAB_URL) null else record.nativeTab
     }
 
     override fun closeTab(id: String) {
@@ -306,6 +320,7 @@ class ChromiumEngineController internal constructor(
         val wasSelected = mutableState.value.selectedTabId == id
         val removed = tabsById.remove(id) ?: return
         promptsController.invalidateTab(id)
+        permissionsController.invalidateTab(id)
         contextMenusController.invalidateTab(id)
         if (!removed.isPrivate && !removed.url.equals(NEW_TAB_URL, ignoreCase = true)) {
             sessionStore.recordClosedNormalTabs(
@@ -327,11 +342,13 @@ class ChromiumEngineController internal constructor(
         mediaManager.retainTabs(tabsById.keys.toSet())
         val nextSelected = if (wasSelected) tabsById.keys.last() else mutableState.value.selectedTabId
         val activeRec = nextSelected?.let(tabsById::get)
-        activeNativeTabFlow.value = if (activeRec?.url == NEW_TAB_URL) null else activeRec?.nativeTab
         if (removed.isPrivate && tabsById.values.none { it.isPrivate }) {
             if (initialized) MiruChromiumRuntime.destroyOffTheRecordProfile()
         }
+        notificationsController.onPrivateTabsStateChanged(tabsById.values.any { it.isPrivate })
         publishState(selectedTabId = nextSelected, pageNeedsReload = false)
+        permissionsController.syncState()
+        activeNativeTabFlow.value = if (activeRec?.url == NEW_TAB_URL) null else activeRec?.nativeTab
     }
 
     override fun closeAllTabs(isPrivate: Boolean) {
@@ -357,6 +374,7 @@ class ChromiumEngineController internal constructor(
     private fun removeTabsAndSelectFallback(ids: List<String>, destroyOtr: Boolean) {
         ids.forEach { id ->
             promptsController.invalidateTab(id)
+            permissionsController.invalidateTab(id)
             contextMenusController.invalidateTab(id)
             tabsById.remove(id)?.let { rec ->
                 sessionStore.removeThumbnail(id)
@@ -375,9 +393,11 @@ class ChromiumEngineController internal constructor(
             ?: tabsById.values.lastOrNull { !it.isPrivate }?.id
             ?: tabsById.keys.last()
         val activeRec = tabsById[nextSelected]
-        activeNativeTabFlow.value = if (activeRec?.url == NEW_TAB_URL) null else activeRec?.nativeTab
         if (destroyOtr && initialized) MiruChromiumRuntime.destroyOffTheRecordProfile()
+        notificationsController.onPrivateTabsStateChanged(tabsById.values.any { it.isPrivate })
         publishState(selectedTabId = nextSelected, pageNeedsReload = false)
+        permissionsController.syncState()
+        activeNativeTabFlow.value = if (activeRec?.url == NEW_TAB_URL) null else activeRec?.nativeTab
     }
 
     override fun undoClose() {
@@ -411,8 +431,9 @@ class ChromiumEngineController internal constructor(
                 loadUrl(selectedRec.url)
             }
         }
-        activeNativeTabFlow.value = selectedRec?.nativeTab
         publishState(selectedTabId = nextSelected, pageNeedsReload = false)
+        permissionsController.syncState()
+        activeNativeTabFlow.value = selectedRec?.nativeTab
     }
 
     override fun goBack(): Boolean {
@@ -422,6 +443,7 @@ class ChromiumEngineController internal constructor(
         rec.attemptGeneration++
         promptsController.onNavigationAttempt(rec.id)
         externalLinksController.syncState()
+        permissionsController.onNavigation(rec.id)
         contextMenusController.dismiss(null)
         tab.goBack()
         return true
@@ -434,6 +456,7 @@ class ChromiumEngineController internal constructor(
             rec.attemptGeneration++
             promptsController.onNavigationAttempt(rec.id)
             externalLinksController.syncState()
+            permissionsController.onNavigation(rec.id)
             contextMenusController.dismiss(null)
             tab.goForward()
         }
@@ -459,6 +482,7 @@ class ChromiumEngineController internal constructor(
             rec.attemptGeneration++
             promptsController.onNavigationAttempt(rec.id)
             externalLinksController.syncState()
+            permissionsController.onNavigation(rec.id)
             contextMenusController.dismiss(null)
         }
         syncAdblockSnapshot(pageNeedsReload = false)
@@ -586,22 +610,29 @@ class ChromiumEngineController internal constructor(
                 sessionStore.clearThumbnails()
             },
             onClearSiteSettings = {
-                promptsController.clearPopupPermissions()
-                tabsById.values.filter { it.nativeTab != null && siteOrigin(it.url) != null }.forEach { tab ->
-                    tab.attemptGeneration++
-                    promptsController.onNavigationAttempt(tab.id)
-                    tab.nativeTab?.reload()
-                }
+                permissionsController.clearAllSiteSettings { }
             },
         )
 
-    override suspend fun listSavedSites(): List<SavedSiteEntry> =
-        promptsController.savedPopupOrigins().sorted().map { origin ->
-            SavedSiteEntry(origin = origin, permissions = emptyMap(), autoplay = null, allowPopups = true)
+    override suspend fun listSavedSites(): List<SavedSiteEntry> {
+        val perms = permissionsController.listSavedDefaultPermissions()
+        val autoplay = permissionsController.listSavedDefaultAutoplay()
+        val popups = promptsController.savedPopupOrigins()
+        return (perms.keys + autoplay.keys + popups).sorted().map { origin ->
+            SavedSiteEntry(
+                origin = origin,
+                permissions = perms[origin].orEmpty(),
+                autoplay = autoplay[origin],
+                allowPopups = origin in popups,
+            )
         }
+    }
 
     override suspend fun resetSavedSite(origin: String) {
-        siteOrigin(origin)?.let { promptsController.clearPopupOrigin(it) }
+        siteOrigin(origin)?.let { normalized ->
+            promptsController.clearPopupOrigin(normalized)
+            permissionsController.resetSavedDefaultSite(normalized)
+        }
     }
 
     override suspend fun resetAllSavedSites(): BrowsingDataClearResult = clearBrowsingData(
@@ -742,4 +773,7 @@ class ChromiumEngineController internal constructor(
         }
         return "https://$trimmed"
     }
+
+    internal fun attachWindowAndroid(window: org.chromium.ui.base.WindowAndroid?) =
+        tabBridge.attachWindowAndroid(window)
 }

@@ -57,23 +57,6 @@ internal class ChromiumWebsiteIcons : WebsiteIconLoader {
     override fun clearMemory() = cache.evictAll()
 }
 
-internal class ChromiumPermissionsController : BrowserPermissionsController {
-    override val prompt: StateFlow<SitePermissionPrompt?> = MutableStateFlow<SitePermissionPrompt?>(null).asStateFlow()
-    override val runtimeRequest: StateFlow<RuntimePermissionRequest?> = MutableStateFlow<RuntimePermissionRequest?>(null).asStateFlow()
-    override val siteState: StateFlow<SitePermissionState?> = MutableStateFlow<SitePermissionState?>(null).asStateFlow()
-    override fun attachPermissionHost(host: Any) = Unit
-    override fun onHostWindowFocusChanged(host: Any, focused: Boolean) = Unit
-    override fun detachPermissionHost(host: Any) = Unit
-    override fun answer(token: Long, allow: Boolean, remember: Boolean) = Unit
-    override fun dismiss(token: Long) = Unit
-    override fun markRuntimeRequestLaunched(token: Long, rationaleBefore: Set<String>): Boolean = false
-    override fun onRuntimePermissionsResult(results: Map<String, Boolean>, rationaleAfter: Set<String>): Boolean? = null
-    override fun refreshSite() = Unit
-    override fun setForSite(token: Long, kind: SitePermissionKind, choice: SitePermissionChoice) = Unit
-    override fun resetSite(token: Long) = Unit
-    override fun setAutoplayForSite(token: Long, choice: SiteAutoplayChoice) = Unit
-}
-
 internal class ChromiumFileUploadsController : BrowserFileUploadsController {
     override val state: StateFlow<BrowserUploadState> = MutableStateFlow(BrowserUploadState()).asStateFlow()
     override val errors: Flow<BrowserUploadError> = emptyFlow()
@@ -87,12 +70,4 @@ internal class ChromiumFileUploadsController : BrowserFileUploadsController {
     override fun onPermissionsResult(token: String, requestCode: Int, permissions: Array<out String>, results: IntArray): Boolean = false
     override fun onActivityResult(token: String, requestCode: Int, resultCode: Int, data: Intent?): Boolean = false
     override fun captureSources(mimeTypes: List<String>): Set<BrowserUploadSource> = emptySet()
-}
-
-internal class ChromiumNotificationsController : BrowserNotificationsController {
-    override fun configure(activity: Class<*>, receiver: Class<*>, smallIcon: Int) = Unit
-    override fun handleIntent(intent: Intent): Boolean = false
-    override fun cancelSite(origin: String, isPrivate: Boolean) = Unit
-    override fun cancelAll() = Unit
-    override fun refresh() = Unit
 }

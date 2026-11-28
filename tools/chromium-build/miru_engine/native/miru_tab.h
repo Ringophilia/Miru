@@ -90,6 +90,8 @@ class MiruTab : public content::WebContentsDelegate,
   void DestroyTab(JNIEnv* env);
 
   // content::WebContentsObserver:
+  void ReadyToCommitNavigation(
+      content::NavigationHandle* navigation_handle) override;
   void DidFinishNavigation(
       content::NavigationHandle* navigation_handle) override;
   void DOMContentLoaded(content::RenderFrameHost* render_frame_host) override;
@@ -123,6 +125,14 @@ class MiruTab : public content::WebContentsDelegate,
   bool HandleContextMenu(content::RenderFrameHost& render_frame_host,
                          const content::ContextMenuParams& params) override;
   void ShowRepostFormWarningDialog(content::WebContents* source) override;
+  void RequestMediaAccessPermission(
+      content::WebContents* web_contents,
+      const content::MediaStreamRequest& request,
+      content::MediaResponseCallback callback) override;
+  bool CheckMediaAccessPermission(
+      content::RenderFrameHost* render_frame_host,
+      const url::Origin& security_origin,
+      blink::mojom::MediaStreamType type) override;
   content::JavaScriptDialogManager* GetJavaScriptDialogManager(
       content::WebContents* source) override;
   void CloseContents(content::WebContents* source) override;

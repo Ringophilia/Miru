@@ -39,6 +39,8 @@ public final class MiruChromiumRuntime {
     private static final ConcurrentHashMap<Long, Consumer<Integer>> sClearCallbacks =
             new ConcurrentHashMap<>();
     private static volatile @Nullable DownloadListener sDownloadListener;
+    private static volatile @Nullable PermissionListener sPermissionListener;
+    private static volatile @Nullable NotificationListener sNotificationListener;
     private static boolean sAttached;
     private static boolean sStarted;
 
@@ -53,6 +55,27 @@ public final class MiruChromiumRuntime {
                 String cookieHeader,
                 boolean isPrivate,
                 String tempPath);
+    }
+
+    public interface PermissionListener {
+        int querySitePermission(String origin, boolean offTheRecord, int kind, long tabPtr);
+        void requestSitePermissions(long requestId, long tabPtr, String origin, String topOrigin, boolean offTheRecord, int kindsMask);
+        void requestMediaAccess(long requestId, long tabPtr, String origin, String topOrigin, boolean offTheRecord, int kindsMask);
+        int queryAutoplayPolicy(String url, boolean offTheRecord);
+    }
+
+    public interface NotificationListener {
+        void onShowNotification(
+                String notificationId,
+                String origin,
+                boolean isPrivate,
+                boolean isPersistent,
+                String title,
+                String body,
+                String tag,
+                boolean silent,
+                String actionsJson);
+        void onCloseNotification(String notificationId);
     }
 
     private MiruChromiumRuntime() {}
@@ -160,6 +183,45 @@ public final class MiruChromiumRuntime {
         sDownloadListener = listener;
     }
 
+    public static void setPermissionListener(@Nullable PermissionListener listener) {
+        sPermissionListener = listener;
+    }
+
+    public static void setNotificationListener(@Nullable NotificationListener listener) {
+        sNotificationListener = listener;
+    }
+
+    public static void resolveSitePermissions(long requestId, boolean allowed) {
+        if (!sStarted) return;
+        MiruChromiumRuntimeJni.get().resolveSitePermissions(requestId, allowed);
+    }
+
+    public static void resolveMediaAccess(long requestId, boolean allowed) {
+        if (!sStarted) return;
+        MiruChromiumRuntimeJni.get().resolveMediaAccess(requestId, allowed);
+    }
+
+    public static void dispatchNotificationClick(
+            String notificationId,
+            String origin,
+            boolean isPrivate,
+            boolean isPersistent,
+            int actionIndex) {
+        if (!sStarted) return;
+        MiruChromiumRuntimeJni.get().dispatchNotificationClick(
+                notificationId, origin, isPrivate, isPersistent, actionIndex);
+    }
+
+    public static void dispatchNotificationClose(
+            String notificationId,
+            String origin,
+            boolean isPrivate,
+            boolean isPersistent) {
+        if (!sStarted) return;
+        MiruChromiumRuntimeJni.get().dispatchNotificationClose(
+                notificationId, origin, isPrivate, isPersistent);
+    }
+
     @CalledByNative
     private static void onNativeCookiesResult(long requestId, String cookieHeader) {
         Consumer<String> cb = sCookieCallbacks.remove(requestId);
@@ -202,6 +264,102 @@ public final class MiruChromiumRuntime {
         }
     }
 
+    @CalledByNative
+    private static int onNativeQuerySitePermission(
+            String origin,
+            boolean offTheRecord,
+            int kind,
+            long tabPtr) {
+        PermissionListener listener = sPermissionListener;
+        if (listener == null) return 2;
+        return listener.querySitePermission(origin != null ? origin : "", offTheRecord, kind, tabPtr);
+    }
+
+    @CalledByNative
+    private static void onNativeRequestSitePermissions(
+            long requestId,
+            long tabPtr,
+            String origin,
+            String topOrigin,
+            boolean offTheRecord,
+            int kindsMask) {
+        PermissionListener listener = sPermissionListener;
+        if (listener != null) {
+            listener.requestSitePermissions(
+                    requestId,
+                    tabPtr,
+                    origin != null ? origin : "",
+                    topOrigin != null ? topOrigin : "",
+                    offTheRecord,
+                    kindsMask);
+        } else {
+            resolveSitePermissions(requestId, false);
+        }
+    }
+
+    @CalledByNative
+    private static void onNativeRequestMediaAccess(
+            long requestId,
+            long tabPtr,
+            String origin,
+            String topOrigin,
+            boolean offTheRecord,
+            int kindsMask) {
+        PermissionListener listener = sPermissionListener;
+        if (listener != null) {
+            listener.requestMediaAccess(
+                    requestId,
+                    tabPtr,
+                    origin != null ? origin : "",
+                    topOrigin != null ? topOrigin : "",
+                    offTheRecord,
+                    kindsMask);
+        } else {
+            resolveMediaAccess(requestId, false);
+        }
+    }
+
+    @CalledByNative
+    private static int onNativeQueryAutoplayPolicy(String url, boolean offTheRecord) {
+        PermissionListener listener = sPermissionListener;
+        if (listener == null) return 0;
+        return listener.queryAutoplayPolicy(url != null ? url : "", offTheRecord);
+    }
+
+    @CalledByNative
+    private static void onNativeShowNotification(
+            String notificationId,
+            String origin,
+            boolean isPrivate,
+            boolean isPersistent,
+            String title,
+            String body,
+            String tag,
+            boolean silent,
+            String actionsJson) {
+        NotificationListener listener = sNotificationListener;
+        if (listener != null) {
+            listener.onShowNotification(
+                    notificationId != null ? notificationId : "",
+                    origin != null ? origin : "",
+                    isPrivate,
+                    isPersistent,
+                    title != null ? title : "",
+                    body != null ? body : "",
+                    tag != null ? tag : "",
+                    silent,
+                    actionsJson != null ? actionsJson : "[]");
+        }
+    }
+
+    @CalledByNative
+    private static void onNativeCloseNotification(String notificationId) {
+        NotificationListener listener = sNotificationListener;
+        if (listener != null && notificationId != null) {
+            listener.onCloseNotification(notificationId);
+        }
+    }
+
     @NativeMethods
     interface Natives {
         void setAdblockRules(String rulesText);
@@ -213,5 +371,9 @@ public final class MiruChromiumRuntime {
         String getUserAgent();
         void applySecuritySettings(boolean blockThirdPartyCookies, boolean httpsOnly, int secureDnsMode, String customDnsUrl);
         void clearBrowsingData(int miruMask, long sinceMs, long requestId);
+        void resolveSitePermissions(long requestId, boolean allowed);
+        void resolveMediaAccess(long requestId, boolean allowed);
+        void dispatchNotificationClick(String notificationId, String origin, boolean isPrivate, boolean isPersistent, int actionIndex);
+        void dispatchNotificationClose(String notificationId, String origin, boolean isPrivate, boolean isPersistent);
     }
 }

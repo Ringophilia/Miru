@@ -1,0 +1,89 @@
+diff --git a/components/cdm/common/BUILD.gn b/components/cdm/common/BUILD.gn
+index 687d501791..e7a81451bd 100644
+--- a/components/cdm/common/BUILD.gn
++++ b/components/cdm/common/BUILD.gn
+@@ -21,6 +21,7 @@ static_library("common") {
+     "//chromecast/*",
+     "//components/cdm/*",
+     "//content/shell/*",
++    "//miru_engine/*",
+     "//fuchsia_web/*",
+   ]
+ 
+diff --git a/components/cdm/renderer/BUILD.gn b/components/cdm/renderer/BUILD.gn
+index fbe2ec2264..f449e56c22 100644
+--- a/components/cdm/renderer/BUILD.gn
++++ b/components/cdm/renderer/BUILD.gn
+@@ -13,6 +13,7 @@ static_library("renderer") {
+     "//chromecast/*",
+     "//components/cdm/*",
+     "//content/shell/*",
++    "//miru_engine/*",
+     "//fuchsia_web/*",
+   ]
+ 
+diff --git a/third_party/blink/renderer/core/html/media/autoplay_policy.cc b/third_party/blink/renderer/core/html/media/autoplay_policy.cc
+index 6a713a6dfe..69ef7e3578 100644
+--- a/third_party/blink/renderer/core/html/media/autoplay_policy.cc
++++ b/third_party/blink/renderer/core/html/media/autoplay_policy.cc
+@@ -144,8 +144,8 @@ bool AutoplayPolicy::DocumentHasUserExceptionFlag(const Document& document) {
+ // static
+ bool AutoplayPolicy::DocumentShouldAutoplayMutedVideos(
+     const Document& document) {
+-  return GetAutoplayPolicyForDocument(document) !=
+-         AutoplayPolicy::Type::kNoUserGestureRequired;
++  return GetAutoplayPolicyForDocument(document) ==
++         AutoplayPolicy::Type::kDocumentUserActivationRequired;
+ }
+ 
+ // static
+@@ -157,12 +157,9 @@ bool AutoplayPolicy::DocumentIsCapturingUserMedia(const Document& document) {
+ }
+ 
+ AutoplayPolicy::AutoplayPolicy(HTMLMediaElement* element)
+-    : locked_pending_user_gesture_(false),
++    : locked_pending_user_gesture_(true),
+       element_(element),
+-      autoplay_uma_helper_(MakeGarbageCollected<AutoplayUmaHelper>(element)) {
+-  locked_pending_user_gesture_ =
+-      ComputeLockPendingUserGestureRequired(element->GetDocument());
+-}
++      autoplay_uma_helper_(MakeGarbageCollected<AutoplayUmaHelper>(element)) {}
+ 
+ void AutoplayPolicy::VideoWillBeDrawnToCanvas() const {
+   autoplay_uma_helper_->VideoWillBeDrawnToCanvas();
+@@ -182,10 +179,8 @@ void AutoplayPolicy::DidMoveToNewDocument(Document& old_document) {
+ }
+ 
+ bool AutoplayPolicy::IsEligibleForAutoplayMuted() const {
+-  if (!IsA<HTMLVideoElement>(element_.Get()))
+-    return false;
+-
+-  if (RuntimeEnabledFeatures::VideoAutoFullscreenEnabled() &&
++  if (IsA<HTMLVideoElement>(element_.Get()) &&
++      RuntimeEnabledFeatures::VideoAutoFullscreenEnabled() &&
+       !element_->FastHasAttribute(html_names::kPlaysinlineAttr)) {
+     return false;
+   }
+@@ -314,8 +309,7 @@ bool AutoplayPolicy::IsOrWillBeAutoplayingMuted() const {
+ }
+ 
+ bool AutoplayPolicy::IsOrWillBeAutoplayingMutedInternal(bool muted) const {
+-  if (!IsA<HTMLVideoElement>(element_.Get()) ||
+-      !DocumentShouldAutoplayMutedVideos(element_->GetDocument())) {
++  if (!DocumentShouldAutoplayMutedVideos(element_->GetDocument())) {
+     return false;
+   }
+ 
+@@ -323,7 +317,10 @@ bool AutoplayPolicy::IsOrWillBeAutoplayingMutedInternal(bool muted) const {
+ }
+ 
+ bool AutoplayPolicy::IsLockedPendingUserGesture() const {
+-  if (IsUsingDocumentUserActivationRequiredPolicy())
++  const Type policy = GetAutoplayPolicyForDocument(element_->GetDocument());
++  if (policy == Type::kNoUserGestureRequired)
++    return false;
++  if (policy == Type::kDocumentUserActivationRequired)
+     return !IsDocumentAllowedToPlay(element_->GetDocument());
+ 
+   return locked_pending_user_gesture_;

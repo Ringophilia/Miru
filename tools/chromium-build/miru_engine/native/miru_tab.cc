@@ -43,6 +43,8 @@
 #include "miru_engine/native/miru_content_browser_client.h"
 #include "miru_engine/native/miru_js_dialog_manager.h"
 #include "miru_engine/native/miru_login_delegate.h"
+#include "miru_engine/native/miru_media_access_handler.h"
+#include "miru_engine/native/miru_tab_helpers.h"
 #include "net/cert/cert_status_flags.h"
 #include "net/cert/x509_certificate.h"
 #include "net/cert/x509_util.h"
@@ -77,38 +79,6 @@ PendingAdoptions() {
 int64_t& NextAdoptId() {
   static int64_t next = 1;
   return next;
-}
-
-const char* ReferrerPolicyToString(network::mojom::ReferrerPolicy policy) {
-  switch (policy) {
-    case network::mojom::ReferrerPolicy::kAlways:
-      return "unsafe-url";
-    case network::mojom::ReferrerPolicy::kNoReferrerWhenDowngrade:
-      return "no-referrer-when-downgrade";
-    case network::mojom::ReferrerPolicy::kNever:
-      return "no-referrer";
-    case network::mojom::ReferrerPolicy::kOrigin:
-      return "origin";
-    case network::mojom::ReferrerPolicy::kOriginWhenCrossOrigin:
-      return "origin-when-cross-origin";
-    case network::mojom::ReferrerPolicy::kStrictOriginWhenCrossOrigin:
-      return "strict-origin-when-cross-origin";
-    case network::mojom::ReferrerPolicy::kSameOrigin:
-      return "same-origin";
-    case network::mojom::ReferrerPolicy::kStrictOrigin:
-      return "strict-origin";
-    case network::mojom::ReferrerPolicy::kDefault:
-      return "";
-  }
-  return "";
-}
-
-std::string SanitizeJsonForJsLiteral(const char* raw_json) {
-  std::string out(raw_json);
-  // U+2028 / U+2029 are valid JSON but line terminators inside JS literals.
-  base::ReplaceSubstringsAfterOffset(&out, 0, "\xe2\x80\xa8", "\\u2028");
-  base::ReplaceSubstringsAfterOffset(&out, 0, "\xe2\x80\xa9", "\\u2029");
-  return out;
 }
 
 struct MultiFrameJsCollector
@@ -184,6 +154,7 @@ void MiruTab::AttachWebContents() {
 
 MiruTab::~MiruTab() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  MiruMediaAccessHandler::CancelForTab(this);
   if (web_contents_) {
     TabRegistry().erase(web_contents_.get());
     Observe(nullptr);
@@ -492,6 +463,14 @@ void MiruTab::NotifyContextMenuClosed(JNIEnv*) {
   }
 }
 
+void MiruTab::ReadyToCommitNavigation(
+    content::NavigationHandle* navigation_handle) {
+  if (navigation_handle && navigation_handle->IsInPrimaryMainFrame() &&
+      web_contents_) {
+    web_contents_->NotifyPreferencesChanged();
+  }
+}
+
 void MiruTab::DidFinishNavigation(
     content::NavigationHandle* navigation_handle) {
   if (!navigation_handle->HasCommitted() ||
@@ -702,6 +681,20 @@ void MiruTab::ShowRepostFormWarningDialog(content::WebContents* /*source*/) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   JNIEnv* env = base::android::AttachCurrentThread();
   Java_MiruChromiumTab_onNativeRepostDialog(env, java_tab_);
+}
+
+void MiruTab::RequestMediaAccessPermission(
+    content::WebContents*,
+    const content::MediaStreamRequest& request,
+    content::MediaResponseCallback callback) {
+  MiruMediaAccessHandler::Request(this, request, std::move(callback));
+}
+
+bool MiruTab::CheckMediaAccessPermission(
+    content::RenderFrameHost*,
+    const url::Origin& security_origin,
+    blink::mojom::MediaStreamType type) {
+  return MiruMediaAccessHandler::Check(this, security_origin, type);
 }
 
 content::JavaScriptDialogManager* MiruTab::GetJavaScriptDialogManager(

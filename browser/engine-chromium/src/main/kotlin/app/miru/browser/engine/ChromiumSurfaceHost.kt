@@ -202,9 +202,10 @@ internal class ChromiumSurfaceHost(
             windowAndroid = window
             viewport.initialize(window)
         }
+        controller.attachWindowAndroid(windowAndroid)
         viewport.setSurfaceVisibility(true)
         if (tabCollector == null) {
-            tabCollector = scope.launch(Dispatchers.Main.immediate) {
+            tabCollector = scope.launch(Dispatchers.Main) {
                 controller.activeNativeTab.collect { tab ->
                     currentTab?.let { detachOverscroll(it) }
                     currentTab = tab
@@ -229,6 +230,7 @@ internal class ChromiumSurfaceHost(
         container.onTouchState = null
         onIndicator = null
         viewport.destroy()
+        controller.attachWindowAndroid(null)
         windowAndroid?.destroy()
         windowAndroid = null
     }

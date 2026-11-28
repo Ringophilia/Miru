@@ -14,6 +14,8 @@ class SimpleFactoryKey;
 namespace miru {
 
 class MiruDownloadManagerDelegate;
+class MiruPermissionControllerDelegate;
+class MiruPlatformNotificationService;
 
 class MiruBrowserContext : public content::BrowserContext {
  public:
@@ -47,6 +49,8 @@ class MiruBrowserContext : public content::BrowserContext {
   base::FilePath path_;
   std::unique_ptr<SimpleFactoryKey> key_;
   std::unique_ptr<MiruDownloadManagerDelegate> download_delegate_;
+  std::unique_ptr<MiruPermissionControllerDelegate> permission_delegate_;
+  std::unique_ptr<MiruPlatformNotificationService> notification_service_;
 };
 
 }  // namespace miru

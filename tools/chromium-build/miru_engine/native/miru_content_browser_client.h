@@ -24,6 +24,13 @@
 #include "ui/base/page_transition_types.h"
 #include "ui/base/window_open_disposition.h"
 
+namespace content {
+class SiteInstance;
+}
+namespace blink::web_pref {
+struct WebPreferences;
+}
+
 struct MiruAdblockHandle;
 
 namespace miru {
@@ -93,6 +100,13 @@ class MiruContentBrowserClient : public content::ContentBrowserClient {
   std::string GetUserAgent() override;
   std::vector<base::FilePath> GetNetworkContextsParentDirectory() override;
   void OnWebContentsCreated(content::WebContents* web_contents) override;
+  void OverrideWebPreferences(content::WebContents* web_contents,
+                              content::SiteInstance& main_frame_site,
+                              blink::web_pref::WebPreferences* prefs) override;
+  bool OverrideWebPreferencesAfterNavigation(
+      content::WebContents* web_contents,
+      content::SiteInstance& main_frame_site,
+      blink::web_pref::WebPreferences* prefs) override;
   bool CanCreateWindow(content::RenderFrameHost* opener,
                        const GURL& opener_url,
                        const GURL& opener_top_level_frame_url,
@@ -135,6 +149,8 @@ class MiruContentBrowserClient : public content::ContentBrowserClient {
       const net::IsolationInfo& isolation_info,
       mojo::PendingRemote<network::mojom::URLLoaderFactory>* out_factory)
       override;
+  void BindMediaServiceReceiver(content::RenderFrameHost* render_frame_host,
+                                mojo::GenericPendingReceiver receiver) override;
 
   MiruBrowserContext* normal_context();
   MiruBrowserContext* GetOrCreateOffTheRecordContext();

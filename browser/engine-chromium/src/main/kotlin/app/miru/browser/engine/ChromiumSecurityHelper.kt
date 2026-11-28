@@ -68,7 +68,7 @@ internal object ChromiumSecurityHelper {
         initialized: Boolean,
         hasPrivateTabs: Boolean,
         onClearMemoryCaches: () -> Unit,
-        onClearSiteSettings: () -> Unit = {},
+        onClearSiteSettings: suspend () -> Unit = {},
     ): BrowsingDataClearResult = withContext(Dispatchers.Main.immediate) {
         val selected = request.types.intersect(BrowserEngineDataTypes.ENGINE_TYPES)
         if (!request.isValid) return@withContext BrowsingDataClearResult(failed = selected)

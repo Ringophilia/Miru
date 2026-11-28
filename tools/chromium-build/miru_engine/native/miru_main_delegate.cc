@@ -25,6 +25,7 @@
 #include "content/public/utility/content_utility_client.h"
 #include "miru_engine/native/miru_content_browser_client.h"
 #include "miru_engine/native/miru_content_client.h"
+#include "miru_engine/native/miru_content_renderer_client.h"
 #include "miru_engine/native/miru_descriptors.h"
 #include "ui/base/resource/resource_bundle.h"
 
@@ -36,6 +37,18 @@ MiruMainDelegate::~MiruMainDelegate() = default;
 std::optional<int> MiruMainDelegate::BasicStartupComplete() {
   content::Compositor::Initialize();
   content::RenderFrameHost::AllowInjectingJavaScript();
+  auto* cmd = base::CommandLine::ForCurrentProcess();
+  std::string disabled = cmd->GetSwitchValueASCII(switches::kDisableFeatures);
+  for (const char* feat : {"ApproximateGeolocationPermission",
+                           "MediaDrmQueryInSeparateProcess"}) {
+    if (disabled.find(feat) == std::string::npos) {
+      if (!disabled.empty()) {
+        disabled += ',';
+      }
+      disabled += feat;
+    }
+  }
+  cmd->AppendSwitchASCII(switches::kDisableFeatures, disabled);
   return std::nullopt;
 }
 
@@ -109,7 +122,7 @@ content::ContentGpuClient* MiruMainDelegate::CreateContentGpuClient() {
 
 content::ContentRendererClient*
 MiruMainDelegate::CreateContentRendererClient() {
-  renderer_client_ = std::make_unique<content::ContentRendererClient>();
+  renderer_client_ = std::make_unique<MiruContentRendererClient>();
   return renderer_client_.get();
 }
 

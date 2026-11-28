@@ -13,6 +13,8 @@
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/browsing_data_remover.h"
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/navigation_throttle_registry.h"
 #include "content/public/browser/network_service_instance.h"
@@ -27,6 +29,10 @@
 #include "miru_engine/native/miru_descriptors.h"
 #include "miru_engine/native/miru_https_only_throttle.h"
 #include "miru_engine/native/miru_login_delegate.h"
+#include "miru_engine/native/miru_media_drm_storage.h"
+#include "miru_engine/native/miru_proxy_config_monitor.h"
+#include "miru_engine/native/miru_runtime_bridges.h"
+#include "media/mojo/mojom/media_drm_storage.mojom.h"
 #include "miru_engine/native/miru_tab.h"
 #include "miru_engine/native/miru_url_loader_factory.h"
 #include "miru_engine/native/miru_url_loader_throttle.h"
@@ -42,6 +48,8 @@
 #include "services/network/public/mojom/host_resolver.mojom.h"
 #include "services/network/public/mojom/network_context.mojom.h"
 #include "services/network/public/mojom/network_service.mojom.h"
+#include "third_party/blink/public/common/web_preferences/web_preferences.h"
+#include "third_party/blink/public/mojom/webpreferences/web_preferences.mojom-shared.h"
 #include "url/gurl.h"
 #include "url/url_constants.h"
 
@@ -191,6 +199,8 @@ void MiruContentBrowserClient::ConfigureNetworkContextParams(
     }
     network_context_params->cookie_manager_params->block_third_party_cookies =
         block_third_party_cookies_.load(std::memory_order_acquire);
+    MiruProxyConfigMonitor::GetInstance()->AddProxyToNetworkContextParams(
+        network_context_params);
   }
 }
 
@@ -227,6 +237,68 @@ void MiruContentBrowserClient::OnWebContentsCreated(
           performance_manager::PerformanceManagerRegistry::GetInstance()) {
     registry->MaybeCreatePageNodeForWebContents(web_contents);
   }
+}
+
+namespace {
+
+blink::mojom::AutoplayPolicy ResolveAutoplayPolicy(
+    content::WebContents* web_contents,
+    content::SiteInstance& /*main_frame_site*/,
+    bool prefer_committed) {
+  if (!web_contents || !web_contents->GetBrowserContext()) {
+    return blink::mojom::AutoplayPolicy::kDocumentUserActivationRequired;
+  }
+  content::NavigationEntry* pending =
+      web_contents->GetController().GetPendingEntry();
+  const GURL pending_url =
+      pending && pending->GetURL().is_valid() ? pending->GetURL() : GURL();
+  const GURL& committed = web_contents->GetLastCommittedURL();
+  const GURL& visible = web_contents->GetVisibleURL();
+  const GURL url =
+      prefer_committed
+          ? (committed.is_valid() ? committed : visible)
+          : (pending_url.is_valid()
+                 ? pending_url
+                 : (visible.is_valid() ? visible : committed));
+  const std::string target = url.is_valid() ? url.spec() : std::string();
+  const int code = QueryAutoplayPolicyBridge(
+      target, web_contents->GetBrowserContext()->IsOffTheRecord());
+  if (code == 1) {
+    return blink::mojom::AutoplayPolicy::kNoUserGestureRequired;
+  }
+  if (code == 2) {
+    return blink::mojom::AutoplayPolicy::kUserGestureRequired;
+  }
+  return blink::mojom::AutoplayPolicy::kDocumentUserActivationRequired;
+}
+
+}  // namespace
+
+void MiruContentBrowserClient::OverrideWebPreferences(
+    content::WebContents* web_contents,
+    content::SiteInstance& main_frame_site,
+    blink::web_pref::WebPreferences* prefs) {
+  if (!prefs) {
+    return;
+  }
+  prefs->autoplay_policy = ResolveAutoplayPolicy(web_contents, main_frame_site,
+                                                 /*prefer_committed=*/false);
+}
+
+bool MiruContentBrowserClient::OverrideWebPreferencesAfterNavigation(
+    content::WebContents* web_contents,
+    content::SiteInstance& main_frame_site,
+    blink::web_pref::WebPreferences* prefs) {
+  if (!prefs) {
+    return false;
+  }
+  const auto next = ResolveAutoplayPolicy(web_contents, main_frame_site,
+                                          /*prefer_committed=*/true);
+  if (prefs->autoplay_policy == next) {
+    return false;
+  }
+  prefs->autoplay_policy = next;
+  return true;
 }
 
 bool MiruContentBrowserClient::CanCreateWindow(
@@ -309,6 +381,14 @@ bool MiruContentBrowserClient::HandleExternalProtocol(
   return true;
 }
 
+void MiruContentBrowserClient::BindMediaServiceReceiver(
+    content::RenderFrameHost* render_frame_host,
+    mojo::GenericPendingReceiver receiver) {
+  if (auto r = receiver.As<media::mojom::MediaDrmStorage>()) {
+    MiruMediaDrmStorage::Create(render_frame_host, std::move(r));
+  }
+}
+
 MiruBrowserContext* MiruContentBrowserClient::normal_context() {
   return main_parts_ ? main_parts_->normal_context() : nullptr;
 }
@@ -319,6 +399,7 @@ MiruContentBrowserClient::GetOrCreateOffTheRecordContext() {
 }
 
 void MiruContentBrowserClient::DestroyOffTheRecordContext() {
+  MiruMediaDrmStorage::ClearOffTheRecord();
   if (main_parts_) {
     main_parts_->DestroyOffTheRecordContext();
   }

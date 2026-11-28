@@ -12,6 +12,8 @@
 #include "components/keyed_service/core/simple_key_map.h"
 #include "content/public/browser/zoom_level_delegate.h"
 #include "miru_engine/native/miru_download_delegate.h"
+#include "miru_engine/native/miru_permission_controller_delegate.h"
+#include "miru_engine/native/miru_platform_notification_service.h"
 
 namespace miru {
 
@@ -37,6 +39,8 @@ MiruBrowserContext::~MiruBrowserContext() {
       SimpleDependencyManager::GetInstance(), key_.get());
   SimpleKeyMap::GetInstance()->Dissociate(this);
   ShutdownStoragePartitions();
+  notification_service_.reset();
+  permission_delegate_.reset();
 }
 
 base::FilePath MiruBrowserContext::GetPath() const {
@@ -71,7 +75,11 @@ storage::SpecialStoragePolicy* MiruBrowserContext::GetSpecialStoragePolicy() {
 
 content::PlatformNotificationService*
 MiruBrowserContext::GetPlatformNotificationService() {
-  return nullptr;
+  if (!notification_service_) {
+    notification_service_ =
+        std::make_unique<MiruPlatformNotificationService>(this);
+  }
+  return notification_service_.get();
 }
 
 content::PushMessagingService* MiruBrowserContext::GetPushMessagingService() {
@@ -89,7 +97,11 @@ content::SSLHostStateDelegate* MiruBrowserContext::GetSSLHostStateDelegate() {
 
 content::PermissionControllerDelegate*
 MiruBrowserContext::GetPermissionControllerDelegate() {
-  return nullptr;
+  if (!permission_delegate_) {
+    permission_delegate_ =
+        std::make_unique<MiruPermissionControllerDelegate>(off_the_record_);
+  }
+  return permission_delegate_.get();
 }
 
 content::BackgroundFetchDelegate*
