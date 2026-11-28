@@ -37,6 +37,8 @@ internal class ChromiumContextMenusController(
         val frameUrl: String?,
         val headerReferrerPolicy: String,
         val hardGeneration: Long,
+        val hitX: Int,
+        val hitY: Int,
         var closedNotified: Boolean = false,
     )
 
@@ -57,6 +59,8 @@ internal class ChromiumContextMenusController(
         pageUrl: String,
         frameUrl: String,
         referrerPolicy: String,
+        x: Int = -1,
+        y: Int = -1,
     ) {
         val tab = lookupTab(tabId)
         if (tab == null || tab.tabId != selectedTabId()) {
@@ -100,6 +104,8 @@ internal class ChromiumContextMenusController(
             frameUrl = cleanFrame,
             headerReferrerPolicy = referrerPolicy.trim().lowercase(),
             hardGeneration = tab.hardGeneration,
+            hitX = x,
+            hitY = y,
         )
         mutableState.value = menu
     }
@@ -148,18 +154,21 @@ internal class ChromiumContextMenusController(
         val imageUrl = request.imageUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return@withContext null
         val entry = pending ?: return@withContext null
 
+        val qTarget = JSONObject.quote(imageUrl)
+        val hx = entry.hitX
+        val hy = entry.hitY
         val script = buildString {
             append("(function(){try{")
-            append("var target=").append(JSONObject.quote(imageUrl)).append(";")
+            append("if(typeof globalThis.__miruInspectContextImage==='function'){")
+            append("var r=globalThis.__miruInspectContextImage(").append(qTarget).append(",").append(hx).append(",").append(hy).append(");")
+            append("if(r)return r;}")
+            append("var target=").append(qTarget).append(";")
             append("var imgs=document.getElementsByTagName('img');")
-            append("var matched=false;var imgPolicy='';")
-            append("for(var i=0;i<imgs.length;i++){")
-            append("var el=imgs[i];")
-            append("if(el.currentSrc===target||el.src===target){")
-            append("matched=true;imgPolicy=(el.referrerPolicy||'').toLowerCase();break;")
-            append("}}")
-            append("if(!matched)return null;")
-            append("return {imgPolicy:imgPolicy,")
+            append("var matches=[];for(var i=0;i<imgs.length;i++){if(imgs[i].currentSrc===target||imgs[i].src===target)matches.push(imgs[i]);}")
+            append("if(!matches.length)return null;")
+            append("var policies=new Set(matches.map(function(el){return (el.referrerPolicy||'').toLowerCase();}));")
+            append("if(policies.size>1)return {metaUnknown:true,matched:false,docUrl:document.URL||''};")
+            append("return {metaUnknown:false,matched:true,imgPolicy:(matches[0].referrerPolicy||'').toLowerCase(),")
             append("docPolicy:(document.referrerPolicy||'').toLowerCase(),docUrl:document.URL||''};")
             append("}catch(e){return null;}})();")
         }
@@ -174,6 +183,7 @@ internal class ChromiumContextMenusController(
 
         val expectedDocUrl = (entry.frameUrl ?: request.pageUrl).trim()
         val parsed = extractFramePolicyObject(rawJson, expectedDocUrl) ?: return@withContext null
+        if (parsed.optBoolean("metaUnknown", false)) return@withContext null
         val docUrl = parsed.optString("docUrl", "").trim()
         if (expectedDocUrl.isNotEmpty() && docUrl.isNotEmpty() && docUrl != expectedDocUrl) {
             return@withContext null
@@ -204,7 +214,7 @@ internal class ChromiumContextMenusController(
             } ?: continue
             val docUrl = obj.optString("docUrl", "").trim()
             if (expectedDocUrl.isNotEmpty() && docUrl == expectedDocUrl) return obj
-            if (fallback == null) fallback = obj
+            if (fallback == null && obj.optBoolean("matched", false)) fallback = obj
         }
         return fallback
     }

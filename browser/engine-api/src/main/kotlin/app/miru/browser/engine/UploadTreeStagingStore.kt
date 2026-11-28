@@ -22,17 +22,22 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /** Provider IO is supplied by the caller, including cancellation of queries and stream opening. */
-internal interface UploadTreeSource {
+interface UploadTreeSource {
     fun root(): UploadTreeEntry
     fun children(id: String, maximum: Int): List<UploadTreeEntry>
     fun open(id: String): InputStream
 }
 
-internal data class UploadTreeEntry(val id: String, val name: String, val directory: Boolean,
-    val lastModified: Long? = null, val mimeType: String? = null)
+data class UploadTreeEntry(
+    val id: String,
+    val name: String,
+    val directory: Boolean,
+    val lastModified: Long? = null,
+    val mimeType: String? = null,
+)
 
 /** Bounded, single-pass provider copying; logical paths are independent of the private layout. */
-internal class UploadTreeStagingStore(root: File) {
+class UploadTreeStagingStore(root: File) {
     private val configuredRoot = root.toPath().toAbsolutePath().normalize()
     private val lock = Any()
     private var realRoot: Path? = null
@@ -56,7 +61,7 @@ internal class UploadTreeStagingStore(root: File) {
 
     private fun directory(): Path {
         realRoot?.let { validateFolderStagingDirectory(it); return it }
-        if(Files.isSymbolicLink(configuredRoot)) throw IOException("Folder staging root is redirected")
+        if (Files.isSymbolicLink(configuredRoot)) throw IOException("Folder staging root is redirected")
         Files.createDirectories(configuredRoot)
         return configuredRoot.toRealPath().also { validateFolderStagingDirectory(it); realRoot = it }
     }
@@ -64,7 +69,7 @@ internal class UploadTreeStagingStore(root: File) {
     private companion object { const val PREFIX = "folder-lease-" }
 }
 
-internal class UploadTreeStagingLease(
+class UploadTreeStagingLease(
     private val stagingRoot: Path,
     private val leaseDirectory: Path,
     private val budgetBytes: Long,
@@ -80,7 +85,7 @@ internal class UploadTreeStagingLease(
     private class Ancestor(val id: String, val parent: Ancestor?) {
         fun contains(candidate: String): Boolean {
             var ancestor: Ancestor? = this
-            while(ancestor != null) { if(ancestor.id == candidate) return true; ancestor = ancestor.parent }
+            while (ancestor != null) { if (ancestor.id == candidate) return true; ancestor = ancestor.parent }
             return false
         }
     }
@@ -98,7 +103,7 @@ internal class UploadTreeStagingLease(
                     validateFolderStagingDirectory(stagingRoot)
                     validateFolderStagingDirectory(leaseDirectory)
                     val root = source.root()
-                    if(!root.directory || root.id.isBlank()) throw IOException("Selected item is not a directory")
+                    if (!root.directory || root.id.isBlank()) throw IOException("Selected item is not a directory")
                     validateFolderStagingName(root.name)
                     val output = Files.createDirectory(leaseDirectory.resolve(root.name))
                     val payloads = mutableListOf<UploadFolderPayload>()
@@ -109,37 +114,37 @@ internal class UploadTreeStagingLease(
                     var bytes = 0L
                     var metadataBytes = 0L
                     fun accountMetadata(entry: UploadTreeEntry, logicalPath: String) {
-                        if(entry.id.isBlank() || entry.id.length > MAX_ID_CHARS)
+                        if (entry.id.isBlank() || entry.id.length > MAX_ID_CHARS)
                             throw IOException("Invalid folder document identity")
                         metadataBytes += entry.id.toByteArray(Charsets.UTF_8).size.toLong() +
                             entry.name.toByteArray(Charsets.UTF_8).size + logicalPath.toByteArray(Charsets.UTF_8).size +
                             (entry.mimeType?.toByteArray(Charsets.UTF_8)?.size ?: 0)
-                        if(metadataBytes > MAX_METADATA_BYTES) throw IOException("Folder metadata budget exceeded")
+                        if (metadataBytes > MAX_METADATA_BYTES) throw IOException("Folder metadata budget exceeded")
                     }
                     accountMetadata(root, "/${root.name}")
-                    while(stack.isNotEmpty()) {
+                    while (stack.isNotEmpty()) {
                         checkCurrent()
                         val directory = stack.removeLast()
                         validateFolderStagingDirectory(output)
                         val children = source.children(directory.entry.id, maximumEntries - entries)
-                        if(children.size > maximumEntries - entries) throw IOException("Folder entry budget exceeded")
+                        if (children.size > maximumEntries - entries) throw IOException("Folder entry budget exceeded")
                         entries += children.size
-                        for(child in children) {
+                        for (child in children) {
                             checkCurrent()
                             validateFolderStagingName(child.name)
                             val logicalPath = "${directory.logicalPath}/${child.name}"
                             accountMetadata(child, logicalPath)
-                            if(child.directory) {
-                                if(directory.ancestors.contains(child.id)) throw IOException("Folder provider contains a cycle")
+                            if (child.directory) {
+                                if (directory.ancestors.contains(child.id)) throw IOException("Folder provider contains a cycle")
                                 stack.addLast(Directory(child, logicalPath, Ancestor(child.id, directory.ancestors)))
                             } else {
-                                if(++files > maximumFiles) throw IOException("Folder file budget exceeded")
+                                if (++files > maximumFiles) throw IOException("Folder file budget exceeded")
                                 val mime = normalizeUploadMime(child.mimeType)
                                 validateUploadTime(child.lastModified)
                                 // Every occurrence gets its own private directory. The physical basename
-                                // becomes File.name; Gecko gets the original logical path from the manifest.
+                                // becomes File.name; the engine gets the original logical path from the manifest.
                                 val payloadRoot = output.resolve(".miru-payload")
-                                if(files == 1) Files.createDirectory(payloadRoot)
+                                if (files == 1) Files.createDirectory(payloadRoot)
                                 validateFolderStagingDirectory(payloadRoot)
                                 val targetDirectory = Files.createDirectory(payloadRoot.resolve(files.toString()))
                                 val target = targetDirectory.resolve(child.name)
@@ -152,17 +157,17 @@ internal class UploadTreeStagingLease(
                                         validateFolderStagingDirectory(targetDirectory)
                                         Files.newOutputStream(target, CREATE_NEW, WRITE, NOFOLLOW_LINKS).use { out ->
                                             val buffer = ByteArray(64 * 1024)
-                                            while(true) {
+                                            while (true) {
                                                 checkCurrent()
                                                 var count = input.read(buffer)
-                                                if(count < 0) break
-                                                if(count == 0) {
+                                                if (count < 0) break
+                                                if (count == 0) {
                                                     val next = input.read()
-                                                    if(next < 0) break
+                                                    if (next < 0) break
                                                     buffer[0] = next.toByte(); count = 1
                                                 }
                                                 checkCurrent()
-                                                if(count.toLong() > budgetBytes - bytes) throw IOException("Folder byte budget exceeded")
+                                                if (count.toLong() > budgetBytes - bytes) throw IOException("Folder byte budget exceeded")
                                                 out.write(buffer, 0, count)
                                                 bytes += count
                                                 fileBytes += count
@@ -179,7 +184,7 @@ internal class UploadTreeStagingLease(
                     PreparedUploadFolder.validate(stagingRoot, output, payloads, files, bytes)
                 }
                 continuation.resume(copiedRoot) { _, _, _ -> runCatching { close() } }
-            } catch(failure: Throwable) {
+            } catch (failure: Throwable) {
                 runCatching { close() }.exceptionOrNull()?.let(failure::addSuppressed)
                 continuation.resumeWithException(failure)
             }
@@ -190,7 +195,7 @@ internal class UploadTreeStagingLease(
         closed.set(true)
         runCatching { activeInput.get()?.close() }
         synchronized(lock) {
-            if(cleaned) return
+            if (cleaned) return
             validateFolderStagingDirectory(stagingRoot)
             deleteTreeUpload(leaseDirectory)
             cleaned = true
@@ -202,7 +207,7 @@ internal class UploadTreeStagingLease(
         private val ended = AtomicBoolean()
         override fun read(): Int = input.read()
         override fun read(bytes: ByteArray, offset: Int, length: Int): Int = input.read(bytes, offset, length)
-        override fun close() { if(ended.compareAndSet(false, true)) input.close() }
+        override fun close() { if (ended.compareAndSet(false, true)) input.close() }
     }
 
     private companion object {
@@ -212,13 +217,13 @@ internal class UploadTreeStagingLease(
 }
 
 private fun deleteTreeUpload(path: Path) {
-    if(!Files.exists(path, NOFOLLOW_LINKS)) return
+    if (!Files.exists(path, NOFOLLOW_LINKS)) return
     Files.walkFileTree(path, object : SimpleFileVisitor<Path>() {
         override fun visitFile(file: Path, attributes: BasicFileAttributes): FileVisitResult {
             Files.delete(file); return FileVisitResult.CONTINUE
         }
         override fun postVisitDirectory(directory: Path, failure: IOException?): FileVisitResult {
-            if(failure != null) throw failure
+            if (failure != null) throw failure
             Files.delete(directory); return FileVisitResult.CONTINUE
         }
     })

@@ -58,6 +58,21 @@ internal class ChromiumTabBridge(
                     hardGeneration = it.hardGeneration,
                     locationGeneration = it.locationGeneration,
                     attemptGeneration = it.attemptGeneration,
+                    documentGeneration = it.documentGeneration,
+                )
+            }
+        },
+        lookupTabByNativePtr = { nativePtr ->
+            if (nativePtr == 0L) null
+            else host.tabsById.values.firstOrNull { it.nativeTab?.nativeTabPtr == nativePtr }?.let {
+                ChromiumPromptsController.TabMeta(
+                    tabId = it.id,
+                    pageUrl = it.url,
+                    isPrivate = it.isPrivate,
+                    hardGeneration = it.hardGeneration,
+                    locationGeneration = it.locationGeneration,
+                    attemptGeneration = it.attemptGeneration,
+                    documentGeneration = it.documentGeneration,
                 )
             }
         },
@@ -71,10 +86,63 @@ internal class ChromiumTabBridge(
         resolveRepostNative = { tabId, resubmit ->
             host.tabsById[tabId]?.nativeTab?.resolveRepostDialog(resubmit)
         },
+        resolveClientCertNative = { requestId, encodedChain, privateKey ->
+            MiruChromiumRuntime.resolveClientCertificate(requestId, encodedChain, privateKey)
+        },
+        resolveFileChooserFilesNative = { requestId, staged ->
+            MiruChromiumRuntime.resolveFileChooser(
+                requestId,
+                true,
+                staged.map { it.file.absolutePath }.toTypedArray(),
+                staged.map { it.displayName }.toTypedArray(),
+                Array(staged.size) { "" },
+                staged.map { it.mimeType }.toTypedArray(),
+                LongArray(staged.size),
+                BooleanArray(staged.size),
+                "",
+            )
+        },
+        resolveFileChooserFolderNative = { requestId, folder ->
+            val payloads = folder.payloads
+            MiruChromiumRuntime.resolveFileChooser(
+                requestId,
+                true,
+                payloads.map { it.filePath }.toTypedArray(),
+                payloads.map { it.logicalRelativePath.substringAfterLast('/') }.toTypedArray(),
+                payloads.map { payload ->
+                    payload.logicalRelativePath.removePrefix("/").substringBeforeLast('/', "")
+                }.toTypedArray(),
+                payloads.map { it.mimeType }.toTypedArray(),
+                payloads.map { it.lastModified ?: 0L }.toLongArray(),
+                payloads.map { it.lastModified != null }.toBooleanArray(),
+                folder.rootPath,
+            )
+        },
+        cancelFileChooserNative = { requestId ->
+            MiruChromiumRuntime.resolveFileChooser(
+                requestId,
+                false,
+                emptyArray(),
+                emptyArray(),
+                emptyArray(),
+                emptyArray(),
+                LongArray(0),
+                BooleanArray(0),
+                "",
+            )
+        },
+        resolveDateTimeNative = { requestId, accepted, value ->
+            MiruChromiumRuntime.resolveDateTimePrompt(requestId, accepted, value)
+        },
+        resolveColorNative = { requestId, accepted, argb ->
+            MiruChromiumRuntime.resolveColorPrompt(requestId, accepted, argb)
+        },
         openPopupTarget = { _, targetUrl, isPrivate ->
             if (host.isInitialized && targetUrl.isNotBlank()) host.openPopupTab(targetUrl, isPrivate)
         },
     )
+
+    val uploads = ChromiumFileUploadsController(host.applicationContext, host.applicationScope, prompts)
 
     val externalLinks = ChromiumExternalLinksController(
         context = host.applicationContext,
@@ -244,6 +312,19 @@ internal class ChromiumTabBridge(
                     webNotifications.onNativeCloseNotification(notificationId)
             },
         )
+        MiruChromiumRuntime.setClientCertListener(
+            object : MiruChromiumRuntime.ClientCertListener {
+                override fun onSelectClientCertificate(
+                    requestId: Long,
+                    tabPtr: Long,
+                    host: String,
+                    encodedPrincipals: Array<ByteArray>,
+                ) = prompts.onClientCertificateRequest(requestId, tabPtr, host, encodedPrincipals)
+
+                override fun onCancelClientCertificate(requestId: Long) =
+                    prompts.onClientCertificateCancelled(requestId)
+            },
+        )
     }
 
     private fun handleSiteChanged(origin: String, isPrivate: Boolean) {
@@ -392,6 +473,8 @@ internal class ChromiumTabBridge(
                 pageUrl: String,
                 frameUrl: String,
                 referrerPolicy: String,
+                x: Int,
+                y: Int,
             ) = contextMenus.onContextMenu(
                 tabId = tabId,
                 mediaType = mediaType,
@@ -402,7 +485,49 @@ internal class ChromiumTabBridge(
                 pageUrl = pageUrl,
                 frameUrl = frameUrl,
                 referrerPolicy = referrerPolicy,
+                x = x,
+                y = y,
             )
+
+            override fun onMainFrameNavigationCommitted(url: String, isSameDocument: Boolean) =
+                handleMainFrameCommitted(tabId, url, isSameDocument)
+
+            override fun onFileChooserRequest(
+                requestId: Long,
+                mode: Int,
+                acceptTypes: Array<String>,
+                captureMode: Int,
+            ) = prompts.onFileChooserRequest(tabId, requestId, mode, acceptTypes, captureMode)
+
+            override fun onSelectPopup(
+                requestId: Long,
+                labels: Array<String>,
+                itemTypes: IntArray,
+                multiple: Boolean,
+                selectedIndices: IntArray,
+                callback: java.util.function.Consumer<IntArray?>,
+            ) = prompts.onSelectPopup(tabId, requestId, labels, itemTypes, multiple, selectedIndices) { callback.accept(it) }
+
+            override fun onSelectPopupClosed(requestId: Long) =
+                prompts.onSelectPopupClosed(tabId, requestId)
+
+            override fun onDateTimePrompt(
+                requestId: Long,
+                type: Int,
+                initialValue: String,
+                minValue: String,
+                maxValue: String,
+                stepValue: String,
+            ) = prompts.onDateTimePrompt(tabId, requestId, type, initialValue, minValue, maxValue, stepValue)
+
+            override fun onDateTimePromptClosed(requestId: Long) =
+                prompts.onDateTimePromptClosed(tabId, requestId)
+
+            override fun onColorPrompt(requestId: Long, initialColor: String) =
+                prompts.onColorPrompt(tabId, requestId, initialColor)
+
+            override fun onColorPromptClosed(requestId: Long) =
+                prompts.onColorPromptClosed(tabId, requestId)
         }
         tabRef = if (adoptId > 0L) {
             MiruChromiumTab(host.applicationContext, isPrivate, adoptId, listener)
@@ -475,6 +600,17 @@ internal class ChromiumTabBridge(
             recordHistoryVisit(record)
         }
         host.publishState(pageNeedsReload = if (navigated) false else host.currentPageNeedsReload)
+    }
+
+    private fun handleMainFrameCommitted(tabId: String, url: String, isSameDocument: Boolean) {
+        val record = host.tabsById[tabId] ?: return
+        if (url.isNotBlank()) record.url = url
+        if (!isSameDocument) {
+            record.documentGeneration++
+            record.locationGeneration++
+        }
+        prompts.onMainFrameDocumentCommitted(tabId, isSameDocument)
+        host.publishState()
     }
 
     private fun handleMediaDetected(

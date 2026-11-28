@@ -131,7 +131,7 @@ class ChromiumEngineController internal constructor(
     override val externalLinks: BrowserExternalLinksController = externalLinksController
     override val contextMenus: BrowserContextMenusController = contextMenusController
     override val prompts: BrowserPromptsController = promptsController
-    override val uploads: BrowserFileUploadsController = ChromiumFileUploadsController()
+    override val uploads: BrowserFileUploadsController = tabBridge.uploads
     override val permissions: BrowserPermissionsController = permissionsController
     override val webNotifications: BrowserNotificationsController = notificationsController
     override val media: StateFlow<Map<String, List<DetectedMedia>>> = mediaManager.state

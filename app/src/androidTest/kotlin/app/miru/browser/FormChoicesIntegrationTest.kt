@@ -39,7 +39,15 @@ class FormChoicesIntegrationTest {
         val label = "Pick $kind"
         fun find(node: AccessibilityNodeInfo?, depth: Int): Rect? {
             if(node == null || depth > 40) return null
-            if((node.text?.toString().orEmpty() + node.contentDescription?.toString().orEmpty()).contains(label) && node.isVisibleToUser) {
+            val compat = androidx.core.view.accessibility.AccessibilityNodeInfoCompat.wrap(node)
+            val description = listOfNotNull(
+                node.text,
+                node.contentDescription,
+                node.hintText,
+                node.tooltipText,
+                compat.supplementalDescription,
+            ).joinToString(" ")
+            if(description.contains(label) && node.isVisibleToUser) {
                 val bounds = Rect(); node.getBoundsInScreen(bounds)
                 if(bounds.width() > 0 && bounds.height() > 0) return bounds
             }

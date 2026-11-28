@@ -28,6 +28,7 @@ internal data class ChromiumTabRecord(
     var hardGeneration: Long = 0L,
     var locationGeneration: Long = 0L,
     var attemptGeneration: Long = 0L,
+    var documentGeneration: Long = 0L,
 ) {
     fun toSavedState() = ChromiumSessionStore.SavedTabState(id, url, title, desktopMode)
 

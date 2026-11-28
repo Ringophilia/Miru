@@ -8,6 +8,7 @@
 #include "components/performance_manager/embedder/performance_manager_lifetime.h"
 #include "content/public/common/result_codes.h"
 #include "miru_engine/native/miru_browser_context.h"
+#include "miru_engine/native/miru_form_popups.h"
 #include "net/android/network_change_notifier_factory_android.h"
 #include "net/base/network_change_notifier.h"
 
@@ -30,6 +31,7 @@ int MiruBrowserMainParts::PostCreateThreads() {
 }
 
 int MiruBrowserMainParts::PreMainMessageLoopRun() {
+  MiruFormPopups::InstallDateTimeHooks();
   normal_context_ = std::make_unique<MiruBrowserContext>(false);
   return 0;
 }

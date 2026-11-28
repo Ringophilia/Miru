@@ -16,6 +16,9 @@ import org.jni_zero.CalledByNative;
 import org.jni_zero.JNINamespace;
 import org.jni_zero.NativeMethods;
 
+import java.util.Collections;
+import java.util.Map;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -63,7 +66,38 @@ public final class MiruChromiumTab {
         default boolean onCheckPopupAllowed(String openerUrl, String targetUrl, boolean userGesture, boolean openerSuppressed) { return false; }
         default void onAdoptPopupTab(long adoptId, String targetUrl) {}
         default void onExternalProtocol(String url, boolean hasUserGesture) {}
-        default void onContextMenu(int mediaType, String linkUrl, String linkText, String srcUrl, String titleText, String pageUrl, String frameUrl, String referrerPolicy) {}
+        default void onContextMenu(int mediaType, String linkUrl, String linkText, String srcUrl, String titleText, String pageUrl, String frameUrl, String referrerPolicy, int x, int y) {}
+        default void onMainFrameNavigationCommitted(String url, boolean isSameDocument) {}
+        default void onFileChooserRequest(long requestId, int mode, String[] acceptTypes, int captureMode) {}
+        default void onSelectPopup(long requestId, String[] labels, int[] itemTypes, boolean multiple, int[] selectedIndices, Consumer<int @Nullable []> callback) {
+            callback.accept(null);
+        }
+        default void onSelectPopupClosed(long requestId) {}
+        default void onDateTimePrompt(long requestId, int type, String initialValue, String minValue, String maxValue, String stepValue) {}
+        default void onDateTimePromptClosed(long requestId) {}
+        default void onColorPrompt(long requestId, String initialColor) {}
+        default void onColorPromptClosed(long requestId) {}
+    }
+
+    private static final Map<WebContents, MiruChromiumTab> sTabsByWebContents =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    static @Nullable MiruChromiumTab fromWebContents(@Nullable WebContents webContents) {
+        return webContents != null ? sTabsByWebContents.get(webContents) : null;
+    }
+
+    void dispatchSelectPopup(
+            long requestId,
+            String[] labels,
+            int[] itemTypes,
+            boolean multiple,
+            int[] selectedIndices,
+            Consumer<int @Nullable []> callback) {
+        mListener.onSelectPopup(requestId, labels, itemTypes, multiple, selectedIndices, callback);
+    }
+
+    void dispatchSelectPopupClosed(long requestId) {
+        mListener.onSelectPopupClosed(requestId);
     }
 
     private final Context mContext;
@@ -80,6 +114,7 @@ public final class MiruChromiumTab {
     private @Nullable ContentView mContentView;
     private @Nullable ViewAndroidDelegate mViewAndroidDelegate;
     private @Nullable WebContentsObserver mObserver;
+    private @Nullable MiruChromiumViewport mAttachedViewport;
     private boolean mLoading;
     private String mTitle = "";
 
@@ -100,6 +135,7 @@ public final class MiruChromiumTab {
     @CalledByNative
     private void initWebContents(WebContents webContents) {
         mWebContents = webContents;
+        sTabsByWebContents.put(webContents, this);
         ContentView cv = ContentView.createContentView(mContext, webContents);
         mContentView = cv;
         mViewAndroidDelegate = new ViewAndroidDelegate(cv) {};
@@ -357,11 +393,23 @@ public final class MiruChromiumTab {
         return wcTitle != null && !wcTitle.isEmpty() ? wcTitle : mTitle;
     }
 
+    void setAttachedViewport(@Nullable MiruChromiumViewport viewport) {
+        mAttachedViewport = viewport;
+    }
+
     public void destroy() {
         cancelPendingHide();
+        MiruChromiumViewport viewport = mAttachedViewport;
+        mAttachedViewport = null;
+        if (viewport != null) {
+            viewport.detachIfActive(this);
+        }
         if (mObserver != null) {
             mObserver.observe(null);
             mObserver = null;
+        }
+        if (mWebContents != null) {
+            sTabsByWebContents.remove(mWebContents);
         }
         if (mNativeTab != 0) {
             MiruChromiumTabJni.get().destroyTab(mNativeTab);
@@ -474,8 +522,54 @@ public final class MiruChromiumTab {
     }
 
     @CalledByNative
-    private void onNativeContextMenu(int mediaType, String linkUrl, String linkText, String srcUrl, String titleText, String pageUrl, String frameUrl, String referrerPolicy) {
-        mListener.onContextMenu(mediaType, linkUrl, linkText, srcUrl, titleText, pageUrl, frameUrl, referrerPolicy);
+    private void onNativeContextMenu(int mediaType, String linkUrl, String linkText, String srcUrl, String titleText, String pageUrl, String frameUrl, String referrerPolicy, int x, int y) {
+        mListener.onContextMenu(mediaType, linkUrl, linkText, srcUrl, titleText, pageUrl, frameUrl, referrerPolicy, x, y);
+    }
+
+    @CalledByNative
+    private void onNativeMainFrameNavigationCommitted(String url, boolean isSameDocument) {
+        mListener.onMainFrameNavigationCommitted(url != null ? url : "", isSameDocument);
+    }
+
+    @CalledByNative
+    private void onNativeFileChooserRequest(long requestId, int mode, String[] acceptTypes, int captureMode) {
+        mListener.onFileChooserRequest(
+                requestId,
+                mode,
+                acceptTypes != null ? acceptTypes : new String[0],
+                captureMode);
+    }
+
+    @CalledByNative
+    private void onNativeDateTimePrompt(
+            long requestId,
+            int type,
+            String rawValue,
+            String rawMin,
+            String rawMax,
+            String rawStep) {
+        mListener.onDateTimePrompt(
+                requestId,
+                type,
+                rawValue != null ? rawValue : "",
+                rawMin != null ? rawMin : "",
+                rawMax != null ? rawMax : "",
+                rawStep != null ? rawStep : "");
+    }
+
+    @CalledByNative
+    private void onNativeDateTimePromptClosed(long requestId) {
+        mListener.onDateTimePromptClosed(requestId);
+    }
+
+    @CalledByNative
+    private void onNativeColorPrompt(long requestId, String initialColor) {
+        mListener.onColorPrompt(requestId, initialColor != null ? initialColor : "#000000");
+    }
+
+    @CalledByNative
+    private void onNativeColorPromptClosed(long requestId) {
+        mListener.onColorPromptClosed(requestId);
     }
 
     @NativeMethods

@@ -97,8 +97,89 @@ internal object ChromiumPageScripts {
               }, { capture: true, passive: true });
               document.addEventListener('pointerup', (e) => { if (holdActive?.id === e.pointerId) cancelHold(); }, { capture: true, passive: true });
               document.addEventListener('pointercancel', cancelHold, { capture: true, passive: true });
-              document.addEventListener('contextmenu', (e) => { if (holdActive && videoFromEvent(e) === holdActive.video) e.preventDefault(); }, { passive: false });
+              document.addEventListener('contextmenu', (e) => {
+                const img = e.composedPath?.().find((n) => n instanceof HTMLImageElement) || (e.target instanceof HTMLImageElement ? e.target : null);
+                if (img) globalThis.__miruLastContextImg = new WeakRef(img);
+                if (holdActive && videoFromEvent(e) === holdActive.video) e.preventDefault();
+              }, { capture: true, passive: false });
               document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') cancelHold(); }, { capture: true, passive: true });
+
+              // 1b. Fail-closed <meta name="referrer"> tracker for context image policy.
+              const validReferrerTokens = new Set([
+                'no-referrer', 'no-referrer-when-downgrade', 'same-origin', 'origin',
+                'strict-origin', 'origin-when-cross-origin', 'strict-origin-when-cross-origin',
+                'unsafe-url', 'never', 'always', 'default', 'origin-when-crossorigin',
+              ]);
+              const checkMetaElement = (el) => {
+                if (!(el instanceof HTMLMetaElement)) return;
+                if ((el.getAttribute('name') || '').trim().toLowerCase() !== 'referrer') return;
+                const val = (el.getAttribute('content') || '').trim().toLowerCase();
+                if (!validReferrerTokens.has(val)) {
+                  globalThis.__miruMetaReferrerUnknown = true;
+                }
+              };
+              const checkAllReferrerMetas = () => {
+                for (const m of document.querySelectorAll('meta')) checkMetaElement(m);
+              };
+              checkAllReferrerMetas();
+              const metaObserver = new MutationObserver((records) => {
+                for (const r of records) {
+                  if (r.type === 'attributes') {
+                    checkMetaElement(r.target);
+                  } else if (r.type === 'childList') {
+                    for (const n of r.addedNodes) {
+                      if (n instanceof HTMLMetaElement) checkMetaElement(n);
+                      else if (n instanceof Element) n.querySelectorAll('meta').forEach(checkMetaElement);
+                    }
+                  }
+                }
+              });
+              if (document.documentElement) {
+                metaObserver.observe(document.documentElement, {
+                  childList: true,
+                  subtree: true,
+                  attributes: true,
+                  attributeFilter: ['name', 'content'],
+                });
+              }
+              globalThis.__miruInspectContextImage = (target, hitX, hitY) => {
+                try {
+                  checkAllReferrerMetas();
+                  if (globalThis.__miruMetaReferrerUnknown) {
+                    return { metaUnknown: true, matched: false, docUrl: document.URL || '' };
+                  }
+                  const sameSrc = (el) => el instanceof HTMLImageElement && (el.currentSrc === target || el.src === target);
+                  let chosen = null;
+                  const lastRef = globalThis.__miruLastContextImg?.deref?.();
+                  if (lastRef?.isConnected && sameSrc(lastRef)) {
+                    chosen = lastRef;
+                  }
+                  if (!chosen && Number.isFinite(hitX) && Number.isFinite(hitY) && hitX >= 0 && hitY >= 0) {
+                    const hit = document.elementFromPoint(hitX, hitY);
+                    if (sameSrc(hit)) chosen = hit;
+                    else if (hit instanceof Element) {
+                      const inside = [...hit.querySelectorAll('img')].find(sameSrc);
+                      if (inside) chosen = inside;
+                    }
+                  }
+                  if (!chosen) {
+                    const matches = [...document.getElementsByTagName('img')].filter(sameSrc);
+                    if (!matches.length) return { metaUnknown: false, matched: false, docUrl: document.URL || '' };
+                    const policies = new Set(matches.map((el) => (el.referrerPolicy || '').toLowerCase()));
+                    if (policies.size > 1) return { metaUnknown: true, matched: false, docUrl: document.URL || '' };
+                    chosen = matches[0];
+                  }
+                  return {
+                    metaUnknown: false,
+                    matched: true,
+                    imgPolicy: (chosen.referrerPolicy || '').toLowerCase(),
+                    docPolicy: (document.referrerPolicy || '').toLowerCase(),
+                    docUrl: document.URL || '',
+                  };
+                } catch (_) {
+                  return null;
+                }
+              };
 
               // 2. DOM video/audio metadata + prepare/restore bridge.
               const finite = (v) => (Number.isFinite(v) && v >= 0 ? v : 0);

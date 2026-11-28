@@ -13,6 +13,7 @@
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/browsing_data_remover.h"
+#include "content/public/browser/client_certificate_delegate.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/navigation_handle.h"
@@ -26,6 +27,7 @@
 #include "miru_core.h"
 #include "miru_engine/native/miru_browser_context.h"
 #include "miru_engine/native/miru_browser_main_parts.h"
+#include "miru_engine/native/miru_client_cert_bridge.h"
 #include "miru_engine/native/miru_descriptors.h"
 #include "miru_engine/native/miru_https_only_throttle.h"
 #include "miru_engine/native/miru_login_delegate.h"
@@ -36,6 +38,7 @@
 #include "miru_engine/native/miru_tab.h"
 #include "miru_engine/native/miru_url_loader_factory.h"
 #include "miru_engine/native/miru_url_loader_throttle.h"
+#include "net/base/features.h"
 #include "net/base/url_util.h"
 #include "net/cookies/canonical_cookie.h"
 #include "net/cookies/cookie_options.h"
@@ -389,6 +392,17 @@ void MiruContentBrowserClient::BindMediaServiceReceiver(
   }
 }
 
+base::OnceClosure MiruContentBrowserClient::SelectClientCertificate(
+    content::BrowserContext* /*browser_context*/,
+    content::ChildProcessId /*process_id*/,
+    content::WebContents* web_contents,
+    net::SSLCertRequestInfo* cert_request_info,
+    net::ClientCertIdentityList /*client_certs*/,
+    std::unique_ptr<content::ClientCertificateDelegate> delegate) {
+  return MiruClientCertBridge::SelectClientCertificate(
+      web_contents, cert_request_info, std::move(delegate));
+}
+
 MiruBrowserContext* MiruContentBrowserClient::normal_context() {
   return main_parts_ ? main_parts_->normal_context() : nullptr;
 }
@@ -528,8 +542,12 @@ void MiruContentBrowserClient::ApplySecuritySettings(
     }
   }
   if (auto* network_service = content::GetNetworkService()) {
+    const net::InsecureDnsMode insecure_mode =
+        net::features::IsDnsPlatformSupported()
+            ? net::InsecureDnsMode::kEnabledPlatform
+            : net::InsecureDnsMode::kEnabledBuiltIn;
     network_service->ConfigureStubHostResolver(
-        net::InsecureDnsMode::kEnabledBuiltIn,
+        insecure_mode,
         /*happy_eyeballs_v3_enabled=*/false, mode, doh,
         /*additional_dns_types_enabled=*/true,
         /*fallback_doh_nameservers=*/{});

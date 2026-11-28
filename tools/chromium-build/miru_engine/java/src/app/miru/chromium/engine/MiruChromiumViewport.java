@@ -26,41 +26,60 @@ public final class MiruChromiumViewport extends FrameLayout {
     }
 
     public void initialize(WindowAndroid windowAndroid) {
-        if (mRenderView != null) return;
         mWindowAndroid = windowAndroid;
-        ContentViewRenderView renderView = new ContentViewRenderView(getContext());
-        renderView.onNativeLibraryLoaded(windowAndroid);
-        mRenderView = renderView;
-        addView(
-                renderView,
-                new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         if (mActiveTab != null) {
             attachTab(mActiveTab);
         }
     }
 
-    public void attachTab(@Nullable MiruChromiumTab tab) {
-        if (mActiveTab == tab && tab != null) {
-            WebContents wc = tab.getWebContents();
-            if (mRenderView != null && wc != null) {
-                mRenderView.setCurrentWebContents(wc);
-                tab.attachToWindow(mWindowAndroid, this);
-            }
-            return;
+    private @Nullable ContentViewRenderView ensureRenderView() {
+        if (mRenderView != null) return mRenderView;
+        if (mWindowAndroid == null) return null;
+        ContentViewRenderView renderView = new ContentViewRenderView(getContext());
+        renderView.onNativeLibraryLoaded(mWindowAndroid);
+        mRenderView = renderView;
+        addView(
+                renderView,
+                new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        return renderView;
+    }
+
+    private void disposeRenderView() {
+        if (mRenderView != null) {
+            mRenderView.destroy();
+            removeView(mRenderView);
+            mRenderView = null;
         }
-        if (mActiveTab != null) {
+    }
+
+    public void attachTab(@Nullable MiruChromiumTab tab) {
+        if (mActiveTab != null && mActiveTab != tab) {
+            mActiveTab.setAttachedViewport(null);
             mActiveTab.detachFromViewport(this);
         }
         mActiveTab = tab;
-        if (mRenderView != null) {
-            WebContents wc = tab != null ? tab.getWebContents() : null;
-            if (wc != null) {
-                mRenderView.setCurrentWebContents(wc);
-            }
-            if (tab != null) {
-                tab.attachToWindow(mWindowAndroid, this);
-            }
+        if (tab == null) {
+            disposeRenderView();
+            return;
         }
+        WebContents wc = tab.getWebContents();
+        if (wc == null || wc.isDestroyed()) {
+            disposeRenderView();
+            return;
+        }
+        ContentViewRenderView renderView = ensureRenderView();
+        if (renderView != null) {
+            renderView.setCurrentWebContents(wc);
+            tab.setAttachedViewport(this);
+            tab.attachToWindow(mWindowAndroid, this);
+        }
+    }
+
+    void detachIfActive(MiruChromiumTab tab) {
+        if (mActiveTab != tab) return;
+        tab.detachFromViewport(this);
+        mActiveTab = null;
+        disposeRenderView();
     }
 
     public void setSurfaceVisibility(boolean visible) {
@@ -71,14 +90,11 @@ public final class MiruChromiumViewport extends FrameLayout {
 
     public void destroy() {
         if (mActiveTab != null) {
+            mActiveTab.setAttachedViewport(null);
             mActiveTab.detachFromViewport(this);
             mActiveTab = null;
         }
-        if (mRenderView != null) {
-            mRenderView.destroy();
-            removeView(mRenderView);
-            mRenderView = null;
-        }
+        disposeRenderView();
         mWindowAndroid = null;
     }
 }

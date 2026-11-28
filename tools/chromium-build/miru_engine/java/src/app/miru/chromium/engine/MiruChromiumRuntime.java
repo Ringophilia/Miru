@@ -10,6 +10,7 @@ import org.jni_zero.CalledByNative;
 import org.jni_zero.JNINamespace;
 import org.jni_zero.NativeMethods;
 
+import java.security.PrivateKey;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -23,7 +24,9 @@ import org.chromium.base.library_loader.LibraryLoader;
 import org.chromium.base.library_loader.LibraryProcessType;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
+import org.chromium.content.browser.input.SelectPopup;
 import org.chromium.content_public.browser.BrowserStartupController;
+import org.chromium.content_public.browser.WebContents;
 import org.chromium.net.NetworkChangeNotifier;
 
 /**
@@ -41,8 +44,14 @@ public final class MiruChromiumRuntime {
     private static volatile @Nullable DownloadListener sDownloadListener;
     private static volatile @Nullable PermissionListener sPermissionListener;
     private static volatile @Nullable NotificationListener sNotificationListener;
+    private static volatile @Nullable ClientCertListener sClientCertListener;
     private static boolean sAttached;
     private static boolean sStarted;
+
+    public interface ClientCertListener {
+        void onSelectClientCertificate(long requestId, long tabPtr, String host, byte[][] encodedPrincipals);
+        void onCancelClientCertificate(long requestId);
+    }
 
     public interface DownloadListener {
         void onDownloadRequest(
@@ -110,6 +119,32 @@ public final class MiruChromiumRuntime {
                 /* startGpuProcess= */ true);
         NetworkChangeNotifier.init();
         NetworkChangeNotifier.setAutoDetectConnectivityState(true);
+        SelectPopup.setCustomDelegate(new SelectPopup.CustomDelegate() {
+            @Override
+            public void show(
+                    WebContents webContents,
+                    long requestId,
+                    String[] items,
+                    int[] types,
+                    boolean multiple,
+                    int[] selectedIndices,
+                    Consumer<int @Nullable []> callback) {
+                MiruChromiumTab tab = MiruChromiumTab.fromWebContents(webContents);
+                if (tab == null) {
+                    callback.accept(null);
+                    return;
+                }
+                tab.dispatchSelectPopup(requestId, items, types, multiple, selectedIndices, callback);
+            }
+
+            @Override
+            public void hideWithoutCancel(WebContents webContents, long requestId) {
+                MiruChromiumTab tab = MiruChromiumTab.fromWebContents(webContents);
+                if (tab != null) {
+                    tab.dispatchSelectPopupClosed(requestId);
+                }
+            }
+        });
         sStarted = true;
     }
 
@@ -189,6 +224,51 @@ public final class MiruChromiumRuntime {
 
     public static void setNotificationListener(@Nullable NotificationListener listener) {
         sNotificationListener = listener;
+    }
+
+    public static void setClientCertListener(@Nullable ClientCertListener listener) {
+        sClientCertListener = listener;
+    }
+
+    public static void resolveClientCertificate(
+            long requestId,
+            byte @Nullable [][] encodedChain,
+            @Nullable PrivateKey privateKey) {
+        if (!sStarted) return;
+        MiruChromiumRuntimeJni.get().resolveClientCertificate(requestId, encodedChain, privateKey);
+    }
+
+    public static void resolveFileChooser(
+            long requestId,
+            boolean accepted,
+            String[] filePaths,
+            String[] displayNames,
+            String[] baseSubdirsJoined,
+            String[] mimeTypes,
+            long[] lastModifiedMs,
+            boolean[] hasLastModified,
+            String baseDir) {
+        if (!sStarted) return;
+        MiruChromiumRuntimeJni.get().resolveFileChooser(
+                requestId,
+                accepted,
+                filePaths,
+                displayNames,
+                baseSubdirsJoined,
+                mimeTypes,
+                lastModifiedMs,
+                hasLastModified,
+                baseDir);
+    }
+
+    public static void resolveDateTimePrompt(long requestId, boolean accepted, String value) {
+        if (!sStarted) return;
+        MiruChromiumRuntimeJni.get().resolveDateTimePrompt(requestId, accepted, value);
+    }
+
+    public static void resolveColorPrompt(long requestId, boolean accepted, int argb) {
+        if (!sStarted) return;
+        MiruChromiumRuntimeJni.get().resolveColorPrompt(requestId, accepted, argb);
     }
 
     public static void resolveSitePermissions(long requestId, boolean allowed) {
@@ -360,6 +440,32 @@ public final class MiruChromiumRuntime {
         }
     }
 
+    @CalledByNative
+    private static void onNativeSelectClientCertificate(
+            long requestId,
+            long tabPtr,
+            String host,
+            byte[][] encodedPrincipals) {
+        ClientCertListener listener = sClientCertListener;
+        if (listener != null) {
+            listener.onSelectClientCertificate(
+                    requestId,
+                    tabPtr,
+                    host != null ? host : "",
+                    encodedPrincipals != null ? encodedPrincipals : new byte[0][]);
+        } else {
+            resolveClientCertificate(requestId, null, null);
+        }
+    }
+
+    @CalledByNative
+    private static void onNativeCancelClientCertificate(long requestId) {
+        ClientCertListener listener = sClientCertListener;
+        if (listener != null) {
+            listener.onCancelClientCertificate(requestId);
+        }
+    }
+
     @NativeMethods
     interface Natives {
         void setAdblockRules(String rulesText);
@@ -375,5 +481,18 @@ public final class MiruChromiumRuntime {
         void resolveMediaAccess(long requestId, boolean allowed);
         void dispatchNotificationClick(String notificationId, String origin, boolean isPrivate, boolean isPersistent, int actionIndex);
         void dispatchNotificationClose(String notificationId, String origin, boolean isPrivate, boolean isPersistent);
+        void resolveClientCertificate(long requestId, byte @Nullable [][] encodedChain, @Nullable PrivateKey privateKey);
+        void resolveFileChooser(
+                long requestId,
+                boolean accepted,
+                String[] filePaths,
+                String[] displayNames,
+                String[] baseSubdirsJoined,
+                String[] mimeTypes,
+                long[] lastModifiedMs,
+                boolean[] hasLastModified,
+                String baseDir);
+        void resolveDateTimePrompt(long requestId, boolean accepted, String value);
+        void resolveColorPrompt(long requestId, boolean accepted, int argb);
     }
 }

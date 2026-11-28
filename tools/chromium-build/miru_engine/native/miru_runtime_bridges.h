@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace miru {
 
@@ -47,6 +48,14 @@ void ShowNotificationBridge(const std::string& notification_id,
                             const std::string& actions_json);
 
 void CloseNotificationBridge(const std::string& notification_id);
+
+void SelectClientCertificateBridge(
+    int64_t request_id,
+    int64_t tab_ptr,
+    const std::string& host,
+    const std::vector<std::string>& cert_authorities);
+
+void CancelClientCertificateBridge(int64_t request_id);
 
 }  // namespace miru
 

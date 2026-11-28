@@ -7,11 +7,14 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "base/android/scoped_java_ref.h"
 #include "base/memory/weak_ptr.h"
+#include "content/public/browser/file_select_listener.h"
 #include "content/public/browser/web_contents_delegate.h"
 #include "content/public/browser/web_contents_observer.h"
+#include "third_party/blink/public/mojom/choosers/file_chooser.mojom.h"
 #include "third_party/jni_zero/jni_zero.h"
 
 namespace blink::mojom {
@@ -72,6 +75,19 @@ class MiruTab : public content::WebContentsDelegate,
                          bool user_gesture,
                          bool opener_suppressed);
   void OnExternalProtocol(const std::string& url, bool has_user_gesture);
+  void OnFileChooserRequest(int64_t request_id,
+                            int mode,
+                            const std::vector<std::string>& accept_types,
+                            int capture_mode);
+  void OnDateTimePrompt(int64_t request_id,
+                        int type,
+                        const std::string& raw_value,
+                        const std::string& raw_min,
+                        const std::string& raw_max,
+                        const std::string& raw_step);
+  void OnDateTimePromptClosed(int64_t request_id);
+  void OnColorPrompt(int64_t request_id, const std::string& initial_color);
+  void OnColorPromptClosed(int64_t request_id);
 
   void FindAll(JNIEnv* env, const jni_zero::JavaRef<jstring>& jquery, bool forward);
   void FindAll(const std::u16string& query, bool forward);
@@ -142,11 +158,16 @@ class MiruTab : public content::WebContentsDelegate,
   void ExitFullscreenModeForTab(content::WebContents* web_contents) override;
   bool IsFullscreenForTabOrPending(
       const content::WebContents* web_contents) override;
+  void RunFileChooser(content::RenderFrameHost* render_frame_host,
+                      scoped_refptr<content::FileSelectListener> listener,
+                      const blink::mojom::FileChooserParams& params) override;
+  std::unique_ptr<content::ColorChooser> OpenColorChooser(
+      content::WebContents* web_contents,
+      SkColor color,
+      const std::vector<blink::mojom::ColorSuggestionPtr>& suggestions) override;
 
  private:
   void AttachWebContents();
-  void InjectCosmeticRules(content::RenderFrameHost* rfh,
-                           const std::string& url);
   void NotifySecurityState();
 
   base::android::ScopedJavaGlobalRef<jobject> java_tab_;

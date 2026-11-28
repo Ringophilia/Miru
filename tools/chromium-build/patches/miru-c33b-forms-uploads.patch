@@ -1,0 +1,680 @@
+diff --git a/content/browser/date_time_chooser/android/date_time_chooser_android.cc b/content/browser/date_time_chooser/android/date_time_chooser_android.cc
+index fadcd88087..279c9c0bc6 100644
+--- a/content/browser/date_time_chooser/android/date_time_chooser_android.cc
++++ b/content/browser/date_time_chooser/android/date_time_chooser_android.cc
+@@ -6,6 +6,8 @@
+ 
+ #include <stddef.h>
+ 
++#include "base/no_destructor.h"
++
+ #include "base/android/jni_android.h"
+ #include "base/android/jni_string.h"
+ #include "base/i18n/char_iterator.h"
+@@ -31,6 +33,19 @@ using base::android::ScopedJavaLocalRef;
+ 
+ namespace {
+ 
++content::DateTimeChooserAndroid::CustomOpenCallback& GetCustomOpenCallback() {
++  static base::NoDestructor<content::DateTimeChooserAndroid::CustomOpenCallback>
++      cb;
++  return *cb;
++}
++
++content::DateTimeChooserAndroid::CustomCloseCallback&
++GetCustomCloseCallback() {
++  static base::NoDestructor<content::DateTimeChooserAndroid::CustomCloseCallback>
++      cb;
++  return *cb;
++}
++
+ std::u16string SanitizeSuggestionString(const std::u16string& string) {
+   std::u16string trimmed = string.substr(0, 255);
+   icu::UnicodeString sanitized;
+@@ -48,12 +63,20 @@ std::u16string SanitizeSuggestionString(const std::u16string& string) {
+ 
+ namespace content {
+ 
++// static
++void DateTimeChooserAndroid::SetCustomCallbacksForEmbedder(
++    CustomOpenCallback open_cb,
++    CustomCloseCallback close_cb) {
++  GetCustomOpenCallback() = std::move(open_cb);
++  GetCustomCloseCallback() = std::move(close_cb);
++}
++
+ // DateTimeChooserAndroid implementation
+ DateTimeChooserAndroid::DateTimeChooserAndroid(WebContents* web_contents)
+     : DateTimeChooser(web_contents) {}
+ 
+ DateTimeChooserAndroid::~DateTimeChooserAndroid() {
+-  DismissAndDestroyJavaObject();
++  ClosePlatformDialog();
+ }
+ 
+ void DateTimeChooserAndroid::OpenPlatformDialog(
+@@ -68,12 +91,27 @@ void DateTimeChooserAndroid::OpenPlatformDialog(
+   }
+   if (!GetContentClient()->browser()->ShouldAllowSystemUiPopups(
+           &GetWebContents())) {
+-    std::move(callback).Run(false, 0.0);
++    std::move(callback).Run(false, 0.0, false, std::string());
+     return;
+   }
+ 
+   open_date_time_response_callback_ = std::move(callback);
+ 
++  auto& custom_open = GetCustomOpenCallback();
++  if (custom_open) {
++    DismissAndDestroyJavaObject();
++    custom_dialog_open_ = true;
++    auto reply = base::BindOnce(&DateTimeChooserAndroid::FinishCustomDialog,
++                                weak_factory_.GetWeakPtr());
++    if (custom_open.Run(&GetWebContents(), *value, std::move(reply))) {
++      return;
++    }
++    custom_dialog_open_ = false;
++    if (!open_date_time_response_callback_) {
++      return;
++    }
++  }
++
+   ScopedJavaLocalRef<jobjectArray> suggestions_array;
+   if (value->suggestions.size() > 0) {
+     suggestions_array = Java_DateTimeChooserAndroid_createSuggestionsArray(
+@@ -101,14 +139,33 @@ void DateTimeChooserAndroid::OpenPlatformDialog(
+             value->maximum, value->step, suggestions_array));
+   }
+   if (j_date_time_chooser_.is_null()) {
+-    std::move(open_date_time_response_callback_).Run(true, value->dialog_value);
++    std::move(open_date_time_response_callback_)
++        .Run(true, value->dialog_value, false, std::string());
+   }
+ }
+ 
+ void DateTimeChooserAndroid::ClosePlatformDialog() {
++  if (custom_dialog_open_) {
++    custom_dialog_open_ = false;
++    weak_factory_.InvalidateWeakPtrs();
++    auto& custom_close = GetCustomCloseCallback();
++    if (custom_close) {
++      custom_close.Run(&GetWebContents());
++    }
++  }
+   DismissAndDestroyJavaObject();
+ }
+ 
++void DateTimeChooserAndroid::FinishCustomDialog(bool success,
++                                                bool use_string,
++                                                const std::string& value) {
++  custom_dialog_open_ = false;
++  if (open_date_time_response_callback_) {
++    std::move(open_date_time_response_callback_)
++        .Run(success, 0.0, use_string, value);
++  }
++}
++
+ void DateTimeChooserAndroid::DismissAndDestroyJavaObject() {
+   if (j_date_time_chooser_) {
+     JNIEnv* env = AttachCurrentThread();
+@@ -118,11 +175,13 @@ void DateTimeChooserAndroid::DismissAndDestroyJavaObject() {
+ }
+ 
+ void DateTimeChooserAndroid::ReplaceDateTime(JNIEnv* env, double value) {
+-  std::move(open_date_time_response_callback_).Run(true, value);
++  std::move(open_date_time_response_callback_)
++      .Run(true, value, false, std::string());
+ }
+ 
+ void DateTimeChooserAndroid::CancelDialog(JNIEnv* env) {
+-  std::move(open_date_time_response_callback_).Run(false, 0.0);
++  std::move(open_date_time_response_callback_)
++      .Run(false, 0.0, false, std::string());
+ }
+ 
+ // static
+diff --git a/content/browser/date_time_chooser/android/date_time_chooser_android.h b/content/browser/date_time_chooser/android/date_time_chooser_android.h
+index ee1bf66588..60c3f7ab21 100644
+--- a/content/browser/date_time_chooser/android/date_time_chooser_android.h
++++ b/content/browser/date_time_chooser/android/date_time_chooser_android.h
+@@ -5,8 +5,12 @@
+ #ifndef CONTENT_BROWSER_DATE_TIME_CHOOSER_ANDROID_DATE_TIME_CHOOSER_ANDROID_H_
+ #define CONTENT_BROWSER_DATE_TIME_CHOOSER_ANDROID_DATE_TIME_CHOOSER_ANDROID_H_
+ 
++#include <string>
++
+ #include "base/android/jni_weak_ref.h"
++#include "base/functional/callback.h"
+ #include "base/gtest_prod_util.h"
++#include "base/memory/weak_ptr.h"
+ #include "content/browser/date_time_chooser/date_time_chooser.h"
+ #include "content/common/content_export.h"
+ #include "ui/base/ime/text_input_type.h"
+@@ -16,6 +20,17 @@ namespace content {
+ // Android implementation for DateTimeChooser dialogs.
+ class CONTENT_EXPORT DateTimeChooserAndroid : public DateTimeChooser {
+  public:
++  using CustomOpenCallback = base::RepeatingCallback<bool(
++      WebContents*,
++      const blink::mojom::DateTimeDialogValue&,
++      base::OnceCallback<void(bool success,
++                              bool use_string,
++                              const std::string& value)>)>;
++  using CustomCloseCallback = base::RepeatingCallback<void(WebContents*)>;
++
++  static void SetCustomCallbacksForEmbedder(CustomOpenCallback open_cb,
++                                            CustomCloseCallback close_cb);
++
+   explicit DateTimeChooserAndroid(WebContents* web_contents);
+   ~DateTimeChooserAndroid() override;
+ 
+@@ -40,8 +55,13 @@ class CONTENT_EXPORT DateTimeChooserAndroid : public DateTimeChooser {
+   FRIEND_TEST_ALL_PREFIXES(DateTimeChooserBrowserTest, DisallowSystemUiPopups);
+ 
+   void DismissAndDestroyJavaObject();
++  void FinishCustomDialog(bool success,
++                          bool use_string,
++                          const std::string& value);
+ 
+   base::android::ScopedJavaGlobalRef<jobject> j_date_time_chooser_;
++  bool custom_dialog_open_ = false;
++  base::WeakPtrFactory<DateTimeChooserAndroid> weak_factory_{this};
+ };
+ 
+ }  // namespace content
+diff --git a/content/public/android/java/src/org/chromium/content/browser/input/SelectPopup.java b/content/public/android/java/src/org/chromium/content/browser/input/SelectPopup.java
+index a23f448892..7155b7772d 100644
+--- a/content/public/android/java/src/org/chromium/content/browser/input/SelectPopup.java
++++ b/content/public/android/java/src/org/chromium/content/browser/input/SelectPopup.java
+@@ -30,6 +30,7 @@ import org.chromium.ui.base.WindowAndroid;
+ 
+ import java.util.ArrayList;
+ import java.util.List;
++import java.util.function.Consumer;
+ 
+ /** Handles the popup UI for the lt&;select&gt; HTML tag support. */
+ @JNINamespace("content")
+@@ -52,9 +53,29 @@ public class SelectPopup
+         void hide(boolean sendsCancelMessage);
+     }
+ 
++    public interface CustomDelegate {
++        void show(
++                WebContents webContents,
++                long requestId,
++                String[] items,
++                int[] types,
++                boolean multiple,
++                int[] selectedIndices,
++                Consumer<int @Nullable []> callback);
++
++        void hideWithoutCancel(WebContents webContents, long requestId);
++    }
++
++    private static volatile @Nullable CustomDelegate sCustomDelegate;
++
++    public static void setCustomDelegate(@Nullable CustomDelegate delegate) {
++        sCustomDelegate = delegate;
++    }
++
+     private final WebContentsImpl mWebContents;
+     private @Nullable View mContainerView;
+     private @Nullable Ui mPopupView;
++    private boolean mCustomPopupActive;
+     private long mNativeSelectPopup;
+     private long mNativeSelectPopupSourceFrame;
+ 
+@@ -102,6 +123,16 @@ public class SelectPopup
+     public void hide() {
+         // Cancels the selection by calling SelectPopupJni.get().selectMenuItems() with null
+         // indices.
++        if (mCustomPopupActive) {
++            mCustomPopupActive = false;
++            long previousFrame = mNativeSelectPopupSourceFrame;
++            CustomDelegate delegate = sCustomDelegate;
++            selectMenuItems(null);
++            if (delegate != null) {
++                delegate.hideWithoutCancel(mWebContents, previousFrame);
++            }
++            return;
++        }
+         if (mPopupView != null) mPopupView.hide(true);
+     }
+ 
+@@ -117,6 +148,7 @@ public class SelectPopup
+ 
+     @Override
+     public void onWindowAndroidChanged(@Nullable WindowAndroid windowAndroid) {
++        if (mCustomPopupActive) return;
+         if (mPopupView == null) return;
+         mPopupView.hide(true);
+         mPopupView = null;
+@@ -148,6 +180,29 @@ public class SelectPopup
+             boolean rightAligned,
+             int itemHeight,
+             double fontSize) {
++        CustomDelegate delegate = sCustomDelegate;
++        if (delegate != null) {
++            PopupController.hidePopupsAndClearSelection(mWebContents);
++            assert mNativeSelectPopupSourceFrame == 0 : "Zombie popup did not clear the frame source";
++            mNativeSelectPopupSourceFrame = nativeSelectPopupSourceFrame;
++            mCustomPopupActive = true;
++            final long expectedFrame = nativeSelectPopupSourceFrame;
++            delegate.show(
++                    mWebContents,
++                    expectedFrame,
++                    items,
++                    enabled,
++                    multiple,
++                    selectedIndices,
++                    indices -> {
++                        if (mCustomPopupActive && mNativeSelectPopupSourceFrame == expectedFrame) {
++                            mCustomPopupActive = false;
++                            selectMenuItems(indices);
++                        }
++                    });
++            return;
++        }
++
+         if (mContainerView == null
+                 || mContainerView.getParent() == null
+                 || mContainerView.getVisibility() != View.VISIBLE) {
+@@ -193,6 +248,16 @@ public class SelectPopup
+     /** Called when the &lt;select&gt; popup needs to be hidden. */
+     @CalledByNative
+     public void hideWithoutCancel() {
++        if (mCustomPopupActive) {
++            mCustomPopupActive = false;
++            long previousFrame = mNativeSelectPopupSourceFrame;
++            mNativeSelectPopupSourceFrame = 0;
++            CustomDelegate delegate = sCustomDelegate;
++            if (delegate != null) {
++                delegate.hideWithoutCancel(mWebContents, previousFrame);
++            }
++            return;
++        }
+         if (mPopupView == null) return;
+         mPopupView.hide(false);
+         mPopupView = null;
+diff --git a/third_party/blink/public/mojom/choosers/date_time_chooser.mojom b/third_party/blink/public/mojom/choosers/date_time_chooser.mojom
+index 75c80e29b9..327032ad88 100644
+--- a/third_party/blink/public/mojom/choosers/date_time_chooser.mojom
++++ b/third_party/blink/public/mojom/choosers/date_time_chooser.mojom
+@@ -24,15 +24,22 @@ struct DateTimeDialogValue {
+   double minimum;
+   double maximum;
+   double step;
++  string raw_value;
++  string raw_min;
++  string raw_max;
++  string raw_step;
+   array<DateTimeSuggestion> suggestions;
+ };
+ 
+ // Interface exposed by the browser to the renderer.
+ interface DateTimeChooser {
+-  // Requires for opening a date/time dialog, and then |dialog_value| is
+-  // returned to replace a date/time input field.
++  // Requires for opening a date/time dialog, and then |dialog_value| (or
++  // |string_value| when |use_string_value| is true) is returned.
+   OpenDateTimeDialog(DateTimeDialogValue value) =>
+-      (bool success, double dialog_value);
++      (bool success,
++       double dialog_value,
++       bool use_string_value,
++       string string_value);
+ 
+   // Dismiss the date/time dialog.
+   CloseDateTimeDialog();
+diff --git a/third_party/blink/public/mojom/choosers/file_chooser.mojom b/third_party/blink/public/mojom/choosers/file_chooser.mojom
+index c7929be08e..a4d47af865 100644
+--- a/third_party/blink/public/mojom/choosers/file_chooser.mojom
++++ b/third_party/blink/public/mojom/choosers/file_chooser.mojom
+@@ -67,6 +67,9 @@ struct FileChooserParams {
+   // If true, the data should be obtained using the device's camera/mic/etc.
+   bool use_media_capture = false;
+ 
++  // Lower-cased HTML `capture` attribute value when `use_media_capture` is true.
++  string capture_value;
++
+   // Whether files are required to be open for writing. This should be set to
+   // true if the caller needs to write to files. e.g. File System Access APIs
+   // such as showOpenFilePicker(), but should be false for read-only controls
+@@ -98,6 +101,12 @@ struct NativeFileInfo {
+   // 'root/subdir/file.txt' like posix or windows so we need base_subdirs =
+   // ['root', 'subdir'] to get all the information required.
+   array<mojo_base.mojom.String16> base_subdirs;
++
++  // Optional explicit MIME type and timestamp supplied by an Android content
++  // provider so opaque/extensionless uploads and exact mtimes are preserved.
++  string explicit_mime_type;
++  bool has_explicit_last_modified = false;
++  int64 explicit_last_modified_ms = 0;
+ };
+ 
+ struct FileSystemFileInfo {
+diff --git a/third_party/blink/renderer/core/fileapi/file.cc b/third_party/blink/renderer/core/fileapi/file.cc
+index cba568ebe7..a81a79e5b2 100644
+--- a/third_party/blink/renderer/core/fileapi/file.cc
++++ b/third_party/blink/renderer/core/fileapi/file.cc
+@@ -64,11 +64,12 @@ static String GetContentTypeFromFileName(const StringView& name,
+   return String();
+ }
+ 
+-static scoped_refptr<BlobDataHandle> CreateBlobDataHandleForFile(
++static scoped_refptr<BlobDataHandle> CreateBlobDataHandleForFileWithMime(
+     ExecutionContext* context,
+     const String& path,
+     const std::optional<String>& name,
+     File::ContentTypeLookupPolicy policy,
++    const String& explicit_mime_type,
+     mojo::PendingRemote<mojom::blink::SnapshotPermissionToken>
+         snapshot_permission_token) {
+   if (path.empty() && !name) {
+@@ -76,11 +77,25 @@ static scoped_refptr<BlobDataHandle> CreateBlobDataHandleForFile(
+     blob_data->SetContentType("application/octet-stream");
+     return BlobDataHandle::Create(std::move(blob_data), /*size=*/0);
+   }
++  String mime_type = explicit_mime_type.empty()
++                         ? GetContentTypeFromFileName(name.value_or(path), policy)
++                         : explicit_mime_type;
+   return BlobDataHandle::CreateForFile(
+       FileBackedBlobFactoryDispatcher::GetFileBackedBlobFactory(context), path,
+       /*offset=*/0, BlobData::kToEndOfFile,
+-      /*expected_modification_time=*/std::nullopt,
+-      GetContentTypeFromFileName(name.value_or(path), policy),
++      /*expected_modification_time=*/std::nullopt, mime_type,
++      std::move(snapshot_permission_token));
++}
++
++static scoped_refptr<BlobDataHandle> CreateBlobDataHandleForFile(
++    ExecutionContext* context,
++    const String& path,
++    const std::optional<String>& name,
++    File::ContentTypeLookupPolicy policy,
++    mojo::PendingRemote<mojom::blink::SnapshotPermissionToken>
++        snapshot_permission_token) {
++  return CreateBlobDataHandleForFileWithMime(
++      context, path, name, policy, String(),
+       std::move(snapshot_permission_token));
+ }
+ 
+@@ -159,14 +174,43 @@ String File::PathFromControlState(const FormControlState& state,
+   return path;
+ }
+ 
++File* File::CreateForUserProvidedFileWithMime(
++    ExecutionContext* context,
++    const String& path,
++    const String& name,
++    const String& explicit_mime_type) {
++  if (explicit_mime_type.empty()) {
++    return CreateForUserProvidedFile(context, path, name);
++  }
++  auto handle = CreateBlobDataHandleForFileWithMime(
++      context, path, name, File::kAllContentTypes, explicit_mime_type, {});
++  return MakeGarbageCollected<File>(
++      path, name.empty() ? FilePathToString(StringToFilePath(path).BaseName()) : name,
++      String(), File::kIsUserVisible, /*has_snapshot_data=*/false, 0,
++      std::nullopt, std::move(handle));
++}
++
+ File* File::CreateWithRelativePath(ExecutionContext* context,
+                                    const String& path,
+                                    const String& name,
+-                                   const String& relative_path) {
+-  File* file = MakeGarbageCollected<File>(
+-      context, path, name, File::kAllContentTypes, File::kIsUserVisible);
+-  file->relative_path_ = relative_path;
+-  return file;
++                                   const String& relative_path,
++                                   const String& explicit_mime_type) {
++  if (explicit_mime_type.empty()) {
++    File* file = MakeGarbageCollected<File>(
++        context, path, name, File::kAllContentTypes, File::kIsUserVisible);
++    file->relative_path_ = relative_path;
++    return file;
++  }
++  auto handle = CreateBlobDataHandleForFileWithMime(
++      context, path, name, File::kAllContentTypes, explicit_mime_type, {});
++  return MakeGarbageCollected<File>(
++      path, name, relative_path, File::kIsUserVisible,
++      /*has_snapshot_data=*/false, 0, std::nullopt, std::move(handle));
++}
++
++void File::SetExplicitModificationTime(base::Time time) {
++  explicit_modification_time_ = time;
++  snapshot_modification_time_ = time;
+ }
+ 
+ // static
+@@ -341,6 +385,9 @@ void File::CaptureSnapshotIfNeeded() const {
+                                            &snapshot_modification_time_)) {
+     snapshot_size_ = snapshot_size;
+   }
++  if (explicit_modification_time_) {
++    snapshot_modification_time_ = explicit_modification_time_;
++  }
+ }
+ 
+ bool File::HasSameSource(const File& other) const {
+diff --git a/third_party/blink/renderer/core/fileapi/file.h b/third_party/blink/renderer/core/fileapi/file.h
+index 93537dda90..75d0d0bc8a 100644
+--- a/third_party/blink/renderer/core/fileapi/file.h
++++ b/third_party/blink/renderer/core/fileapi/file.h
+@@ -102,10 +102,19 @@ class CORE_EXPORT File final : public Blob {
+   static String PathFromControlState(const FormControlState& state,
+                                      wtf_size_t& index);
+ 
++  static File* CreateForUserProvidedFileWithMime(
++      ExecutionContext* context,
++      const String& path,
++      const String& name,
++      const String& explicit_mime_type);
++
+   static File* CreateWithRelativePath(ExecutionContext* context,
+                                       const String& path,
+                                       const String& name,
+-                                      const String& relative_path);
++                                      const String& relative_path,
++                                      const String& explicit_mime_type = String());
++
++  void SetExplicitModificationTime(base::Time time);
+ 
+   // If filesystem files live in the remote filesystem, the port might pass the
+   // valid metadata (whose length field is non-negative) and cache in the File
+@@ -295,6 +304,7 @@ class CORE_EXPORT File final : public Blob {
+   // Otherwise, the snapshot metadata are used directly in those methods.
+   mutable std::optional<uint64_t> snapshot_size_;
+   mutable std::optional<base::Time> snapshot_modification_time_;
++  std::optional<base::Time> explicit_modification_time_;
+ 
+   String relative_path_;
+ };
+diff --git a/third_party/blink/renderer/core/html/forms/date_time_chooser.h b/third_party/blink/renderer/core/html/forms/date_time_chooser.h
+index 4d5278cb3d..ec620c1531 100644
+--- a/third_party/blink/renderer/core/html/forms/date_time_chooser.h
++++ b/third_party/blink/renderer/core/html/forms/date_time_chooser.h
+@@ -70,6 +70,10 @@ struct DateTimeChooserParameters {
+   double maximum = 0;
+   double step = 1.0;
+   double step_base = 0;
++  String raw_value;
++  String raw_min;
++  String raw_max;
++  String raw_step;
+   bool required = false;
+   bool is_anchor_element_rtl = false;
+   // The fields below are used for type="time".
+diff --git a/third_party/blink/renderer/core/html/forms/external_date_time_chooser.cc b/third_party/blink/renderer/core/html/forms/external_date_time_chooser.cc
+index 9d079a1d71..320163a1c1 100644
+--- a/third_party/blink/renderer/core/html/forms/external_date_time_chooser.cc
++++ b/third_party/blink/renderer/core/html/forms/external_date_time_chooser.cc
+@@ -81,6 +81,14 @@ void ExternalDateTimeChooser::OpenDateTimeChooser(
+   date_time_dialog_value->minimum = parameters.minimum;
+   date_time_dialog_value->maximum = parameters.maximum;
+   date_time_dialog_value->step = parameters.step;
++  date_time_dialog_value->raw_value =
++      parameters.raw_value.IsNull() ? g_empty_string : parameters.raw_value;
++  date_time_dialog_value->raw_min =
++      parameters.raw_min.IsNull() ? g_empty_string : parameters.raw_min;
++  date_time_dialog_value->raw_max =
++      parameters.raw_max.IsNull() ? g_empty_string : parameters.raw_max;
++  date_time_dialog_value->raw_step =
++      parameters.raw_step.IsNull() ? g_empty_string : parameters.raw_step;
+   for (const auto& suggestion : parameters.suggestions) {
+     date_time_dialog_value->suggestions.push_back(suggestion->Clone());
+   }
+@@ -92,11 +100,16 @@ void ExternalDateTimeChooser::OpenDateTimeChooser(
+ }
+ 
+ void ExternalDateTimeChooser::ResponseHandler(bool success,
+-                                              double dialog_value) {
+-  if (success)
+-    DidChooseValue(dialog_value);
+-  else
++                                              double dialog_value,
++                                              bool use_string_value,
++                                              const String& string_value) {
++  if (!success) {
+     DidCancelChooser();
++  } else if (use_string_value) {
++    DidChooseStringValue(string_value);
++  } else {
++    DidChooseValue(dialog_value);
++  }
+   client_ = nullptr;
+ }
+ 
+@@ -139,6 +152,21 @@ void ExternalDateTimeChooser::DidChooseValue(double value) {
+     client_->DidEndChooser();
+ }
+ 
++void ExternalDateTimeChooser::DidChooseStringValue(const String& value) {
++  Element* element = client_ ? &client_->OwnerElement() : nullptr;
++  if (client_) {
++    client_->DidChooseValue(value);
++  }
++  if (element) {
++    if (AXObjectCache* cache = element->GetDocument().ExistingAXObjectCache()) {
++      cache->HandleValueChanged(element);
++    }
++  }
++  if (client_) {
++    client_->DidEndChooser();
++  }
++}
++
+ void ExternalDateTimeChooser::DidCancelChooser() {
+   if (client_)
+     client_->DidEndChooser();
+diff --git a/third_party/blink/renderer/core/html/forms/external_date_time_chooser.h b/third_party/blink/renderer/core/html/forms/external_date_time_chooser.h
+index efc50a8e67..4e4c3d0f3c 100644
+--- a/third_party/blink/renderer/core/html/forms/external_date_time_chooser.h
++++ b/third_party/blink/renderer/core/html/forms/external_date_time_chooser.h
+@@ -46,7 +46,10 @@ class CORE_EXPORT ExternalDateTimeChooser final : public DateTimeChooser {
+   // |frame| must not be null.
+   void OpenDateTimeChooser(LocalFrame* frame, const DateTimeChooserParameters&);
+ 
+-  void ResponseHandler(bool success, double dialog_value);
++  void ResponseHandler(bool success,
++                       double dialog_value,
++                       bool use_string_value,
++                       const String& string_value);
+ 
+   bool IsShowingDateTimeChooserUI() const;
+ 
+@@ -57,6 +60,7 @@ class CORE_EXPORT ExternalDateTimeChooser final : public DateTimeChooser {
+ 
+  private:
+   void DidChooseValue(double);
++  void DidChooseStringValue(const String&);
+   void DidCancelChooser();
+ 
+   mojom::blink::DateTimeChooser& GetDateTimeChooser(LocalFrame* frame);
+diff --git a/third_party/blink/renderer/core/html/forms/file_chooser.cc b/third_party/blink/renderer/core/html/forms/file_chooser.cc
+index 4d7e6588ee..21ec19a397 100644
+--- a/third_party/blink/renderer/core/html/forms/file_chooser.cc
++++ b/third_party/blink/renderer/core/html/forms/file_chooser.cc
+@@ -145,7 +145,8 @@ FileChooserFileInfoPtr CreateFileChooserFileInfoNative(
+     const String& display_name,
+     const Vector<String>& base_subdirs) {
+   return FileChooserFileInfo::NewNativeFile(
+-      NativeFileInfo::New(StringToFilePath(path), display_name, base_subdirs));
++      NativeFileInfo::New(StringToFilePath(path), display_name, base_subdirs,
++                          String(), false, 0));
+ }
+ 
+ FileChooserFileInfoPtr CreateFileChooserFileInfoFileSystem(
+diff --git a/third_party/blink/renderer/core/html/forms/file_input_type.cc b/third_party/blink/renderer/core/html/forms/file_input_type.cc
+index 5b59da836d..6e184af9ab 100644
+--- a/third_party/blink/renderer/core/html/forms/file_input_type.cc
++++ b/third_party/blink/renderer/core/html/forms/file_input_type.cc
+@@ -223,6 +223,14 @@ void FileInputType::OpenPopupView() {
+     params.selected_files = file_list_->PathsForUserVisibleFiles();
+     params.use_media_capture = RuntimeEnabledFeatures::MediaCaptureEnabled() &&
+                                input.FastHasAttribute(html_names::kCaptureAttr);
++    params.capture_value =
++        params.use_media_capture
++            ? (input.FastGetAttribute(html_names::kCaptureAttr).GetString().IsNull()
++                   ? g_empty_string
++                   : input.FastGetAttribute(html_names::kCaptureAttr)
++                         .GetString()
++                         .ToAsciiLower())
++            : g_empty_string;
+     params.requestor = document.Url();
+ 
+     UseCounter::Count(
+@@ -346,17 +354,32 @@ FileList* FileInputType::CreateFileList(ExecutionContext& context,
+             << " should start with " << FilePathToString(base_dir);
+         relative_path = string_path.substr(root_length).Replace('\\', '/');
+       }
+-      file_list->Append(File::CreateWithRelativePath(
+-          &context, string_path, display_name, relative_path));
++      const auto& native_info = file->get_native_file();
++      File* created = File::CreateWithRelativePath(
++          &context, string_path, display_name, relative_path,
++          native_info->explicit_mime_type);
++      if (native_info->has_explicit_last_modified) {
++        created->SetExplicitModificationTime(
++            base::Time::UnixEpoch() +
++            base::Milliseconds(native_info->explicit_last_modified_ms));
++      }
++      file_list->Append(created);
+     }
+     return file_list;
+   }
+ 
+   for (const auto& file : files) {
+     if (file->is_native_file()) {
+-      file_list->Append(File::CreateForUserProvidedFile(
+-          &context, FilePathToString(file->get_native_file()->file_path),
+-          file->get_native_file()->display_name));
++      const auto& native_info = file->get_native_file();
++      File* created = File::CreateForUserProvidedFileWithMime(
++          &context, FilePathToString(native_info->file_path),
++          native_info->display_name, native_info->explicit_mime_type);
++      if (native_info->has_explicit_last_modified) {
++        created->SetExplicitModificationTime(
++            base::Time::UnixEpoch() +
++            base::Milliseconds(native_info->explicit_last_modified_ms));
++      }
++      file_list->Append(created);
+     } else {
+       const auto& fs_info = file->get_file_system();
+       FileMetadata metadata;
+diff --git a/third_party/blink/renderer/core/html/forms/html_input_element.cc b/third_party/blink/renderer/core/html/forms/html_input_element.cc
+index ad9aefe2cd..fa5418551d 100644
+--- a/third_party/blink/renderer/core/html/forms/html_input_element.cc
++++ b/third_party/blink/renderer/core/html/forms/html_input_element.cc
+@@ -2464,6 +2464,10 @@ bool HTMLInputElement::SetupDateTimeChooserParameters(
+   parameters.anchor_rect_in_screen =
+       GetDocument().View()->FrameToScreen(PixelSnappedBoundingBox());
+   parameters.double_value = input_type_->ValueAsDouble();
++  parameters.raw_value = Value();
++  parameters.raw_min = FastGetAttribute(html_names::kMinAttr);
++  parameters.raw_max = FastGetAttribute(html_names::kMaxAttr);
++  parameters.raw_step = FastGetAttribute(html_names::kStepAttr);
+   parameters.focused_field_index = input_type_view_->FocusedFieldIndex();
+   parameters.is_anchor_element_rtl =
+       GetLayoutObject() &&

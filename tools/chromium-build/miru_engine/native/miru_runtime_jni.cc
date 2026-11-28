@@ -11,7 +11,10 @@
 #include "base/android/scoped_java_ref.h"
 #include "base/functional/bind.h"
 #include "miru_engine/miru_engine_jni/MiruChromiumRuntime_jni.h"
+#include "miru_engine/native/miru_client_cert_bridge.h"
 #include "miru_engine/native/miru_content_browser_client.h"
+#include "miru_engine/native/miru_file_chooser.h"
+#include "miru_engine/native/miru_form_popups.h"
 #include "miru_engine/native/miru_media_access_handler.h"
 #include "miru_engine/native/miru_permission_controller_delegate.h"
 #include "miru_engine/native/miru_platform_notification_service.h"
@@ -270,6 +273,104 @@ static void JNI_MiruChromiumRuntime_DispatchNotificationClose(
       base::android::ConvertJavaStringToUTF8(env, jid),
       base::android::ConvertJavaStringToUTF8(env, jorigin),
       is_private != JNI_FALSE, is_persistent != JNI_FALSE);
+}
+
+void SelectClientCertificateBridge(
+    int64_t request_id,
+    int64_t tab_ptr,
+    const std::string& host,
+    const std::vector<std::string>& cert_authorities) {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumRuntime_onNativeSelectClientCertificate(
+      env, static_cast<jlong>(request_id), static_cast<jlong>(tab_ptr),
+      base::android::ConvertUTF8ToJavaString(env, host),
+      base::android::ToJavaArrayOfByteArray(env, cert_authorities));
+}
+
+void CancelClientCertificateBridge(int64_t request_id) {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumRuntime_onNativeCancelClientCertificate(
+      env, static_cast<jlong>(request_id));
+}
+
+static void JNI_MiruChromiumRuntime_ResolveClientCertificate(
+    JNIEnv* env,
+    jlong request_id,
+    const base::android::JavaRef<jobjectArray>& encoded_chain,
+    const base::android::JavaRef<jobject>& private_key) {
+  MiruClientCertBridge::Resolve(env, static_cast<int64_t>(request_id),
+                                encoded_chain, private_key);
+}
+
+static void JNI_MiruChromiumRuntime_ResolveFileChooser(
+    JNIEnv* env,
+    jlong request_id,
+    jboolean accepted,
+    const base::android::JavaRef<jobjectArray>& jfile_paths,
+    const base::android::JavaRef<jobjectArray>& jdisplay_names,
+    const base::android::JavaRef<jobjectArray>& jbase_subdirs,
+    const base::android::JavaRef<jobjectArray>& jmime_types,
+    const base::android::JavaRef<jlongArray>& jlast_modified_ms,
+    const base::android::JavaRef<jbooleanArray>& jhas_last_modified,
+    const base::android::JavaRef<jstring>& jbase_dir) {
+  std::vector<std::string> file_paths;
+  std::vector<std::string> display_names;
+  std::vector<std::string> base_subdirs;
+  std::vector<std::string> mime_types;
+  std::vector<int64_t> last_modified_ms;
+  std::vector<bool> has_last_modified;
+  if (!jfile_paths.is_null()) {
+    base::android::AppendJavaStringArrayToStringVector(env, jfile_paths,
+                                                       &file_paths);
+  }
+  if (!jdisplay_names.is_null()) {
+    base::android::AppendJavaStringArrayToStringVector(env, jdisplay_names,
+                                                       &display_names);
+  }
+  if (!jbase_subdirs.is_null()) {
+    base::android::AppendJavaStringArrayToStringVector(env, jbase_subdirs,
+                                                       &base_subdirs);
+  }
+  if (!jmime_types.is_null()) {
+    base::android::AppendJavaStringArrayToStringVector(env, jmime_types,
+                                                       &mime_types);
+  }
+  if (!jlast_modified_ms.is_null()) {
+    base::android::JavaLongArrayToInt64Vector(env, jlast_modified_ms,
+                                              &last_modified_ms);
+  }
+  if (!jhas_last_modified.is_null()) {
+    base::android::JavaBooleanArrayToBoolVector(env, jhas_last_modified,
+                                                &has_last_modified);
+  }
+  const std::string base_dir =
+      jbase_dir.is_null() ? std::string()
+                          : base::android::ConvertJavaStringToUTF8(env, jbase_dir);
+  MiruFileChooser::Resolve(static_cast<int64_t>(request_id),
+                           accepted != JNI_FALSE, file_paths, display_names,
+                           base_subdirs, mime_types, last_modified_ms,
+                           has_last_modified, base_dir);
+}
+
+static void JNI_MiruChromiumRuntime_ResolveDateTimePrompt(
+    JNIEnv* env,
+    jlong request_id,
+    jboolean accepted,
+    const base::android::JavaRef<jstring>& jvalue) {
+  const std::string value =
+      jvalue.is_null() ? std::string()
+                       : base::android::ConvertJavaStringToUTF8(env, jvalue);
+  MiruFormPopups::ResolveDateTime(static_cast<int64_t>(request_id),
+                                  accepted != JNI_FALSE, value);
+}
+
+static void JNI_MiruChromiumRuntime_ResolveColorPrompt(JNIEnv*,
+                                                       jlong request_id,
+                                                       jboolean accepted,
+                                                       jint argb) {
+  MiruFormPopups::ResolveColor(static_cast<int64_t>(request_id),
+                               accepted != JNI_FALSE,
+                               static_cast<uint32_t>(argb));
 }
 
 }  // namespace miru

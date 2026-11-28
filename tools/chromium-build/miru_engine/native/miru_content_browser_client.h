@@ -151,6 +151,13 @@ class MiruContentBrowserClient : public content::ContentBrowserClient {
       override;
   void BindMediaServiceReceiver(content::RenderFrameHost* render_frame_host,
                                 mojo::GenericPendingReceiver receiver) override;
+  base::OnceClosure SelectClientCertificate(
+      content::BrowserContext* browser_context,
+      content::ChildProcessId process_id,
+      content::WebContents* web_contents,
+      net::SSLCertRequestInfo* cert_request_info,
+      net::ClientCertIdentityList client_certs,
+      std::unique_ptr<content::ClientCertificateDelegate> delegate) override;
 
   MiruBrowserContext* normal_context();
   MiruBrowserContext* GetOrCreateOffTheRecordContext();

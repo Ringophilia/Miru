@@ -27,6 +27,7 @@
 #include "base/values.h"
 #include "components/viz/common/frame_sinks/copy_output_result.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/color_chooser.h"
 #include "content/public/browser/context_menu_params.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
@@ -40,7 +41,10 @@
 #include "miru_core.h"
 #include "miru_engine/miru_engine_jni/MiruChromiumTab_jni.h"
 #include "miru_engine/native/miru_browser_context.h"
+#include "miru_engine/native/miru_client_cert_bridge.h"
 #include "miru_engine/native/miru_content_browser_client.h"
+#include "miru_engine/native/miru_file_chooser.h"
+#include "miru_engine/native/miru_form_popups.h"
 #include "miru_engine/native/miru_js_dialog_manager.h"
 #include "miru_engine/native/miru_login_delegate.h"
 #include "miru_engine/native/miru_media_access_handler.h"
@@ -80,31 +84,6 @@ int64_t& NextAdoptId() {
   static int64_t next = 1;
   return next;
 }
-
-struct MultiFrameJsCollector
-    : public base::RefCounted<MultiFrameJsCollector> {
-  base::WeakPtr<MiruTab> tab;
-  jlong request_id = 0;
-  size_t pending = 0;
-  base::ListValue results;
-
-  void OnFrameResult(base::Value val) {
-    if (!val.is_none()) {
-      results.Append(std::move(val));
-    }
-    if (pending > 0) {
-      --pending;
-    }
-    if (pending == 0 && tab) {
-      tab->NotifyIsolatedJsResult(request_id,
-                                  base::WriteJson(results).value_or("[]"));
-    }
-  }
-
- private:
-  friend class base::RefCounted<MultiFrameJsCollector>;
-  ~MultiFrameJsCollector() = default;
-};
 
 }  // namespace
 
@@ -155,6 +134,9 @@ void MiruTab::AttachWebContents() {
 MiruTab::~MiruTab() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   MiruMediaAccessHandler::CancelForTab(this);
+  MiruFileChooser::CancelForTab(this);
+  MiruFormPopups::CancelForTab(this);
+  MiruClientCertBridge::CancelForTab(this);
   if (web_contents_) {
     TabRegistry().erase(web_contents_.get());
     Observe(nullptr);
@@ -227,122 +209,43 @@ void MiruTab::EvaluateIsolatedJs(JNIEnv* env,
                                  bool all_frames,
                                  jlong request_id) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  if (!web_contents_) {
-    if (request_id > 0) {
-      Java_MiruChromiumTab_onNativeIsolatedJsResult(
-          env, java_tab_, request_id,
-          base::android::ConvertUTF8ToJavaString(env, all_frames ? "[]" : ""));
-    }
-    return;
-  }
   std::string script = base::android::ConvertJavaStringToUTF8(env, jscript);
-  base::ReplaceSubstringsAfterOffset(&script, 0, "__MIRU_NONCE__",
-                                     bridge_nonce_);
-  const std::u16string script16 = base::UTF8ToUTF16(script);
-
-  if (!all_frames) {
-    content::RenderFrameHost* main_rfh = web_contents_->GetPrimaryMainFrame();
-    if (!main_rfh || !main_rfh->IsRenderFrameLive()) {
-      if (request_id > 0) {
-        Java_MiruChromiumTab_onNativeIsolatedJsResult(
-            env, java_tab_, request_id,
-            base::android::ConvertUTF8ToJavaString(env, ""));
-      }
-      return;
-    }
-    if (request_id <= 0) {
-      main_rfh->ExecuteJavaScriptInIsolatedWorld(
-          script16, base::NullCallback(),
-          content::ISOLATED_WORLD_ID_CONTENT_END);
-      return;
-    }
-    main_rfh->ExecuteJavaScriptInIsolatedWorld(
-        script16,
-        base::BindOnce(
-            [](base::WeakPtr<MiruTab> weak_tab, jlong req_id,
-               base::Value val) {
-              if (!weak_tab) {
-                return;
-              }
-              const std::string json =
-                  val.is_none() ? std::string()
-                                : base::WriteJson(val).value_or("");
-              weak_tab->NotifyIsolatedJsResult(req_id, json);
-            },
-            AsWeakPtr(), request_id),
-        content::ISOLATED_WORLD_ID_CONTENT_END);
-    return;
-  }
-
-  std::vector<content::RenderFrameHost*> targets;
-  web_contents_->ForEachRenderFrameHost([&](content::RenderFrameHost* rfh) {
-    if (rfh->IsRenderFrameLive() &&
-        rfh->GetLastCommittedURL().SchemeIsHTTPOrHTTPS()) {
-      targets.push_back(rfh);
-    }
-  });
-  if (request_id <= 0) {
-    for (content::RenderFrameHost* rfh : targets) {
-      rfh->ExecuteJavaScriptInIsolatedWorld(
-          script16, base::NullCallback(),
-          content::ISOLATED_WORLD_ID_CONTENT_END);
-    }
-    return;
-  }
-  if (targets.empty()) {
-    Java_MiruChromiumTab_onNativeIsolatedJsResult(
-        env, java_tab_, request_id,
-        base::android::ConvertUTF8ToJavaString(env, "[]"));
-    return;
-  }
-  auto collector = base::MakeRefCounted<MultiFrameJsCollector>();
-  collector->tab = AsWeakPtr();
-  collector->request_id = request_id;
-  collector->pending = targets.size();
-  for (content::RenderFrameHost* rfh : targets) {
-    rfh->ExecuteJavaScriptInIsolatedWorld(
-        script16,
-        base::BindOnce(&MultiFrameJsCollector::OnFrameResult, collector),
-        content::ISOLATED_WORLD_ID_CONTENT_END);
-  }
+  EvaluateIsolatedJsInWebContents(
+      web_contents_.get(), bridge_nonce_, std::move(script), all_frames,
+      static_cast<int64_t>(request_id),
+      base::BindRepeating(
+          [](base::WeakPtr<MiruTab> weak_tab, int64_t id,
+             const std::string& json) {
+            if (weak_tab) {
+              weak_tab->NotifyIsolatedJsResult(static_cast<jlong>(id), json);
+            }
+          },
+          AsWeakPtr()));
 }
 
-void MiruTab::CaptureThumbnail(JNIEnv* env, jint max_width, jlong request_id) {
+void MiruTab::CaptureThumbnail(JNIEnv*, jint max_width, jlong request_id) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  content::RenderWidgetHostView* rwhv =
-      web_contents_ ? web_contents_->GetRenderWidgetHostView() : nullptr;
-  if (!rwhv) {
-    Java_MiruChromiumTab_onNativeThumbnailResult(env, java_tab_, request_id,
-                                                 nullptr);
-    return;
-  }
-  const gfx::Size bounds = rwhv->GetViewBounds().size();
-  const int w = std::max(64, static_cast<int>(max_width));
-  const int h = bounds.width() > 0
-                    ? std::max(64, static_cast<int>(
-                                       static_cast<int64_t>(bounds.height()) *
-                                       w / bounds.width()))
-                    : (w * 16 / 9);
-  rwhv->CopyFromSurface(
-      gfx::Rect(), gfx::Size(w, h), base::Seconds(2),
+  CaptureWebContentsThumbnail(
+      web_contents_.get(), static_cast<int>(max_width),
+      static_cast<int64_t>(request_id),
       base::BindOnce(
-          [](base::WeakPtr<MiruTab> weak_tab, jlong id,
-             const content::CopyFromSurfaceResult& result) {
+          [](base::WeakPtr<MiruTab> weak_tab, int64_t id,
+             const SkBitmap* bitmap) {
             if (!weak_tab) {
               return;
             }
             JNIEnv* cb_env = base::android::AttachCurrentThread();
-            if (!result.has_value() || result->bitmap.drawsNothing()) {
+            if (!bitmap || bitmap->drawsNothing()) {
               Java_MiruChromiumTab_onNativeThumbnailResult(
-                  cb_env, weak_tab->java_tab_, id, nullptr);
+                  cb_env, weak_tab->java_tab_, static_cast<jlong>(id), nullptr);
               return;
             }
             auto jbmp = gfx::ConvertToJavaBitmap(
-                result->bitmap, gfx::OomBehavior::kReturnNullOnOom);
+                *bitmap, gfx::OomBehavior::kReturnNullOnOom);
             Java_MiruChromiumTab_onNativeThumbnailResult(
-                cb_env, weak_tab->java_tab_, id, jbmp);
+                cb_env, weak_tab->java_tab_, static_cast<jlong>(id), jbmp);
           },
-          AsWeakPtr(), request_id));
+          AsWeakPtr()));
 }
 
 void MiruTab::DestroyTab(JNIEnv*) {
@@ -432,6 +335,57 @@ void MiruTab::OnExternalProtocol(const std::string& url, bool has_user_gesture) 
       has_user_gesture ? JNI_TRUE : JNI_FALSE);
 }
 
+void MiruTab::OnFileChooserRequest(int64_t request_id,
+                                   int mode,
+                                   const std::vector<std::string>& accept_types,
+                                   int capture_mode) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumTab_onNativeFileChooserRequest(
+      env, java_tab_, static_cast<jlong>(request_id), static_cast<jint>(mode),
+      base::android::ToJavaArrayOfStrings(env, accept_types),
+      static_cast<jint>(capture_mode));
+}
+
+void MiruTab::OnDateTimePrompt(int64_t request_id,
+                               int type,
+                               const std::string& raw_value,
+                               const std::string& raw_min,
+                               const std::string& raw_max,
+                               const std::string& raw_step) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumTab_onNativeDateTimePrompt(
+      env, java_tab_, static_cast<jlong>(request_id), static_cast<jint>(type),
+      base::android::ConvertUTF8ToJavaString(env, raw_value),
+      base::android::ConvertUTF8ToJavaString(env, raw_min),
+      base::android::ConvertUTF8ToJavaString(env, raw_max),
+      base::android::ConvertUTF8ToJavaString(env, raw_step));
+}
+
+void MiruTab::OnDateTimePromptClosed(int64_t request_id) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumTab_onNativeDateTimePromptClosed(
+      env, java_tab_, static_cast<jlong>(request_id));
+}
+
+void MiruTab::OnColorPrompt(int64_t request_id,
+                            const std::string& initial_color) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumTab_onNativeColorPrompt(
+      env, java_tab_, static_cast<jlong>(request_id),
+      base::android::ConvertUTF8ToJavaString(env, initial_color));
+}
+
+void MiruTab::OnColorPromptClosed(int64_t request_id) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_MiruChromiumTab_onNativeColorPromptClosed(
+      env, java_tab_, static_cast<jlong>(request_id));
+}
+
 void MiruTab::ResolveJsDialog(JNIEnv* env,
                               jlong dialog_id,
                               jboolean accept,
@@ -479,13 +433,17 @@ void MiruTab::DidFinishNavigation(
   }
   const GURL& url = navigation_handle->GetURL();
   if (navigation_handle->IsInPrimaryMainFrame()) {
+    JNIEnv* env = base::android::AttachCurrentThread();
+    Java_MiruChromiumTab_onNativeMainFrameNavigationCommitted(
+        env, java_tab_, base::android::ConvertUTF8ToJavaString(env, url.spec()),
+        navigation_handle->IsSameDocument() ? JNI_TRUE : JNI_FALSE);
     NotifySecurityState();
   }
   if (!url.SchemeIsHTTPOrHTTPS()) {
     return;
   }
   if (auto* rfh = navigation_handle->GetRenderFrameHost()) {
-    InjectCosmeticRules(rfh, url.spec());
+    InjectCosmeticRulesInFrame(rfh, url.spec());
   }
 }
 
@@ -525,59 +483,12 @@ void MiruTab::DOMContentLoaded(content::RenderFrameHost* render_frame_host) {
   if (!url.SchemeIsHTTPOrHTTPS()) {
     return;
   }
-  InjectCosmeticRules(render_frame_host, url.spec());
+  InjectCosmeticRulesInFrame(render_frame_host, url.spec());
   JNIEnv* env = base::android::AttachCurrentThread();
   Java_MiruChromiumTab_onNativeFrameDomReady(
       env, java_tab_,
       render_frame_host->IsInPrimaryMainFrame() ? JNI_TRUE : JNI_FALSE,
       base::android::ConvertUTF8ToJavaString(env, url.spec()));
-}
-
-void MiruTab::InjectCosmeticRules(content::RenderFrameHost* rfh,
-                                  const std::string& url) {
-  auto* client = MiruContentBrowserClient::Get();
-  auto adblock_ref = client ? client->GetAdblockRef() : nullptr;
-  MiruAdblockHandle* adblock = adblock_ref ? adblock_ref->ptr : nullptr;
-  if (!adblock) {
-    return;
-  }
-  char* json_ptr = miru_adblock_cosmetic_json(adblock, url.c_str());
-  if (!json_ptr) {
-    return;
-  }
-  const std::string literal = SanitizeJsonForJsLiteral(json_ptr);
-  miru_string_free(json_ptr);
-
-  const std::string script =
-      "(() => {"
-      "const r = " + literal + ";"
-      "if (!r) return;"
-      "const apply = () => {"
-      "  if (r.hide_selectors && r.hide_selectors.length) {"
-      "    const target = document.head || document.documentElement;"
-      "    if (!target) return false;"
-      "    const css = r.hide_selectors.join(',') + '{display:none!important}';"
-      "    let el = document.getElementById('__miru_cosmetic');"
-      "    if (!el) {"
-      "      el = document.createElement('style');"
-      "      el.id = '__miru_cosmetic';"
-      "      target.appendChild(el);"
-      "    }"
-      "    el.textContent = css;"
-      "  }"
-      "  if (r.injected_script && r.injected_script.length && !globalThis.__miruScriptInjected) {"
-      "    globalThis.__miruScriptInjected = true;"
-      "    try { (0, eval)(r.injected_script); } catch (_) {}"
-      "  }"
-      "  return true;"
-      "};"
-      "if (!apply()) {"
-      "  document.addEventListener('DOMContentLoaded', () => apply(), { once: true });"
-      "}"
-      "})();";
-  rfh->ExecuteJavaScriptInIsolatedWorld(
-      base::UTF8ToUTF16(script), base::NullCallback(),
-      content::ISOLATED_WORLD_ID_CONTENT_END);
 }
 
 bool MiruTab::DidAddMessageToConsole(
@@ -673,7 +584,9 @@ bool MiruTab::HandleContextMenu(content::RenderFrameHost& /*render_frame_host*/,
       base::android::ConvertUTF8ToJavaString(
           env, params.frame_url.is_valid() ? params.frame_url.spec() : std::string()),
       base::android::ConvertUTF8ToJavaString(
-          env, ReferrerPolicyToString(params.referrer_policy)));
+          env, ReferrerPolicyToString(params.referrer_policy)),
+      static_cast<jint>(params.x),
+      static_cast<jint>(params.y));
   return true;
 }
 
@@ -720,6 +633,20 @@ void MiruTab::ExitFullscreenModeForTab(content::WebContents* /*web_contents*/) {
 
 bool MiruTab::IsFullscreenForTabOrPending(const content::WebContents*) {
   return is_fullscreen_;
+}
+
+void MiruTab::RunFileChooser(
+    content::RenderFrameHost* /*render_frame_host*/,
+    scoped_refptr<content::FileSelectListener> listener,
+    const blink::mojom::FileChooserParams& params) {
+  MiruFileChooser::Run(this, std::move(listener), params);
+}
+
+std::unique_ptr<content::ColorChooser> MiruTab::OpenColorChooser(
+    content::WebContents* web_contents,
+    SkColor color,
+    const std::vector<blink::mojom::ColorSuggestionPtr>& /*suggestions*/) {
+  return MiruFormPopups::OpenColorChooser(this, web_contents, color);
 }
 
 void MiruTab::DidReceiveFindReply(int /*request_id*/,

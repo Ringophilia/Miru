@@ -46,9 +46,9 @@ class UploadStagingStore(root: File) {
 
     private fun directory(): Path {
         realRoot?.let { validateUploadDirectory(it); return it }
-        if(Files.isSymbolicLink(configuredRoot)) throw IOException("Upload root must not be a symbolic link")
+        if (Files.isSymbolicLink(configuredRoot)) throw IOException("Upload root must not be a symbolic link")
         Files.createDirectories(configuredRoot)
-        if(!Files.isDirectory(configuredRoot, NOFOLLOW_LINKS)) throw IOException("Upload root is not a directory")
+        if (!Files.isDirectory(configuredRoot, NOFOLLOW_LINKS)) throw IOException("Upload root is not a directory")
         return configuredRoot.toRealPath().also { realRoot = it }
     }
 
@@ -99,20 +99,20 @@ class UploadStagingLease internal constructor(
                                 checkOpen()
                                 Files.newOutputStream(target, CREATE_NEW, WRITE, NOFOLLOW_LINKS).use { outgoing ->
                                     val buffer = ByteArray(64 * 1024)
-                                    while(true) {
+                                    while (true) {
                                         continuation.context.ensureActive()
                                         checkOpen()
                                         var count = incoming.read(buffer)
-                                        if(count < 0) break
-                                        if(count == 0) {
+                                        if (count < 0) break
+                                        if (count == 0) {
                                             val byte = incoming.read()
-                                            if(byte < 0) break
+                                            if (byte < 0) break
                                             buffer[0] = byte.toByte()
                                             count = 1
                                         }
                                         continuation.context.ensureActive()
                                         checkOpen()
-                                        if(count.toLong() > budgetBytes - bytesUsed - copied) {
+                                        if (count.toLong() > budgetBytes - bytesUsed - copied) {
                                             throw IOException("Upload staging budget exceeded")
                                         }
                                         outgoing.write(buffer, 0, count)
@@ -129,14 +129,14 @@ class UploadStagingLease internal constructor(
                         committed[fileDirectory] = copied
                         bytesUsed += copied
                         target.toFile()
-                    } catch(failure: Throwable) {
+                    } catch (failure: Throwable) {
                         runCatching { deleteUploadTree(fileDirectory) }.exceptionOrNull()?.let(failure::addSuppressed)
                         throw failure
                     }
                 }
                 // Cancellation can win after copying but before the suspended caller receives the file.
                 continuation.resume(result) { _, file, _ -> runCatching { discard(file.toPath().parent) } }
-            } catch(failure: Throwable) { continuation.resumeWithException(failure) }
+            } catch (failure: Throwable) { continuation.resumeWithException(failure) }
         }
     }
 
@@ -145,7 +145,7 @@ class UploadStagingLease internal constructor(
         // Do this before taking the lock: a provider read may be holding it indefinitely.
         runCatching { input.get()?.close() }
         synchronized(lock) {
-            if(cleaned) return
+            if (cleaned) return
             validateUploadDirectory(root)
             deleteUploadTree(directory)
             committed.clear()
@@ -158,7 +158,7 @@ class UploadStagingLease internal constructor(
     private fun checkOpen() { check(!closed.get()) { "Upload staging lease is closed" } }
 
     private fun discard(fileDirectory: Path) = synchronized(lock) {
-        if(fileDirectory.parent != directory) return@synchronized
+        if (fileDirectory.parent != directory) return@synchronized
         val size = committed[fileDirectory] ?: return@synchronized
         validateUploadDirectory(root)
         deleteUploadTree(fileDirectory)
@@ -170,7 +170,7 @@ class UploadStagingLease internal constructor(
         private val closed = AtomicBoolean(false)
         override fun read() = delegate.read()
         override fun read(buffer: ByteArray, offset: Int, length: Int) = delegate.read(buffer, offset, length)
-        override fun close() { if(closed.compareAndSet(false, true)) delegate.close() }
+        override fun close() { if (closed.compareAndSet(false, true)) delegate.close() }
     }
 }
 
@@ -182,21 +182,21 @@ private fun validateUploadName(name: String) {
 }
 
 private fun validateUploadDirectory(directory: Path) {
-    if(!Files.isDirectory(directory, NOFOLLOW_LINKS) || directory.toRealPath() != directory) {
+    if (!Files.isDirectory(directory, NOFOLLOW_LINKS) || directory.toRealPath() != directory) {
         throw IOException("Upload directory is unavailable or redirected")
     }
 }
 
 /** walkFileTree without FOLLOW_LINKS deletes symlinks themselves, never their targets. */
 private fun deleteUploadTree(path: Path) {
-    if(!Files.exists(path, NOFOLLOW_LINKS)) return
+    if (!Files.exists(path, NOFOLLOW_LINKS)) return
     Files.walkFileTree(path, object : SimpleFileVisitor<Path>() {
         override fun visitFile(file: Path, attributes: BasicFileAttributes): FileVisitResult {
             Files.deleteIfExists(file)
             return FileVisitResult.CONTINUE
         }
         override fun postVisitDirectory(directory: Path, failure: IOException?): FileVisitResult {
-            if(failure != null) throw failure
+            if (failure != null) throw failure
             Files.deleteIfExists(directory)
             return FileVisitResult.CONTINUE
         }
